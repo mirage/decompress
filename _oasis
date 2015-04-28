@@ -1,0 +1,39 @@
+OASISFormat:            0.4
+Name:                   decompress
+Version:                0.1
+Synopsis:               Inflate and Deflate Zlib
+Description:            Pure OCaml Library for Zlib
+Authors:                Romain Calascibetta
+Maintainers:            Romain Calascibetta <romain.calascibetta@gmail.com>
+Homepage:               https://github.com/dinosaure/Decompress
+License:                MIT
+Plugins:                META (0.3), DevFiles (0.3)
+BuildTools:             ocamlbuild
+OCamlVersion:           >= 4.01
+AlphaFeatures:          ocamlbuild_more_args
+
+Library decompress
+  Path:                 lib
+  InternalModules:      Huffman, Common
+  Modules:              Adler32, Window, Inflate
+
+Document "Decompress"
+  Type:                 ocamlbuild (0.4)
+  BuildTools:           ocamldoc
+  Title:                "Decompress"
+  PostCommand:          cp Decompress.docdir/*.html doc/
+  XOCamlbuildPath:      lib
+  XOCamlbuildLibraries: decompress
+  XOCamlbuildExtraArgs:
+    "-docflags '-colorize-code -keep-code -charset utf-8'"
+
+Executable main
+  Install:              false
+  Path:                 bin
+  MainIs:               main.ml
+  BuildDepends:         decompress
+
+SourceRepository master
+  Type:                 git
+  Location:             https://github.com/dinosaure/Decompress.git
+  Browser:              https://github.com/dinosaure/Decompress

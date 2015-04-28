@@ -1,0 +1,8 @@
+_build
+setup.data
+setup.log
+doc/*.html
+*.native
+*.byte
+lib/decompress_conf.ml
+*.tar.gz
