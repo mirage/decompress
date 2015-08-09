@@ -87,20 +87,6 @@ let rec compress ~default t =
     let table = Array.make size (Leaf default) in
     walk ~default table 0 0 depth t;
 
-    (*
-     *       _a_
-     *      /   \
-     *     b     c    →   [| d; e; f; g |]
-     *    / \   / \
-     *   d   e f   g
-     *
-     * Huffman compression of a tree with a new type of node that contains the
-     * sub [Flat] tree. The speed of data access is much faster because in the
-     * majority of cases, it's not necessary to traverse the whole tree. When we
-     * arrive at a [Flat] node, we have direct access to the data with the
-     * operations logics.
-     *)
-
     Flat (depth, table)
 and walk ~default table index level depth = function
   | Node (a, b) when depth > 0 ->
