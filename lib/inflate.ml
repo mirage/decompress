@@ -387,8 +387,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
     eval inflater
 
     and compute_flat inflater =
-      let possible_to_write = inflater.length in
-      (* XXX: min inflater.length inflater.needed *)
+      let possible_to_write = min inflater.length inflater.needed in
       let bytes = I.input inflater.src possible_to_write in
       let read_as_possible = Bytes.length bytes in
 
@@ -398,9 +397,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
       if inflater.length = 0
       then inflater.mode <- (if inflater.last then CRC else BLOCK);
 
-      (* if inflater.needed > 0
-       * then eval inflater *)
-      eval inflater
+      if inflater.needed > 0 then eval inflater
 
     and lengths_position =
       [| 16; 17; 18; 0; 8; 7; 9; 6; 10; 5; 11; 4; 12; 3; 13; 2; 14; 1; 15; |]
@@ -546,7 +543,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
               ~get_bits:(get_bits inflater) inflater.length_tree with
       | n when n < 256 ->
         add_char inflater (Char.unsafe_chr n);
-        eval inflater
+        if inflater.needed > 0 then eval inflater
       | 256 ->
         inflater.mode <- if inflater.last then CRC else BLOCK;
         eval inflater
@@ -586,33 +583,30 @@ module Make (I : Common.Input) (X : Common.Buffer) =
         eval inflater
 
     and compute_distone inflater =
-      let size = inflater.length in
-      (* XXX: min inflater.length inflater.needed *)
+      let size = min inflater.length inflater.needed in
       let chr = Window.get_char inflater.window in
-      let bytes = Bytes.make size chr in
+      let bytes = X.make size chr in
 
       add_bytes inflater bytes;
       inflater.length <- inflater.length - size;
 
       if inflater.length = 0 then inflater.mode <- COMPRESS;
-      eval inflater
+      if inflater.needed > 0 then eval inflater
 
     and compute_dist inflater =
-      while inflater.length > 0 (* && inflater.needed > 0 *) do
-        let size = inflater.length in
-        (* XXX: min inflater.length inflater.needed *)
+      while inflater.length > 0 && inflater.needed > 0 do
+        let size = min inflater.needed (min inflater.length inflater.distance) in
         let bytes = Window.get_buffer
           inflater.window
           (Window.available inflater.window - inflater.distance)
-          inflater.length in
+          size in
 
         add_bytes inflater bytes;
         inflater.length <- inflater.length - size;
       done;
 
       if inflater.length = 0 then inflater.mode <- COMPRESS;
-      (* if inflater.needed > 0 then eval inflater *)
-      eval inflater
+      if inflater.needed > 0 then eval inflater
 
     and compute_crc inflater =
       let a2a = I.read_byte inflater.src in
