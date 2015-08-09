@@ -1,3 +1,10 @@
+type code
+
+val pp : Format.formatter -> code -> unit
+
+val int_of_code : code -> int
+val code_of_int : size:int -> int -> code
+
 type 'a t
 
 val pp : (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
