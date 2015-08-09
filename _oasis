@@ -15,7 +15,7 @@ AlphaFeatures:          ocamlbuild_more_args
 Library decompress
   Path:                 lib
   InternalModules:      Huffman, Common
-  Modules:              Adler32, Window, Inflate
+  Modules:              Bitstream, Adler32, Window, Inflate, Lz77
 
 Document "Decompress"
   Type:                 ocamlbuild (0.4)

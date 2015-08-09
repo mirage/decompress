@@ -1,8 +1,10 @@
 # OASIS_START
-# DO NOT EDIT (digest: 840c3b2a2480a028c2e4a509ded112a3)
+# DO NOT EDIT (digest: befe5fecc0b3ce53d0e95c45992417e1)
+Bitstream
 Adler32
 Window
 Inflate
+Lz77
 Huffman
 Common
 # OASIS_STOP
