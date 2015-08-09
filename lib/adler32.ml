@@ -138,5 +138,11 @@ module Make (X : Common.Buffer) : S with type buffer = X.t =
       Buffer.contents buffer
   end
 
-module String = Make (struct include String let to_string x = x end)
-module Bytes = Make (Bytes)
+module String = Make (struct
+                        include String
+
+                        let to_string x = x
+                        let of_bytes x = Bytes.to_string x
+                      end)
+
+module Bytes = Make (struct include Bytes let of_bytes x = x end )
