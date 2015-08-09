@@ -16,5 +16,6 @@ val compress : default:'a -> 'a t -> 'a t
 val read_and_find : get_bit:(unit -> bool) -> get_bits:(int -> int) -> 'a t -> 'a
 
 val make : int array -> int -> int -> int -> int t
+val from_distribution : ?canonical:bool -> (float * 'a) list -> 'a t
 
 val codes_of_t : 'a t -> (code * 'a) list

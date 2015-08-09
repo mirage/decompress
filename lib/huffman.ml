@@ -178,3 +178,28 @@ let codes_of_t t =
   in
   let codes = aux [] [[], t] in
   List.map (fun (code, x) -> List.rev code, x) codes
+
+let leaf x = Leaf x
+
+let insert_weight (w, _ as e) =
+  let rec aux acc l = match l with
+    | [] -> List.rev_append acc [e]
+    | (x, _ as i) :: r ->
+      if w <= x
+      then List.rev_append acc (e :: l)
+      else aux (i :: acc) r
+  in aux []
+
+let compare_weight (w1, _) (w2, _) = Pervasives.compare w1 w2
+
+let from_distribution ?(canonical = true) l =
+  let rec aux = function
+    | [] -> raise (Invalid_argument "Huffman.from_distribution")
+    | [_, r] -> r
+    | (w1, x1) :: (w2, x2) :: r ->
+      aux (insert_weight (w1 +. w2, node ~canonical x1 x2) r)
+  in
+  (* XXX: sort must be stable *)
+  let l = List.rev (List.sort compare_weight l) in
+  let l = List.map (fun (w, x) -> w, leaf x) l in
+  aux l
