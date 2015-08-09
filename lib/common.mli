@@ -74,7 +74,33 @@ module type Input =
   sig
     type t
 
+    (** Read an unsigned 8-bit integer. *)
     val read_byte : t -> int
+
+    (** [input i n] reads a byte sequence of size up to [n] from an input.
+     *  The function should raise an exception if no input is available.
+     *  It should raise [Invalid_argument] if [n] < 0.
+     *
+     *  An example of implementation is:
+     *  let input in_ch n =
+     *    if n < 0 then raise (Invalid_argument "I.input");
+     *    if n = 0 then Bytes.empty
+     *    else
+     *      let s = Bytes.create n in
+     *      let l = ref n in
+     *      let p = ref 0 in
+     *      try
+     *        while !l > 0 do
+     *          let r = Pervasives.input in_ch s !p !l in
+     *          if r = 0 then raise No_more_input;
+     *          p := !p + r;
+     *          l := !l - r;
+     *        done;
+     *        s
+     *      with No_more_input as exn ->
+     *        if !p = 0 then raise exn;
+     *        Bytes.sub s 0 !p
+     *)
     val input : t -> int -> Bytes.t
   end
 
