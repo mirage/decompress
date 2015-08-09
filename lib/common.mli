@@ -109,5 +109,6 @@ module type Output =
     type t
 
     val output_char : t -> char -> unit
+    val output_byte : t -> int -> unit
     val output_bytes : t -> Bytes.t -> unit
   end
