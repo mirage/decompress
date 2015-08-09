@@ -9,7 +9,7 @@ module type S =
     val eval : t -> unit
   end
 
-module Make (I : Common.Input) (O : Common.Output) =
+module Make (I : Common.Input) (X : Common.Buffer) =
   struct
     type mode =
       | HEAD
@@ -44,11 +44,11 @@ module Make (I : Common.Input) (O : Common.Output) =
     exception Invalid_distance
     exception Invalid_crc
 
-    module Adler32 = Adler32.Make(Bytes)
-    module Window = Window.Make(Bytes)
+    module Adler32 = Adler32.Make(X)
+    module Window = Window.Make(X)
 
     type input = I.t
-    type output = O.t
+    type output = X.t
 
     type t =
       {
@@ -279,15 +279,15 @@ module Make (I : Common.Input) (O : Common.Output) =
 
     let add_char inflater chr =
       Window.add_char chr inflater.window;
-      O.output_char inflater.dst chr;
+      X.unsafe_set inflater.dst inflater.outpos chr;
       inflater.needed <- inflater.needed - 1;
       inflater.outpos <- inflater.outpos + 1
 
     let add_bytes inflater bytes =
       Window.add_bytes bytes inflater.window;
-      O.output_bytes inflater.dst bytes;
-      inflater.needed <- inflater.needed - (Bytes.length bytes);
-      inflater.outpos <- inflater.outpos + (Bytes.length bytes)
+      X.unsafe_blit bytes 0 inflater.dst inflater.outpos (X.length bytes);
+      inflater.needed <- inflater.needed - (X.length bytes);
+      inflater.outpos <- inflater.outpos + (X.length bytes)
 
     let init src dst =
       {
@@ -444,7 +444,7 @@ module Make (I : Common.Input) (O : Common.Output) =
       let bytes = I.input inflater.src possible_to_write in
       let read_as_possible = Bytes.length bytes in
 
-      add_bytes inflater bytes;
+      add_bytes inflater (X.of_bytes bytes);
       inflater.length <- inflater.length - read_as_possible;
 
       if inflater.length = 0

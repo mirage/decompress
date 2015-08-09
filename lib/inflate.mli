@@ -9,6 +9,6 @@ module type S =
     val eval : t -> unit
   end
 
-module Make (I : Common.Input) (O : Common.Output) : S
+module Make (I : Common.Input) (X : Common.Buffer) : S
   with type input = I.t
-   and type output = O.t
+   and type output = X.t
