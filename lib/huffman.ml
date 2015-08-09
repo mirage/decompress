@@ -94,13 +94,13 @@ and walk ~default table index level depth = function
     walk ~default table (index lor (1 lsl level)) (level + 1) (depth - 1) b;
   | t -> Array.set table index (compress ~default t)
 
-let rec find ~get_bit ~get_bits = function
+let rec read_and_find ~get_bit ~get_bits = function
   | Leaf i -> i
   | Node (a, b) ->
-    find ~get_bit ~get_bits
+    read_and_find ~get_bit ~get_bits
       (if get_bit () then b else a)
   | Flat (depth, a) ->
-    find ~get_bit ~get_bits
+    read_and_find ~get_bit ~get_bits
       (Array.unsafe_get a (get_bits depth))
 
 (* This algorithm is describe at RFC 1951 § 3.2.2.

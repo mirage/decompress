@@ -133,66 +133,6 @@ module Make (I : Common.Input) (X : Common.Buffer) =
       then (1 lsl (n - 1)) lor (get_revbits inflater (n - 1))
       else get_revbits inflater (n - 1)
 
-    (* This algorithm is describe at RFC 1951 § 3.2.2.
-     *
-     * The huffman codes used for each alphabet in the "deflate" format have two
-     * additional rules:
-     *
-     * * All codes of a given bit length have lexicographically consecutive
-     *   values, in the same order as the symbols they represent.
-     * * Shorter codes lexicographically precede longer codes.
-     *
-     *)
-    let make_huffman_tree table position size max_bits =
-      let bl_count = Array.make (max_bits + 1) 0 in
-
-      (* Count the number of codes for each code length. Let [bl_count.[N]] be
-       * the number of codes of length N, N >= 1. *)
-      for i = 0 to size - 1 do
-        let p = Array.unsafe_get table (i + position) in
-
-        if p >= (max_bits + 1) then raise Invalid_huffman;
-
-        Array.unsafe_set bl_count p (Array.unsafe_get bl_count p + 1);
-      done;
-
-      (* Find the numerical value of the smallest code for each code length: *)
-      let code = ref 0 in
-      let next_code = Array.make (max_bits + 1) 0 in
-
-      for i = 1 to max_bits - 1 do
-        code := (!code + Array.unsafe_get bl_count i) lsl 1;
-        Array.unsafe_set next_code i !code;
-      done;
-
-      (* Assign numerical values to all codes, using consecutive
-       * values for all codes of the same length with the base
-       * values determined at step 2. Codes that are never used
-       * (which have a bit length of zero) must not be assigned a
-       * value.
-       *)
-      let bits = Hashtbl.create 0 in
-
-      for i = 0 to size - 1 do
-        let l = Array.unsafe_get table (i + position) in
-
-        if l <> 0 then begin
-          let n = Array.unsafe_get next_code (l - 1) in
-          Array.unsafe_set next_code (l - 1) (n + 1);
-          Hashtbl.add bits (n, l) i;
-        end;
-      done;
-
-      let rec make v l =
-        if l > (max_bits + 1) then raise Invalid_huffman;
-
-        try Huffman.leaf (Hashtbl.find bits (v, l))
-        with Not_found ->
-          Huffman.node (make (v lsl 1) (l + 1)) (make (v lsl 1 lor 1) (l + 1))
-      in
-      let tree = Huffman.node (make 0 1) (make 1 1) in
-      Huffman.compress ~default:(-1) tree
-
     (* The Huffman code lengths for the literal/length alphabet are:
      *
      * | Lit Value | Bits | Codes                       |
@@ -219,7 +159,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
           else if n < 256 then 9
           else if n < 280 then 7
           else 8)
-      |> fun lengths -> make_huffman_tree lengths 0 288 9
+      |> fun lengths -> Huffman.make lengths 0 288 9
 
 
     (* For even greater compactness, the code length sequences themselves are
@@ -230,7 +170,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
       let i = ref 0 in
       let previous = ref 0 in
       while !i < max do
-        match Huffman.find
+        match Huffman.read_and_find
                 ~get_bit:(fun () -> get_bit inflater)
                 ~get_bits:(get_bits inflater) inflater.length_tree with
 
@@ -515,14 +455,16 @@ module Make (I : Common.Input) (X : Common.Buffer) =
       done;
 
       inflater.length_tree <-
-        make_huffman_tree inflater.buffer 0 19 7;
+        Huffman.make inflater.buffer 0 19 7;
       (* These code lengths are interpreted as 3-bit integers (0-7). *)
 
       let temp = Array.make (hlit + hdist) 0 in
       inflate_dictionnary inflater temp (hlit + hdist);
 
-      inflater.distance_tree <- Some (make_huffman_tree temp hlit hdist 16);
-      inflater.length_tree <- make_huffman_tree temp 0 hlit 16;
+      inflater.distance_tree <-
+        Some (Huffman.make temp hlit hdist 16);
+      inflater.length_tree <-
+        Huffman.make temp 0 hlit 16;
       inflater.mode <- COMPRESS;
 
       eval inflater
@@ -594,7 +536,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
        *     8   3  17-24   18   8    513-768   28   13 16385-24576
        *     9   3  25-32   19   8   769-1024   29   13 24577-32768
        *)
-      match Huffman.find
+      match Huffman.read_and_find
               ~get_bit:(fun () -> get_bit inflater)
               ~get_bits:(get_bits inflater) inflater.length_tree with
       | n when n < 256 ->
@@ -620,7 +562,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
            * codes, with possible additional bits as shown in the table
            * [base_distance]. *)
           | Some huffman ->
-            Huffman.find
+            Huffman.read_and_find
               ~get_bit:(fun () -> get_bit inflater)
               ~get_bits:(get_bits inflater) huffman
         in
