@@ -7,6 +7,9 @@ module type S =
     val init : input -> output -> t
     val trace : t -> string list
     val eval : t -> unit
+    val finish : t -> bool
+    val clear : t -> int -> unit
+    val size : t -> int
   end
 
 module Make (I : Common.Input) (X : Common.Buffer) =
@@ -681,4 +684,14 @@ module Make (I : Common.Input) (X : Common.Buffer) =
     and compute_done inflater = ()
 
     and compute_bad inflater = ()
+
+    let finish { mode; _ } =
+      if mode = DONE then true else false
+
+    let clear inflater size =
+      inflater.needed <- size;
+      inflater.outpos <- 0
+
+    let size { outpos; _ } =
+      outpos
   end
