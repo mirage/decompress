@@ -127,6 +127,11 @@ module Make (I : Common.Input) (X : Common.Buffer) =
       inflater.hold <- inflater.hold lsr n;
       result
 
+    let get_ui16 inflater =
+      let a = I.read_byte inflater.src in
+      let b = I.read_byte inflater.src in
+      a lor (b lsl 8)
+
     let rec get_revbits inflater n =
       if n = 0 then 0
       else if get_bit inflater
@@ -354,8 +359,8 @@ module Make (I : Common.Input) (X : Common.Buffer) =
          *   |
          *   | LEN is the number of data bytes in the block
          *)
-        let len = get_bits inflater 2 in
-        let nlen = get_bits inflater 2 in
+        let len = get_ui16 inflater in
+        let nlen = get_ui16 inflater in
 
         if nlen <> 0xFFFF - len
         then raise Invalid_complement_of_length
