@@ -60,17 +60,21 @@ module Make (I : Common.Input) (X : Common.Buffer) =
 
         mutable mode          : mode;
         mutable trace         : string list;
-        mutable last          : bool;
 
+        mutable last          : bool;
+        (** true if processing last block *)
         mutable hold          : int;
         (** input bit accumulator *)
         mutable bits          : int;
         (** number of bits in "hold" *)
 
         mutable length        : int;
+        (** literal or length of data to copy *)
         mutable distance      : int;
+        (** distance back to copy string from *)
 
         mutable outpos        : int;
+        (** position output buffer position *)
         mutable needed        : int;
 
         mutable window        : Window.t;
@@ -78,6 +82,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
         mutable length_tree   : int Huffman.t;
         mutable distance_tree : int Huffman.t option;
         mutable buffer        : int array;
+        (** buffer use by dynamic Huffman codes *)
       }
 
     let add_trace inflater trace =
