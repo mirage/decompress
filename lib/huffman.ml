@@ -19,10 +19,11 @@ let rec pp pp_a fmt t =
   | Flat (_, table) ->
     Format.fprintf fmt "Flat (@[<hov 2>%a@])" (pp_table pp) table
 
-let node a b =
-  Node (a, b)
-
 let leaf x = Leaf x
+
+let node ?(canonical = true) x y = match x, y with
+  | Node _, Leaf _ when canonical -> Node (y, x)
+  | _ -> Node (x, y)
 
 let rec depth = function
   | Leaf _ -> 0
@@ -84,35 +85,67 @@ let rec find ~get_bit ~get_bits = function
     find ~get_bit ~get_bits
       (Array.unsafe_get a (get_bits depth))
 
-type code = bool list
+(* This algorithm is describe at RFC 1951 § 3.2.2.
+ *
+ * The huffman codes used for each alphabet in the "deflate" format have two
+ * additional rules:
+ *
+ * * All codes of a given bit length have lexicographically consecutive
+ *   values, in the same order as the symbols they represent.
+ * * Shorter codes lexicographically precede longer codes.
+ *
+*)
+let make table position size max_bits =
+  let bl_count = Array.make (max_bits + 1) 0 in
 
-let pp_code fmt code =
-  Format.fprintf fmt "[@[<hov 2>@;";
-  List.iter (fun b -> Format.fprintf fmt "%d@ " @@ if b then 1 else 0) code;
-  Format.fprintf fmt "@]]"
+  (* Count the number of codes for each code length. Let [bl_count.[N]] be
+   * the number of codes of length N, N >= 1. *)
+  for i = 0 to size - 1 do
+    let p = Array.unsafe_get table (i + position) in
 
-let int_of_code code =
-  let rec aux acc n = function
-    | [] -> acc
-    | false :: t -> aux acc (n * 2) t
-    | true :: t -> aux (n + acc) (n * 2) t
-  in
-  aux 0 1 (List.rev code)
+    if p >= (max_bits + 1) then raise Invalid_huffman;
 
-let code_of_int ~size n =
-  let rec zero = function
-    | 0 -> []
-    | n -> false :: zero (n - 1)
+    Array.unsafe_set bl_count p (Array.unsafe_get bl_count p + 1);
+  done;
+
+  (* Find the numerical value of the smallest code for each code length: *)
+  let code = ref 0 in
+  let next_code = Array.make (max_bits + 1) 0 in
+
+  for i = 1 to max_bits - 1 do
+    code := (!code + Array.unsafe_get bl_count i) lsl 1;
+    Array.unsafe_set next_code i !code;
+  done;
+
+  (* Assign numerical values to all codes, using consecutive
+   * values for all codes of the same length with the base
+   * values determined at step 2. Codes that are never used
+   * (which have a bit length of zero) must not be assigned a
+   * value.
+  *)
+  let bits = Hashtbl.create 0 in
+
+  for i = 0 to size - 1 do
+    let l = Array.unsafe_get table (i + position) in
+
+    if l <> 0 then begin
+      let n = Array.unsafe_get next_code (l - 1) in
+      Array.unsafe_set next_code (l - 1) (n + 1);
+      Hashtbl.add bits (n, l) i;
+    end;
+  done;
+
+  let rec make v l =
+    if l > (max_bits + 1) then raise Invalid_huffman;
+
+    try leaf (Hashtbl.find bits (v, l))
+    with Not_found ->
+      node
+        ~canonical:false
+        (make (v lsl 1) (l + 1)) (make (v lsl 1 lor 1) (l + 1))
   in
-  let rec aux size = function
-    | 0 -> zero size
-    | 1 -> true :: zero (size - 1)
-    | n ->
-      if n mod 2 = 0
-      then false :: aux (size - 1) (n / 2)
-      else true :: aux (size - 1) ((n - 1) / 2)
-  in
-  List.rev (aux size n)
+  let tree = node ~canonical:false (make 0 1) (make 1 1) in
+  compress ~default:(-1) tree
 
 let codes_of_t t =
   let rec aux acc = function
