@@ -22,26 +22,21 @@ module List =
       | [] -> [], []
       | (x, y) :: r ->
         let xs, ys = unzip r in x :: xs, y :: ys
+
+    let empty = function
+      | [] -> true
+      | _ -> false
   end
 
 module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t) =
   struct
-    type mode =
-      | INIT
-      | EXTRA
-      | NAME
-      | COMMENT
-      | CRC
-      | BUSY
-      | FINISH
-
-    type compression =
+    type ty =
       | NONE
       | FIXED
       | DYNAMIC
       | RESERVED
 
-    let binary_of_compression = function
+    let binary_of_ty = function
       | NONE -> 0
       | FIXED -> 1
       | DYNAMIC -> 2
@@ -50,6 +45,31 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
     module Adler32 = Adler32.Make(struct include Bytes let of_bytes x = x end)
     module Window = Window.Make(struct include Bytes let of_bytes x = x end)
     module Lz77 = Lz77.Make(struct include Bytes let of_bytes x = x end)
+
+    type mode =
+      | BAD
+      | INIT
+      | READ
+      | WRITE_LAST
+      | WRITE_BLOCK
+      | COMPUTE
+      | WRITE_LEN1
+      | WRITE_LEN2
+      | WRITE_NLEN1
+      | WRITE_NLEN2
+      | FLAT
+      | SWITCH
+      | WRITE_BUFFER of Bytes.t
+      | WRITE_LITERAL of (int * int)
+      | WRITE_EXTRA_LITERAL of (int * int)
+      | WRITE_DIST of int
+      | WRITE_EXTRA_DIST of int
+      | WRITE_HLIT
+      | WRITE_HDIST
+      | WRITE_HCLEN
+      | WRITE_TRANS
+      | WRITE_SYMBOLS
+      | CLEAR
 
     let fixed_huffman_length_table =
       Array.init 288
@@ -62,19 +82,46 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
     type input = I.t
     type output = O.t
 
+    type dyn_nfo =
+      {
+        mutable hlit                : int;
+        mutable hdist               : int;
+        mutable hclen               : int;
+
+        mutable trans_lengths       : int array;
+
+        (** Huffman tree *)
+        mutable desc_tree_codes     : int array;
+        mutable desc_tree_lengths   : int array;
+        mutable desc_tree_symbols   : int array;
+
+        (** Dictionnary *)
+        mutable lit_len_lengths     : int array;
+        mutable lit_len_codes       : int array;
+        mutable dist_lengths        : int array;
+        mutable dist_codes          : int array;
+      }
+
     type t =
       {
         src             : input;
         dst             : output;
-        compression     : compression;
 
         mutable mode    : mode;
         mutable trace   : string list;
 
+        mutable ty      : ty;
         mutable last    : bool;
         (** true if processing last block *)
 
         mutable data    : Bytes.t option;
+        mutable lz77    : Lz77.t option;
+        mutable dyn_nfo : dyn_nfo option;
+
+        (** position and length for Lz77.Buffer or Flat compression *)
+        mutable inpos   : int;
+        mutable inmax   : int;
+        mutable needed  : int;
       }
 
     let init src dst =
@@ -82,43 +129,20 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         src;
         dst;
 
-        compression     = DYNAMIC;
-
         mode            = INIT;
         trace           = [];
+        ty              = NONE;
         last            = false;
-
         data            = None;
+        lz77            = None;
+        dyn_nfo         = None;
+
+        inpos           = 0;
+        inmax           = 0;
+        needed          = 0;
       }
 
     let eval _ = ()
-
-    (*
-     *    ____________________
-     *   |  | 1| 1|  |  |  |  |
-     *   |__|__|__|__|__|__|__|
-     *   |        |     |
-     *   |        |     | The one's complement of size of block
-     *   |        |
-     *   |        | Size of block (max is 0xFFFF)
-     *   |
-     *   | 0 or 1 = final argument
-     *)
-    let compute_none_compression ?(final = false) deflater =
-      match deflater.data with
-      | None -> ()
-      | Some data ->
-        let len = Bytes.length data in
-        let nlen = lnot (len + 0x10000) land 0xFFFF in
-
-        O.bit deflater.dst final;
-        O.bits deflater.dst (binary_of_compression NONE) 2;
-        O.bits deflater.dst (len land 0xFF) 8;
-        O.bits deflater.dst ((len lsr 8) land 0xFF) 8;
-        O.bits deflater.dst (nlen land 0xFF) 8;
-        O.bits deflater.dst ((nlen lsr 8) land 0xFF) 8;
-
-        Bytes.iter (fun chr -> O.bits deflater.dst (Char.code chr) 8) data
 
     let length_code_table =
       Array.init 259
@@ -430,135 +454,348 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       Array.sub result 0 !n_result, freqs
 
+    let compute_write_last deflater =
+      O.bit deflater.dst deflater.last;
+      deflater.needed <- deflater.needed - 1;
 
-    let compute_fixed_huffman ?(final = false) deflater =
-      match deflater.data with
-      | None -> ()
-      | Some data ->
-        (*
-         *    ________
-         *   |  | 0| 1|. . .
-         *   |__|__|__|
-         *   |
-         *   |
-         *   |
-         *   |
-         *   |
-         *   | 0 or 1 = final argument
-         *)
-        O.bit deflater.dst final;
-        O.bits deflater.dst (binary_of_compression FIXED) 2;
+      if deflater.needed > 0
+      then deflater.mode <- WRITE_BLOCK;
 
-        let lz77 = Lz77.compress data in
+      eval deflater
 
-        List.iter
-          (function
-           | Lz77.Buffer data ->
-             Bytes.iter (fun chr ->
-               let (code, length) =
-                 fixed_huffman_length_table.(Char.code chr) in
-               O.bits deflater.dst code length)
-             data
-           | Lz77.Insert (diff, length) ->
-             let code, extra, extra_length = length_code_table.(length) in
-             let code, length = fixed_huffman_length_table.(code) in
-             O.bits deflater.dst code length;
-             O.bits deflater.dst extra extra_length;
-             let dist, extra, extra_length = get_distance_code diff in
-             O.bits deflater.dst dist 5;
-             O.bits deflater.dst extra extra_length)
-        lz77
+    let compute_write_block deflater =
+      O.bits deflater.dst (binary_of_ty deflater.ty) 2;
 
-    let compute_dynamic_huffman ?(final = false) deflater =
-      match deflater.data with
-      | None -> ()
-      | Some data ->
-        (*
-         *    ________
-         *   |  | 0| 1|. . .
-         *   |__|__|__|
-         *   |
-         *   |
-         *   |
-         *   |
-         *   |
-         *   | 0 or 1 = final argument
-         *)
-        O.bit deflater.dst final;
-        O.bits deflater.dst (binary_of_compression DYNAMIC) 2;
+      deflater.mode <- begin match deflater.ty with
+        | NONE -> WRITE_LEN1
+        | FIXED -> COMPUTE
+        | DYNAMIC -> COMPUTE
+        | RESERVED -> BAD end;
 
-        let trans_lengths = Array.make 19 0 in
-        let lz77 = Lz77.compress data in
-        let (freqs_literal_length, freqs_distance) =
-          compute_frequences_of_lz77 lz77 in
+      eval deflater
 
-        let lit_len_lengths = get_length freqs_literal_length 15 in
-        let lit_len_codes   = get_codes_from_lengths lit_len_lengths in
-        let dist_lengths    = get_length freqs_distance 7 in
-        let dist_codes      = get_codes_from_lengths dist_lengths in
+    let compute_write_len1 deflater =
+      begin match deflater.data with
+        | None ->
+          deflater.mode <- READ
+        | Some data ->
+          let len = Bytes.length data in
+          O.bits deflater.dst (len land 0xFF) 8;
+          deflater.mode <- WRITE_LEN2;
+      end;
 
-        let hlit = ref 286 in
-        while !hlit > 257 && lit_len_lengths.(!hlit - 1) = 0 do decr hlit done;
+      eval deflater
 
-        let hdist = ref 30 in
-        while !hdist > 1 && dist_lengths.(!hdist - 1) = 0 do decr hdist done;
+    let compute_write_len2 deflater =
+      begin match deflater.data with
+        | None ->
+          deflater.mode <- READ
+        | Some data ->
+          let len = Bytes.length data in
+          O.bits deflater.dst ((len lsr 8) land 0xFF) 8;
+          deflater.mode <- WRITE_NLEN1
+      end;
 
-        let tree_symbols, tree_freqs = get_tree_symbols !hlit lit_len_lengths !hdist dist_lengths in
-        let tree_lengths = get_length tree_freqs 7 in
+      eval deflater
 
-        for i = 0 to 18 do trans_lengths.(i) <- tree_lengths.(hclen_order.(i)) done;
+    let compute_write_nlen1 deflater =
+      begin match deflater.data with
+        | None ->
+          deflater.mode <- READ
+        | Some data ->
+          let nlen = lnot (Bytes.length data + 0x10000) land 0xFFFF in
+          O.bits deflater.dst (nlen land 0xFF) 8;
+          deflater.mode <- WRITE_LEN2
+      end;
 
-        let hclen = ref 19 in
-        while !hclen > 4 && trans_lengths.(!hclen - 1) = 0 do decr hclen done;
+      eval deflater
 
-        let tree_codes = get_codes_from_lengths tree_lengths in
+    let compute_write_nlen2 deflater =
+      begin match deflater.data with
+        | None ->
+          deflater.mode <- READ
+        | Some data ->
+          let nlen = lnot (Bytes.length data + 0x10000) land 0xFFFF in
+          O.bits deflater.dst ((nlen lsr 8) land 0xFF) 8;
+          deflater.mode <- FLAT
+      end;
 
-        O.bits deflater.dst (!hlit - 257) 5;
-        O.bits deflater.dst (!hdist - 1) 5;
-        O.bits deflater.dst (!hclen - 4) 4;
+      eval deflater
 
-        Array.iter
-          (fun trans_length -> O.bits deflater.dst trans_length 3)
-          trans_lengths;
+    let compute_flat deflater =
+      begin match deflater.data with
+        | None ->
+          deflater.mode <- READ
+        | Some data ->
+          let i = ref deflater.inpos in
 
-        let i = ref 0 in
-        let il = Array.length tree_symbols in
-        while !i < il do
-          let code = tree_symbols.(!i) in
+          while !i < deflater.inmax
+          do
+            O.bits deflater.dst (Bytes.get data !i |> Char.code) 8;
+            incr i;
+          done;
 
-          O.bits deflater.dst tree_codes.(code) tree_lengths.(code);
+          if !i = deflater.inmax
+          then deflater.mode <- CLEAR;
+
+          deflater.inpos <- !i
+      end;
+
+      eval deflater
+
+    let compute deflater =
+      let () = match deflater.data, deflater.ty with
+        | Some data, FIXED ->
+          deflater.lz77 <- Some (Lz77.compress data);
+          deflater.mode <- SWITCH
+        | Some data, DYNAMIC ->
+          let trans_lengths = Array.make 19 0 in
+          let lz77 = Lz77.compress data in
+          let (freqs_literal_length, freqs_distance) =
+            compute_frequences_of_lz77 lz77 in
+
+          let lit_len_lengths = get_length freqs_literal_length 15 in
+          let lit_len_codes   = get_codes_from_lengths lit_len_lengths in
+          let dist_lengths    = get_length freqs_distance 7 in
+          let dist_codes      = get_codes_from_lengths dist_lengths in
+
+          let hlit = ref 286 in
+          while !hlit > 257 && lit_len_lengths.(!hlit - 1) = 0 do decr hlit done;
+
+          let hdist = ref 30 in
+          while !hdist > 1 && dist_lengths.(!hdist - 1) = 0 do decr hdist done;
+
+          let desc_tree_symbols, desc_tree_freqs =
+            get_tree_symbols !hlit lit_len_lengths !hdist dist_lengths in
+          let desc_tree_lengths = get_length desc_tree_freqs 7 in
+
+          for i = 0 to 18 do trans_lengths.(i) <- desc_tree_lengths.(hclen_order.(i)) done;
+
+          let hclen = ref 19 in
+          while !hclen > 4 && trans_lengths.(!hclen - 1) = 0 do decr hclen done;
+
+          let desc_tree_codes = get_codes_from_lengths desc_tree_lengths in
+
+          let dyn_nfo =
+            { hlit = !hlit;
+              hdist = !hdist;
+              hclen = !hclen;
+
+              trans_lengths;
+
+              desc_tree_codes;
+              desc_tree_lengths;
+              desc_tree_symbols;
+
+              lit_len_lengths;
+              lit_len_codes;
+              dist_lengths;
+              dist_codes; } in
+
+          deflater.lz77 <- Some lz77;
+          deflater.dyn_nfo <- Some dyn_nfo;
+          deflater.mode <- WRITE_HLIT
+        | None, _ -> deflater.mode <- READ
+        | _ -> deflater.mode <- BAD
+      in eval deflater
+
+    let compute_switch deflater =
+      begin match deflater.lz77 with
+        | None -> deflater.mode <- COMPUTE
+        | Some (Lz77.Buffer data :: r) ->
+          deflater.inmax <- Bytes.length data;
+          deflater.lz77 <- Some r;
+          deflater.mode <- WRITE_BUFFER data
+        | Some (Lz77.Insert (diff, length) :: r) ->
+          deflater.lz77 <- Some r;
+          deflater.mode <- WRITE_LITERAL (diff, length)
+        | Some [] ->
+          deflater.mode <- CLEAR
+      end;
+
+      eval deflater
+
+    let compute_write_buffer deflater =
+      let get_code_and_length deflater chr = match deflater with
+        | { ty = FIXED; _ } -> fixed_huffman_length_table.(chr)
+        | { ty = DYNAMIC; dyn_nfo = Some nfo; _ } ->
+          nfo.lit_len_codes.(chr), nfo.lit_len_lengths.(chr)
+        | _ -> assert false
+      in
+      begin match deflater.mode with
+        | WRITE_BUFFER data ->
+          let i = ref deflater.inpos in
+
+          while !i < deflater.inmax
+          do
+            let code, length =
+              Bytes.get data !i
+              |> Char.code
+              |> get_code_and_length deflater in
+
+            O.bits deflater.dst code length;
+
+            incr i;
+          done;
+
+          if !i = deflater.inmax
+          then deflater.mode <- SWITCH;
+
+          deflater.inpos <- !i
+        | _ -> assert false
+      end;
+
+      eval deflater
+
+    let compute_write_literal deflater =
+      let get_code_and_length deflater length = match deflater with
+        | { ty = FIXED; _ } ->
+          let code, _, _ = length_code_table.(length) in
+          fixed_huffman_length_table.(code)
+        | { ty = DYNAMIC; dyn_nfo = Some nfo; _ } ->
+          let code, _, _ = length_code_table.(length) in
+          nfo.lit_len_codes.(code), nfo.lit_len_lengths.(code)
+        | _ -> assert false
+      in
+      begin match deflater.mode with
+        | WRITE_LITERAL (diff, length) ->
+          let code, length = get_code_and_length deflater length in
+
+          O.bits deflater.dst code length;
+          deflater.mode <- WRITE_EXTRA_LITERAL (diff, length)
+        | _ -> assert false
+      end;
+
+      eval deflater
+
+    let compute_write_extra_literal deflater =
+      begin match deflater.mode with
+        | WRITE_EXTRA_LITERAL (diff, length) ->
+          let _, extra, extra_length = length_code_table.(length) in
+
+          O.bits deflater.dst extra extra_length;
+          deflater.mode <- WRITE_DIST diff
+        | _ -> assert false
+      end;
+
+      eval deflater
+
+    let compute_write_dist deflater =
+      let get_dist_and_length deflater diff = match deflater with
+        | { ty = FIXED; _ } ->
+          let dist, _, _ = get_distance_code diff in
+          dist, 5
+        | { ty = DYNAMIC; dyn_nfo = Some nfo; _ } ->
+          let dist, _, _ = get_distance_code diff in
+          nfo.dist_codes.(dist), nfo.dist_lengths.(dist)
+        | _ -> assert false
+      in
+      begin match deflater.mode with
+        | WRITE_DIST diff ->
+          let dist, length = get_dist_and_length deflater diff in
+
+          O.bits deflater.dst dist length;
+          deflater.mode <- WRITE_EXTRA_DIST diff
+        | _ -> assert false
+      end;
+
+      eval deflater
+
+    let compute_write_extra_dist deflater =
+      begin match deflater.mode with
+        | WRITE_EXTRA_DIST diff ->
+          let _, extra, extra_length = get_distance_code diff in
+
+          O.bits deflater.dst extra extra_length;
+          deflater.mode <- SWITCH
+        | _ -> assert false
+      end;
+
+      eval deflater
+
+    let compute_write_hlit deflater =
+      begin match deflater.dyn_nfo with
+        | Some nfo ->
+          O.bits deflater.dst (nfo.hlit - 257) 5;
+          deflater.mode <- WRITE_HDIST
+        | None ->
+          deflater.mode <- COMPUTE
+      end;
+
+      eval deflater
+
+    let compute_write_hdist deflater =
+      begin match deflater.dyn_nfo with
+        | Some nfo ->
+          O.bits deflater.dst (nfo.hdist - 1) 5;
+          deflater.mode <- WRITE_HCLEN
+        | None ->
+          deflater.mode <- COMPUTE
+      end;
+
+      eval deflater
+
+    let compute_write_hclen deflater =
+      begin match deflater.dyn_nfo with
+        | Some nfo ->
+          O.bits deflater.dst (nfo.hclen - 4) 4;
+          deflater.mode <- WRITE_TRANS;
+          deflater.inpos <- 0;
+          deflater.inmax <- Array.length nfo.trans_lengths
+        | None ->
+          deflater.mode <- COMPUTE
+      end;
+
+      eval deflater
+
+    let compute_write_trans deflater =
+      begin match deflater.dyn_nfo with
+        | Some nfo ->
+          if deflater.inpos = deflater.inmax
+          then begin
+            deflater.mode <- WRITE_SYMBOLS;
+            deflater.inpos <- 0;
+            deflater.inmax <- Array.length nfo.desc_tree_symbols
+          end else begin
+            O.bits deflater.dst nfo.trans_lengths.(deflater.inpos) 3;
+            deflater.inpos <- deflater.inpos + 1;
+            deflater.mode <- WRITE_TRANS
+          end
+        | None -> deflater.mode <- BAD
+      end;
+
+      eval deflater
+
+    let compute_write_symbols deflater =
+      begin match deflater.dyn_nfo with
+        | Some nfo ->
+          let code = nfo.desc_tree_symbols.(deflater.inpos) in
+
+          O.bits deflater.dst
+            nfo.desc_tree_codes.(code)
+            nfo.desc_tree_lengths.(code);
 
           if code >= 16
           then begin
-            incr i;
-
             let bitlen = match code with
               | 16 -> 2
               | 17 -> 3
               | 18 -> 7
-              | _ -> raise (Invalid_argument "compute_dynamic_huffman")
+              | _ -> assert false
             in
 
-            O.bits deflater.dst tree_symbols.(!i) bitlen;
+            O.bits deflater.dst
+              nfo.desc_tree_symbols.(deflater.inpos + 1)
+              bitlen;
+            deflater.inpos <- deflater.inpos + 2;
           end;
 
-          incr i;
-        done;
+          deflater.inpos <- deflater.inpos + 1;
 
-        List.iter
-          (function
-           | Lz77.Buffer data ->
-             Bytes.iter
-               (fun chr ->
-                 let code = Char.code chr in
-                 O.bits deflater.dst lit_len_codes.(code) lit_len_lengths.(code))
-               data
-           | Lz77.Insert (diff, length) ->
-             let code, extra, extra_length = length_code_table.(length) in
-             O.bits deflater.dst lit_len_codes.(code) lit_len_lengths.(code);
-             O.bits deflater.dst extra extra_length;
-             let dist, extra, extra_length = get_distance_code diff in
-             O.bits deflater.dst dist_codes.(dist) (dist_lengths.(dist));
-             O.bits deflater.dst extra extra_length)
-          lz77
+          if deflater.inpos >= deflater.inmax
+          then deflater.mode <- SWITCH
+        | None -> deflater.mode <- BAD
+      end;
+
+      eval deflater
   end
