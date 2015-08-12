@@ -48,7 +48,8 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
     type mode =
       | BAD
-      | INIT
+      | CMF
+      | FLAG
       | READ
       | WRITE_LAST
       | WRITE_BLOCK
@@ -90,7 +91,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
         mutable trans_lengths       : int array;
 
-        (** Huffman tree *)
+        (** Description of Huffman tree *)
         mutable desc_tree_codes     : int array;
         mutable desc_tree_lengths   : int array;
         mutable desc_tree_symbols   : int array;
@@ -129,7 +130,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         src;
         dst;
 
-        mode            = INIT;
+        mode            = CMF;
         trace           = [];
         ty              = NONE;
         last            = false;
@@ -141,8 +142,6 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         inmax           = 0;
         needed          = 0;
       }
-
-    let eval _ = ()
 
     let length_code_table =
       Array.init 259
@@ -454,7 +453,64 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       Array.sub result 0 !n_result, freqs
 
-    let compute_write_last deflater =
+    let rec eval deflater =
+      let f = match deflater.mode with
+        | CMF -> compute_cmf
+        | FLAG -> compute_flag
+        | READ -> compute_read
+        | WRITE_LAST -> compute_write_last
+        | WRITE_BLOCK -> compute_write_block
+        | COMPUTE -> compute
+        | WRITE_LEN1 -> compute_write_len1
+        | WRITE_LEN2 -> compute_write_len2
+        | WRITE_NLEN1 -> compute_write_nlen1
+        | WRITE_NLEN2 -> compute_write_nlen2
+        | FLAT -> compute_flat
+        | SWITCH -> compute_switch
+        | WRITE_BUFFER _ -> compute_write_buffer
+        | WRITE_LITERAL _ -> compute_write_literal
+        | WRITE_EXTRA_LITERAL _ -> compute_write_extra_literal
+        | WRITE_DIST _ -> compute_write_dist
+        | WRITE_EXTRA_DIST _ -> compute_write_extra_dist
+        | WRITE_HLIT -> compute_write_hlit
+        | WRITE_HDIST -> compute_write_hdist
+        | WRITE_HCLEN -> compute_write_hclen
+        | WRITE_TRANS -> compute_write_trans
+        | WRITE_SYMBOLS -> compute_write_symbols
+        | CLEAR -> compute_clear
+        | BAD -> compute_bad
+      in f deflater
+
+    and compute_cmf deflater =
+      O.bits deflater.dst ((8 lsl 4) lor 8) 8;
+      deflater.mode <- FLAG;
+
+      eval deflater
+
+    and compute_flag deflater =
+      let fdict = 0 in
+      let flevel = match deflater.ty with
+        | NONE -> 0
+        | FIXED -> 1
+        | DYNAMIC -> 2
+        | _ -> assert false
+      in
+      let flg = (flevel lsl 6) lor (fdict lsl 5) in
+      let fcheck = 31 - (((8 lsl 4) lor 8) * 256 + flg) mod 31 in
+      let flg = flg lor fcheck in
+
+      O.bits deflater.dst flg 8;
+      deflater.mode <- READ;
+
+      eval deflater
+
+    and compute_read deflater =
+      deflater.data <- Some (I.input deflater.src 0xFFFF);
+      deflater.mode <- WRITE_LAST;
+
+      eval deflater
+
+    and compute_write_last deflater =
       O.bit deflater.dst deflater.last;
       deflater.needed <- deflater.needed - 1;
 
@@ -463,7 +519,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_block deflater =
+    and compute_write_block deflater =
       O.bits deflater.dst (binary_of_ty deflater.ty) 2;
 
       deflater.mode <- begin match deflater.ty with
@@ -474,7 +530,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_len1 deflater =
+    and compute_write_len1 deflater =
       begin match deflater.data with
         | None ->
           deflater.mode <- READ
@@ -486,7 +542,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_len2 deflater =
+    and compute_write_len2 deflater =
       begin match deflater.data with
         | None ->
           deflater.mode <- READ
@@ -498,7 +554,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_nlen1 deflater =
+    and compute_write_nlen1 deflater =
       begin match deflater.data with
         | None ->
           deflater.mode <- READ
@@ -510,7 +566,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_nlen2 deflater =
+    and compute_write_nlen2 deflater =
       begin match deflater.data with
         | None ->
           deflater.mode <- READ
@@ -522,7 +578,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_flat deflater =
+    and compute_flat deflater =
       begin match deflater.data with
         | None ->
           deflater.mode <- READ
@@ -543,7 +599,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute deflater =
+    and compute deflater =
       let () = match deflater.data, deflater.ty with
         | Some data, FIXED ->
           deflater.lz77 <- Some (Lz77.compress data);
@@ -599,7 +655,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         | _ -> deflater.mode <- BAD
       in eval deflater
 
-    let compute_switch deflater =
+    and compute_switch deflater =
       begin match deflater.lz77 with
         | None -> deflater.mode <- COMPUTE
         | Some (Lz77.Buffer data :: r) ->
@@ -615,7 +671,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_buffer deflater =
+    and compute_write_buffer deflater =
       let get_code_and_length deflater chr = match deflater with
         | { ty = FIXED; _ } -> fixed_huffman_length_table.(chr)
         | { ty = DYNAMIC; dyn_nfo = Some nfo; _ } ->
@@ -647,7 +703,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_literal deflater =
+    and compute_write_literal deflater =
       let get_code_and_length deflater length = match deflater with
         | { ty = FIXED; _ } ->
           let code, _, _ = length_code_table.(length) in
@@ -668,7 +724,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_extra_literal deflater =
+    and compute_write_extra_literal deflater =
       begin match deflater.mode with
         | WRITE_EXTRA_LITERAL (diff, length) ->
           let _, extra, extra_length = length_code_table.(length) in
@@ -680,7 +736,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_dist deflater =
+    and compute_write_dist deflater =
       let get_dist_and_length deflater diff = match deflater with
         | { ty = FIXED; _ } ->
           let dist, _, _ = get_distance_code diff in
@@ -701,7 +757,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_extra_dist deflater =
+    and compute_write_extra_dist deflater =
       begin match deflater.mode with
         | WRITE_EXTRA_DIST diff ->
           let _, extra, extra_length = get_distance_code diff in
@@ -713,7 +769,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_hlit deflater =
+    and compute_write_hlit deflater =
       begin match deflater.dyn_nfo with
         | Some nfo ->
           O.bits deflater.dst (nfo.hlit - 257) 5;
@@ -724,7 +780,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_hdist deflater =
+    and compute_write_hdist deflater =
       begin match deflater.dyn_nfo with
         | Some nfo ->
           O.bits deflater.dst (nfo.hdist - 1) 5;
@@ -735,7 +791,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_hclen deflater =
+    and compute_write_hclen deflater =
       begin match deflater.dyn_nfo with
         | Some nfo ->
           O.bits deflater.dst (nfo.hclen - 4) 4;
@@ -748,7 +804,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_trans deflater =
+    and compute_write_trans deflater =
       begin match deflater.dyn_nfo with
         | Some nfo ->
           if deflater.inpos = deflater.inmax
@@ -766,7 +822,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-    let compute_write_symbols deflater =
+    and compute_write_symbols deflater =
       begin match deflater.dyn_nfo with
         | Some nfo ->
           let code = nfo.desc_tree_symbols.(deflater.inpos) in
@@ -798,4 +854,15 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       end;
 
       eval deflater
+
+    and compute_clear deflater =
+      deflater.data <- None;
+      deflater.lz77 <- None;
+      deflater.dyn_nfo <- None;
+      deflater.inpos <- 0;
+      deflater.inmax <- 0;
+      deflater.mode <- READ
+
+    and compute_bad deflater = ()
+
   end
