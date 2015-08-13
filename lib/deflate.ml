@@ -70,7 +70,9 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       | WRITE_HCLEN
       | WRITE_TRANS
       | WRITE_SYMBOLS
+      | WRITE_ADLER32
       | CLEAR
+      | DONE
 
     let fixed_huffman_length_table =
       Array.init 288
@@ -123,6 +125,8 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         mutable inpos   : int;
         mutable inmax   : int;
         mutable needed  : int;
+
+        mutable adler32 : Adler32.t;
       }
 
     let init src dst =
@@ -141,6 +145,8 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         inpos           = 0;
         inmax           = 0;
         needed          = 0;
+
+        adler32         = Adler32.init ();
       }
 
     let length_code_table =
@@ -478,6 +484,8 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         | WRITE_TRANS -> compute_write_trans
         | WRITE_SYMBOLS -> compute_write_symbols
         | CLEAR -> compute_clear
+        | WRITE_ADLER32 -> compute_write_adler32
+        | DONE -> compute_done
         | BAD -> compute_bad
       in f deflater
 
@@ -505,8 +513,12 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       eval deflater
 
     and compute_read deflater =
-      deflater.data <- Some (I.input deflater.src 0xFFFF);
+      let buffer = I.input deflater.src 0xFFFF in
+
+      deflater.data <- Some buffer;
       deflater.mode <- WRITE_LAST;
+
+      Adler32.update buffer deflater.adler32;
 
       eval deflater
 
@@ -591,8 +603,10 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
             incr i;
           done;
 
-          if !i = deflater.inmax
-          then deflater.mode <- CLEAR;
+          if !i = deflater.inmax && deflater.last = false
+          then deflater.mode <- CLEAR
+          else if !i = deflater.inmax && deflater.last
+          then deflater.mode <- WRITE_ADLER32;
 
           deflater.inpos <- !i
       end;
@@ -666,7 +680,9 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
           deflater.lz77 <- Some r;
           deflater.mode <- WRITE_LITERAL (diff, length)
         | Some [] ->
-          deflater.mode <- CLEAR
+          if deflater.last
+          then deflater.mode <- WRITE_ADLER32
+          else deflater.mode <- CLEAR
       end;
 
       eval deflater
@@ -863,6 +879,19 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       deflater.inmax <- 0;
       deflater.mode <- READ
 
+    and compute_write_adler32 deflater =
+      let (a1, a2) = Adler32.get deflater.adler32 in
+
+      O.bits deflater.dst (a2 lsr 8) 8;
+      O.bits deflater.dst a2 8;
+      O.bits deflater.dst (a1 lsr 8) 8;
+      O.bits deflater.dst a1 8;
+
+      deflater.mode <- DONE;
+
+      eval deflater
+
     and compute_bad deflater = ()
 
+    and compute_done deflater = ()
   end
