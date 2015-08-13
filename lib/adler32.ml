@@ -12,6 +12,8 @@ module type S =
     val neq : t -> t -> bool
 
     val to_string : t -> string
+
+    val get : t -> (int * int)
   end
 
 module Make (X : Common.Buffer) : S with type buffer = X.t =
@@ -136,6 +138,8 @@ module Make (X : Common.Buffer) : S with type buffer = X.t =
       let buffer = Buffer.create 16 in
       Printf.bprintf buffer "[%d; %d]" a1 a2;
       Buffer.contents buffer
+
+    let get { a1; a2; } = (a1, a2)
   end
 
 module String = Make (struct

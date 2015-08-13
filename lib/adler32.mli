@@ -29,6 +29,8 @@ module type S =
     val neq : t -> t -> bool
 
     val to_string : t -> string
+
+    val get : t -> (int * int)
   end
 
 module Make (X : Common.Buffer) : S with type buffer = X.t
