@@ -262,17 +262,22 @@ module Make (I : Common.Input) (X : Common.Buffer) =
         buffer        = (Array.make 19 (-1));
       }
 
-    let rec eval inflater = match inflater.mode with
-      | HEAD     -> compute_head inflater
-      | BLOCK    -> compute_block inflater
-      | CRC      -> compute_crc inflater
-      | COMPRESS -> compute_compress inflater
-      | FLAT     -> compute_flat inflater
-      | BAD      -> compute_bad inflater
-      | TABLE    -> compute_table inflater
-      | DIST     -> compute_dist inflater
-      | DISTONE  -> compute_distone inflater
-      | DONE     -> compute_done inflater
+    let rec eval inflater =
+      let f = match inflater.mode with
+        | HEAD     -> compute_head
+        | BLOCK    -> compute_block
+        | CRC      -> compute_crc
+        | COMPRESS -> compute_compress
+        | FLAT     -> compute_flat
+        | BAD      -> compute_bad
+        | TABLE    -> compute_table
+        | DIST     -> compute_dist
+        | DISTONE  -> compute_distone
+        | DONE     -> compute_done
+      in
+      add_trace inflater (string_of_mode inflater.mode);
+      f inflater
+
 
     and compute_head inflater =
 
