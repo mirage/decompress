@@ -51,8 +51,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
     type mode =
       | BAD
-      | CMF
-      | FLAG
+      | HEADER
       | READ
       | WRITE_LAST
       | WRITE_BLOCK
@@ -132,12 +131,16 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         mutable adler32 : Adler32.t;
       }
 
+    let add_trace deflater trace =
+      Printf.fprintf stderr "|> %s\n%!" trace;
+      deflater.trace <- trace :: deflater.trace
+
     let init src dst =
       {
         src;
         dst;
 
-        mode            = CMF;
+        mode            = HEADER;
         trace           = [];
         ty              = NONE;
         last            = false;
@@ -464,8 +467,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
     let rec eval deflater =
       let f = match deflater.mode with
-        | CMF -> compute_cmf
-        | FLAG -> compute_flag
+        | HEADER -> compute_header
         | READ -> compute_read
         | WRITE_LAST -> compute_write_last
         | WRITE_BLOCK -> compute_write_block
@@ -492,25 +494,19 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         | BAD -> compute_bad
       in f deflater
 
-    and compute_cmf deflater =
-      O.bits deflater.dst ((8 lsl 4) lor 8) 8;
-      deflater.mode <- FLAG;
-
-      eval deflater
-
-    and compute_flag deflater =
-      let fdict = 0 in
-      let flevel = match deflater.ty with
+    and compute_header deflater =
+      let header = 8 + ((0xFFFF - 8) lsl 4) lsl 8 in
+      let level = match deflater.ty with
         | NONE -> 0
         | FIXED -> 1
         | DYNAMIC -> 2
-        | _ -> assert false
+        | _ -> 3
       in
-      let flg = (flevel lsl 6) lor (fdict lsl 5) in
-      let fcheck = 31 - (((8 lsl 4) lor 8) * 256 + flg) mod 31 in
-      let flg = flg lor fcheck in
+      let header = header lor (level lsl 6) in
+      let header = header + (31 - (header mod 31)) in
 
-      O.bits deflater.dst flg 8;
+      O.bits deflater.dst (header lsr 8) 8;
+      O.bits deflater.dst (header land 0xFF) 8;
       deflater.mode <- READ;
 
       eval deflater
@@ -564,7 +560,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         | Some data ->
           let len = Bytes.length data in
           O.bits deflater.dst ((len lsr 8) land 0xFF) 8;
-          deflater.mode <- WRITE_NLEN1
+          deflater.mode <- FLAT
       end;
 
       eval deflater
