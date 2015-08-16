@@ -554,6 +554,8 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       deflater.data <- Some buffer;
       deflater.mode <- WRITE_LAST;
+      deflater.inpos <- 0;
+      deflater.inmax <- Bytes.length buffer;
 
       Adler32.update buffer deflater.adler32;
 
@@ -710,6 +712,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       begin match deflater.lz77 with
         | None -> deflater.mode <- COMPUTE
         | Some (Lz77.Buffer data :: r) ->
+          deflater.inpos <- 0;
           deflater.inmax <- Bytes.length data;
           deflater.lz77 <- Some r;
           deflater.mode <- WRITE_BUFFER data
