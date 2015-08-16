@@ -6,6 +6,9 @@ module type S =
 
     val init : input -> output -> t
     val eval : t -> unit
+
+    val finish : t -> bool
+    val trace : t -> string list
   end
 
 module List =
@@ -894,4 +897,8 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
     and compute_bad deflater = ()
 
     and compute_done deflater = ()
+
+    let finish { mode; _ } = mode = DONE
+
+    let trace { trace; _ } = trace
   end
