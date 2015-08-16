@@ -220,7 +220,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
          | length when length <= 226 -> (283, length - 195, 5)
          | length when length <= 257 -> (284, length - 227, 5)
          | 258                       -> (285, 0, 0)
-         | _ -> raise (Invalid_argument "length_code_table"))
+         | _ -> assert false)
 
     let get_distance_code = function
       | 1                       -> (0, 0, 0)
