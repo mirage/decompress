@@ -151,8 +151,11 @@ module StreamNativeInt (I : TARGET with type block = int) : STREAM
     let bit s b =
       append s 1 (if b then I.on else I.off)
 
-    let bits s n b =
-      if n > I.block_size then raise (Invalid_argument "Bitstream.bits")
+    let bits s b n =
+      if n > I.block_size
+      then
+        let s = Printf.sprintf "Bitstream.bits (%d > %d)" n I.block_size in
+        raise (Invalid_argument s)
       else append s n b
 
     let flush s =
