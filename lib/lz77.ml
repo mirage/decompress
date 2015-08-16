@@ -57,7 +57,7 @@ module Make (X : Common.Buffer) =
         then aux (Some (len + 1)) (len + 1)
         else acc
       in
-      aux None 0
+      aux None 3
 
     type elt =
       | Buffer of buffer
