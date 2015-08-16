@@ -564,10 +564,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
     and compute_write_last deflater =
       O.bit deflater.dst deflater.last;
-      deflater.needed <- deflater.needed - 1;
-
-      if deflater.needed > 0
-      then deflater.mode <- WRITE_BLOCK;
+      deflater.mode <- WRITE_BLOCK;
 
       eval deflater
 
