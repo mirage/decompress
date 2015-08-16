@@ -552,6 +552,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
     and compute_read deflater =
       let buffer = I.input deflater.src 0xFFFF in
 
+      deflater.last <- Bytes.length buffer < 0xFFFF;
       deflater.data <- Some buffer;
       deflater.mode <- WRITE_LAST;
       deflater.inpos <- 0;
