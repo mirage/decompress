@@ -76,6 +76,38 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       | CLEAR
       | DONE
 
+    let string_of_mode = function
+      | BAD -> "BAD"
+      | HEADER -> "HEADER"
+      | READ -> "READ"
+      | WRITE_LAST -> "WRITE_LAST"
+      | WRITE_BLOCK -> "WRITE_BLOCK"
+      | COMPUTE -> "COMPUTE"
+      | WRITE_LEN1 -> "WRITE_LEN1"
+      | WRITE_LEN2 -> "WRITE_LEN2"
+      | WRITE_NLEN1 -> "WRITE_NLEN1"
+      | WRITE_NLEN2 -> "WRITE_NLEN2"
+      | FLAT -> "FLAT"
+      | SWITCH -> "SWITCH"
+      | WRITE_BUFFER s ->
+        Printf.sprintf "WRITE_BUFFER[%s]" s
+      | WRITE_LITERAL (diff, length) ->
+        Printf.sprintf "WRITE_LITERAL[%d, %d]" diff length
+      | WRITE_EXTRA_LITERAL (diff, length) ->
+        Printf.sprintf "WRITE_EXTRA_LITERAL[%d, %d]" diff length
+      | WRITE_DIST diff ->
+        Printf.sprintf "WRITE_DIST[%d]" diff
+      | WRITE_EXTRA_DIST diff ->
+        Printf.sprintf "WRITE_EXTRA_DIST[%d]" diff
+      | WRITE_HLIT -> "WRITE_HLIT"
+      | WRITE_HDIST -> "WRITE_HDIST"
+      | WRITE_HCLEN -> "WRITE_HCLEN"
+      | WRITE_TRANS -> "WRITE_TRANS"
+      | WRITE_SYMBOLS -> "WRITE_SYMBOLS"
+      | WRITE_ADLER32 -> "WRITE_ADLER32"
+      | CLEAR -> "CLEAR"
+      | DONE -> "DONE"
+
     let fixed_huffman_length_table =
       Array.init 288
         (fun n ->
@@ -492,7 +524,9 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         | WRITE_ADLER32 -> compute_write_adler32
         | DONE -> compute_done
         | BAD -> compute_bad
-      in f deflater
+      in
+      add_trace deflater (string_of_mode deflater.mode);
+      f deflater
 
     and compute_header deflater =
       let header = 8 + ((0xFFFF - 8) lsl 4) lsl 8 in
