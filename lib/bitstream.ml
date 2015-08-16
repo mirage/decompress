@@ -229,7 +229,7 @@ module NativeInt (I : BUFFER with type block = int) : ATOM
   = struct
     include I
 
-    let block_size = 8
+    let block_size = 16
 
     let b_sl = ( lsl )
     let b_sr = ( lsr )
