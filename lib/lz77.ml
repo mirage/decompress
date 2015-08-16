@@ -88,7 +88,7 @@ module Make (X : Common.Buffer) =
 
     let rec pp fmt l =
       Format.fprintf fmt "[@[<hov 2> ";
-      List.iter (Format.fprintf fmt "%a;@" pp_elt) l;
+      List.iter (Format.fprintf fmt "%a;@ " pp_elt) l;
       Format.fprintf fmt "@]]@;"
 
     let max_insert a b =
