@@ -174,7 +174,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
         mode            = HEADER;
         trace           = [];
-        ty              = NONE;
+        ty              = DYNAMIC;
         last            = false;
         data            = None;
         lz77            = None;
