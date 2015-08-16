@@ -427,18 +427,20 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       let freqs = Array.make 19 0 in
 
       let n_result = ref 0 in
+      let i = ref 0 in
       let l = Array.length src in
 
-      for i = 0 to l - 1 do
+      while !i < l do
         let run_length = ref 1 in
-        while i + !run_length < l && src.(i + !run_length) = src.(i) do incr run_length done;
+        while !i + !run_length < l && src.(!i + !run_length) = src.(!i) do incr run_length done;
+        let j = !run_length in
 
-        if src.(i) = 0
+        if src.(!i) = 0
         then if !run_length < 3
           then while !run_length > 0 do
               result.(!n_result) <- 0;
-              freqs.(0) <- freqs.(0) + 1;
               incr n_result;
+              freqs.(0) <- freqs.(0) + 1;
               decr run_length;
             done
           else
@@ -467,16 +469,16 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
             done
         else
           begin
-            result.(!n_result) <- src.(i);
+            result.(!n_result) <- src.(!i);
             incr n_result;
-            freqs.(src.(i)) <- freqs.(src.(i)) + 1;
+            freqs.(src.(!i)) <- freqs.(src.(!i)) + 1;
             decr run_length;
 
             if !run_length < 3
             then while !run_length > 0 do
-              result.(!n_result) <- src.(i);
+              result.(!n_result) <- src.(!i);
               incr n_result;
-              freqs.(src.(i)) <- freqs.(src.(i)) + 1;
+              freqs.(src.(!i)) <- freqs.(src.(!i)) + 1;
               decr run_length;
             done else while !run_length > 0 do
               let rpt = ref (if !run_length < 6 then !run_length else 6) in
@@ -492,7 +494,9 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
               run_length := !run_length - !rpt;
             done
-          end
+          end;
+
+          i := !i + j;
       done;
 
       Array.sub result 0 !n_result, freqs
