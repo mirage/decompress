@@ -60,11 +60,11 @@ let () =
   (* try *)
     match mode with
     | Inflate ->
-       while not (Inflate.finish inflater)
+      while not (Inflate.finish inflater)
       do Inflate.eval inflater;
          Printf.printf "%s%!" buffer;
          Inflate.clear inflater 1
-      done
+      done;
     | Deflate ->
       while not (Deflate.finish deflater)
       do Deflate.eval deflater
