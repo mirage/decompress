@@ -533,18 +533,16 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       f deflater
 
     and compute_header deflater =
-      let header = 8 + ((0xFFFF - 8) lsl 4) lsl 8 in
-      let level = match deflater.ty with
-        | NONE -> 0
-        | FIXED -> 1
-        | DYNAMIC -> 2
-        | _ -> 3
-      in
-      let header = header lor (level lsl 6) in
+      let header = 0x78 lsl 8 in (* XXX: CM = 8 and CINFO = 7 for 32K window
+                                  * size and denotes the "deflate" compression
+                                  * method *)
+      let header = header lor (0x4 lsl 5) in (* XXX: FDICT = 0 and FLEVEL = 2,
+                                              * we use a default algorithm *)
       let header = header + (31 - (header mod 31)) in
 
       O.bits deflater.dst (header lsr 8) 8;
       O.bits deflater.dst (header land 0xFF) 8;
+      O.flush deflater.dst;
       deflater.mode <- READ;
 
       eval deflater
