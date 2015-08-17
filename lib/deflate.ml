@@ -814,7 +814,11 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         | WRITE_EXTRA_DIST diff ->
           let _, extra, extra_length = get_distance_code diff in
 
-          O.bits deflater.dst extra extra_length;
+          if extra_length > 8
+          then O.bits deflater.dst (extra lsr 8) (extra_length - 8);
+
+          O.bits deflater.dst (extra land 0xFF) 8;
+
           deflater.mode <- SWITCH
         | _ -> assert false
       end;
