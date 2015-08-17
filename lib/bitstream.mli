@@ -1,5 +1,11 @@
 type endianess = [ `Big | `Little | `System ]
 
+module Debug :
+  sig
+    val print_byte : out_channel -> int -> unit
+    val print_bytes : out_channel -> Bytes.t -> unit
+  end
+
 module type TARGET =
   sig
     type t
