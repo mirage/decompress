@@ -353,7 +353,14 @@ module Make (I : Common.Input) (X : Common.Buffer) =
        * code s for the literal/length and distance alphabets are defined.
        *)
       inflater.last <- get_bit inflater;
+
+      Printf.sprintf "is last block: %b" inflater.last
+        |> add_trace inflater;
+
       let type_compression = get_bits inflater 2 in
+
+      Printf.sprintf "type: %d" type_compression
+        |> add_trace inflater;
 
       begin match type_compression with
       | 0 ->
