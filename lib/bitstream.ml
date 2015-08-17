@@ -119,6 +119,8 @@ module StreamNativeInt (I : TARGET with type block = int) : STREAM
     let ( >> ) = I.b_sr
     let ( || ) = I.b_or
 
+    (* For big-endian
+     *
     let update s =
       let bitfields = List.rev s.bitfields in
       s.bitfields <- [];
@@ -133,6 +135,24 @@ module StreamNativeInt (I : TARGET with type block = int) : STREAM
                  I.put s.buffer bits;
                  (bitsize - bitleft), bitfield
             else size + bitsize, (bits << bitsize) || bitfield)
+        s.pending bitfields
+     *
+     *)
+
+    let update s =
+      let bitfields = List.rev s.bitfields in
+      s.bitfields <- [];
+      s.size <- 0;
+      s.pending <-
+        List.fold_left
+          (fun (size, bits) (bitsize, bitfield) ->
+            if size + bitsize > I.block_size
+            then let bitfield' = bitfield << size  in
+                 let size' = (size + bitsize) - I.block_size in
+                 let bits = bits || bitfield' in
+                 I.put s.buffer bits;
+                 size', bitfield >> (bitsize - size')
+            else size + bitsize, (bitfield << size) || bits)
         s.pending bitfields
 
     let create size =
