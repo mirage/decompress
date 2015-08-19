@@ -458,6 +458,15 @@ module Make (I : Common.Input) (X : Common.Buffer) =
        *   (see [lengths_position])
        *)
 
+      Printf.sprintf "hlit:  %d" hlit
+      |> add_trace inflater;
+
+      Printf.sprintf "hdist: %d" hdist
+      |> add_trace inflater;
+
+      Printf.sprintf "hclen: %d" hclen
+      |> add_trace inflater;
+
       for i = 0 to hclen - 1 do
         Array.unsafe_set inflater.buffer
           (Array.unsafe_get lengths_position i)
