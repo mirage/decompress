@@ -164,7 +164,6 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       }
 
     let add_trace deflater trace =
-      Printf.fprintf stderr "|> %s\n%!" trace;
       deflater.trace <- trace :: deflater.trace
 
     let init src dst =
