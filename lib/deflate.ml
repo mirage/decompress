@@ -707,6 +707,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
           let desc_tree_symbols, desc_tree_freqs =
             get_tree_symbols !hlit lit_len_lengths !hdist dist_lengths in
+
           let desc_tree_lengths = get_length desc_tree_freqs 7 in
 
           for i = 0 to 18 do trans_lengths.(i) <- desc_tree_lengths.(hclen_order.(i)) done;
