@@ -275,6 +275,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
           aux r
         | [] -> ()
       in
+      let () = freqs_literal_length.(256) <- 1 in
       let () = aux lz77 in
       freqs_literal_length, freqs_distance
 
@@ -371,23 +372,47 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       code_length
 
-    let get_length freqs limit =
-      let module Heap =
-        Set.Make(struct
-          type t = (int * int)
-          let compare (_, a) (_, b) = compare a b end) in
-      let length = Array.make (Array.length freqs) 0 in
-      let _, heap = Array.fold_left
-        (fun (idx, acc) -> function
-         | 0 -> (idx - 1, acc)
-         | weight -> (idx - 1, Heap.add (idx, weight) acc))
-        (Array.length freqs - 1, Heap.empty) freqs in
-      let (node, value) = Heap.elements heap |> List.unzip in
-      let code_length = reverse_package_merge (Array.of_list value) (List.length value) limit in
+    exception OK
 
-      List.iteri
-        (fun i node -> length.(node) <- code_length.(i))
-        node;
+    let get_length freqs limit =
+      let length = Array.make (Array.length freqs) 0 in
+
+      begin
+        let heap = Heap.make (2 * 286) in
+
+        Array.iteri
+          (fun i freq -> if freq > 0 then Heap.push i freq heap)
+          freqs;
+
+        let nodes = Array.make (Heap.length heap / 2) (0, 0) in
+        let values = Array.make (Heap.length heap / 2) 0 in
+
+        try
+          if Array.length nodes = 1
+          then begin
+            let index, value = Heap.pop heap in
+            length.(index) <- 1;
+            raise OK
+          end;
+
+          for i = 0 to Heap.length heap / 2 - 1
+          do nodes.(i) <- Heap.pop heap;
+             values.(i) <- nodes.(i) |> snd;
+          done;
+
+          let code_length =
+            reverse_package_merge
+              values
+              (Array.length values)
+              limit
+          in
+
+          Array.iteri
+            (fun i (index, _) ->
+              length.(index) <- code_length.(i))
+            nodes
+        with OK -> ()
+      end;
 
       length
 
@@ -412,7 +437,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         code := start_code.(lengths.(i));
         start_code.(lengths.(i)) <- start_code.(lengths.(i)) + 1;
 
-        for j = 0 to lengths.(i) do
+        for j = 0 to lengths.(i) - 1 do
           codes.(i) <- (codes.(i) lsl 1) lor (!code land 1);
           code := !code lsr 1;
         done;
@@ -421,22 +446,30 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       codes
 
     let get_tree_symbols hlit lit_len_lengths hdist dist_lengths =
-      let src = Array.append lit_len_lengths dist_lengths in
+      let src = Array.make (hlit + hdist) 0 in
       let result = Array.make (286 + 30) 0 in
       let freqs = Array.make 19 0 in
+
+      for i = 0 to hlit - 1 do src.(i) <- lit_len_lengths.(i) done;
+      for i = hlit to hlit + hdist - 1 do src.(i) <- dist_lengths.(i - hlit) done;
 
       let n_result = ref 0 in
       let i = ref 0 in
       let l = Array.length src in
 
       while !i < l do
-        let run_length = ref 1 in
-        while !i + !run_length < l && src.(!i + !run_length) = src.(!i) do incr run_length done;
-        let j = !run_length in
+        let j = ref 1 in
+
+        while !i + !j < l && src.(!i + !j) = src.(!i)
+        do incr j done;
+
+        let run_length = ref !j in
 
         if src.(!i) = 0
-        then if !run_length < 3
-          then while !run_length > 0 do
+        then
+          if !run_length < 3
+          then
+            while !run_length > 0 do
               result.(!n_result) <- 0;
               incr n_result;
               freqs.(0) <- freqs.(0) + 1;
@@ -444,7 +477,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
             done
           else
             while !run_length > 0 do
-              let rpt = ref (if !run_length > 138 then !run_length else 138) in
+              let rpt = ref (if !run_length < 138 then !run_length else 138) in
 
               if !rpt > !run_length - 3 && !rpt < !run_length
               then rpt := !run_length - 3;
@@ -474,28 +507,31 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
             decr run_length;
 
             if !run_length < 3
-            then while !run_length > 0 do
-              result.(!n_result) <- src.(!i);
-              incr n_result;
-              freqs.(src.(!i)) <- freqs.(src.(!i)) + 1;
-              decr run_length;
-            done else while !run_length > 0 do
-              let rpt = ref (if !run_length < 6 then !run_length else 6) in
+            then
+              while !run_length > 0 do
+                result.(!n_result) <- src.(!i);
+                incr n_result;
+                freqs.(src.(!i)) <- freqs.(src.(!i)) + 1;
+                decr run_length;
+              done
+            else
+              while !run_length > 0 do
+                let rpt = ref (if !run_length < 6 then !run_length else 6) in
 
-              if !rpt > !run_length - 3 && !rpt < !run_length
-              then rpt := !run_length - 3;
+                if !rpt > !run_length - 3 && !rpt < !run_length
+                then rpt := !run_length - 3;
 
-              result.(!n_result) <- 16;
-              incr n_result;
-              result.(!n_result) <- !rpt - 3;
-              incr n_result;
-              freqs.(16) <- freqs.(16) + 1;
+                result.(!n_result) <- 16;
+                incr n_result;
+                result.(!n_result) <- !rpt - 3;
+                incr n_result;
+                freqs.(16) <- freqs.(16) + 1;
 
-              run_length := !run_length - !rpt;
-            done
-          end;
+                run_length := !run_length - !rpt;
+              done
+            end;
 
-          i := !i + j;
+          i := !i + !j;
       done;
 
       Array.sub result 0 !n_result, freqs
@@ -852,7 +888,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
           O.bits deflater.dst (nfo.hclen - 4) 4;
           deflater.mode <- WRITE_TRANS;
           deflater.inpos <- 0;
-          deflater.inmax <- Array.length nfo.trans_lengths
+          deflater.inmax <- nfo.hclen;
         | None ->
           deflater.mode <- COMPUTE
       end;
@@ -898,7 +934,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
             O.bits deflater.dst
               nfo.desc_tree_symbols.(deflater.inpos + 1)
               bitlen;
-            deflater.inpos <- deflater.inpos + 2;
+            deflater.inpos <- deflater.inpos + 1;
           end;
 
           deflater.inpos <- deflater.inpos + 1;
