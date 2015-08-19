@@ -776,7 +776,11 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
               |> Char.code
               |> get_code_and_length deflater in
 
-            O.bits deflater.dst code length;
+            if length > 8
+            then begin
+              O.bits deflater.dst (code land 0xFF) 8;
+              O.bits deflater.dst (code lsr 8) (length - 8)
+            end else O.bits deflater.dst code length;
 
             incr i;
           done;
@@ -804,7 +808,12 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         | WRITE_LITERAL (diff, length) ->
           let code, length = get_code_and_length deflater length in
 
-          O.bits deflater.dst code length;
+          if length > 8
+          then begin
+            O.bits deflater.dst (code land 0xFF) 8;
+            O.bits deflater.dst (code lsr 8) (length - 8)
+          end else O.bits deflater.dst code length;
+
           deflater.mode <- WRITE_EXTRA_LITERAL (diff, length)
         | _ -> assert false
       end;
@@ -850,9 +859,10 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
           let _, extra, extra_length = get_distance_code diff in
 
           if extra_length > 8
-          then O.bits deflater.dst (extra lsr 8) (extra_length - 8);
-
-          O.bits deflater.dst (extra land 0xFF) 8;
+          then begin
+            O.bits deflater.dst (extra land 0xFF) 8;
+            O.bits deflater.dst (extra lsr 8) (extra_length - 8)
+          end else O.bits deflater.dst extra extra_length;
 
           deflater.mode <- SWITCH
         | _ -> assert false
