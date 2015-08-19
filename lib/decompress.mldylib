@@ -1,5 +1,5 @@
 # OASIS_START
-# DO NOT EDIT (digest: befe5fecc0b3ce53d0e95c45992417e1)
+# DO NOT EDIT (digest: 803e1333e4ff67a3b538bfe48d3113c3)
 Bitstream
 Adler32
 Window
@@ -7,4 +7,5 @@ Inflate
 Lz77
 Huffman
 Common
+Heap
 # OASIS_STOP
