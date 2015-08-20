@@ -249,7 +249,7 @@ module NativeInt (I : BUFFER with type block = int) : ATOM
   = struct
     include I
 
-    let block_size = 8
+    let block_size = 16
 
     let b_sl = ( lsl )
     let b_sr = ( lsr )
@@ -259,12 +259,14 @@ module NativeInt (I : BUFFER with type block = int) : ATOM
     let on = 1
 
     let store buffer pos byte =
-      I.set buffer pos byte;
-      pos + 1
+      I.set buffer pos (byte land 0xFF);
+      I.set buffer (pos + 1) (byte lsr 8);
+      pos + 2
 
     let store_n buffer pos byte c =
-      I.set buffer pos (byte lsl (block_size - c));
-      pos + 1
+      I.set buffer pos (byte land 0xFF);
+      if c > 8 then I.set buffer (pos + 1) (byte lsr 8);
+      pos + (if c > 8 then 2 else 1)
   end
 
 module BufferNativeInt : BUFFER
