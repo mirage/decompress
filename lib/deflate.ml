@@ -580,7 +580,6 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       O.bits deflater.dst (header lsr 8) 8;
       O.bits deflater.dst (header land 0xFF) 8;
-      O.flush deflater.dst;
       deflater.mode <- READ;
 
       eval deflater
@@ -973,14 +972,15 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
 
       eval deflater
 
-
     and compute_write_adler32 deflater =
       let (a1, a2) = Adler32.get deflater.adler32 in
 
+      O.flush deflater.dst;
+
       O.bits deflater.dst (a2 lsr 8) 8;
-      O.bits deflater.dst a2 8;
+      O.bits deflater.dst (a2 land 0xFF) 8;
       O.bits deflater.dst (a1 lsr 8) 8;
-      O.bits deflater.dst a1 8;
+      O.bits deflater.dst (a1 land 0xFF) 8;
 
       deflater.mode <- DONE;
 
