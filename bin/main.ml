@@ -62,7 +62,8 @@ let () =
     | Inflate ->
       while not (Inflate.finish inflater)
       do Inflate.eval inflater;
-         Printf.printf "%s%!" buffer;
+         if not (Inflate.finish inflater)
+         then Printf.printf "%s%!" buffer;
          Inflate.clear inflater 1
       done;
     | Deflate ->
