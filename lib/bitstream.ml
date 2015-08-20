@@ -146,14 +146,14 @@ module StreamNativeInt (I : TARGET with type block = int) : STREAM
       s.pending <-
         List.fold_left
           (fun (size, bits) (bitsize, bitfield) ->
-            if size + bitsize > I.block_size
+            if size + bitsize >= I.block_size
             then let bitfield' = bitfield << size  in
                  let size' = (size + bitsize) - I.block_size in
                  let bits = bits || bitfield' in
                  I.put s.buffer bits;
                  size', bitfield >> (bitsize - size')
             else size + bitsize, (bitfield << size) || bits)
-        s.pending bitfields
+          s.pending bitfields
 
     let create size =
       { buffer = I.create size;
@@ -184,7 +184,7 @@ module StreamNativeInt (I : TARGET with type block = int) : STREAM
       let left = I.block_size - size in
       if left <> 0
       then I.flush s.buffer size block
-      else I.put s.buffer block; update s
+      else update s
   end
 
 module Target (I : ATOM) : TARGET
