@@ -72,6 +72,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       | WRITE_HCLEN
       | WRITE_TRANS
       | WRITE_SYMBOLS
+      | WRITE_EOF
       | WRITE_ADLER32
       | CLEAR
       | DONE
@@ -104,6 +105,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       | WRITE_HCLEN -> "WRITE_HCLEN"
       | WRITE_TRANS -> "WRITE_TRANS"
       | WRITE_SYMBOLS -> "WRITE_SYMBOLS"
+      | WRITE_EOF -> "WRITE_EOF"
       | WRITE_ADLER32 -> "WRITE_ADLER32"
       | CLEAR -> "CLEAR"
       | DONE -> "DONE"
@@ -561,6 +563,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         | WRITE_SYMBOLS -> compute_write_symbols
         | CLEAR -> compute_clear
         | WRITE_ADLER32 -> compute_write_adler32
+        | WRITE_EOF -> compute_write_eof
         | DONE -> compute_done
         | BAD -> compute_bad
       in
@@ -676,7 +679,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
           if !i = deflater.inmax && deflater.last = false
           then deflater.mode <- CLEAR
           else if !i = deflater.inmax && deflater.last
-          then deflater.mode <- WRITE_ADLER32;
+          then deflater.mode <- WRITE_EOF;
 
           deflater.inpos <- !i
       end;
@@ -691,6 +694,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
         | Some data, DYNAMIC ->
           let trans_lengths = Array.make 19 0 in
           let lz77 = Lz77.compress data in
+
           let (freqs_literal_length, freqs_distance) =
             compute_frequences_of_lz77 lz77 in
 
@@ -753,7 +757,7 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
           deflater.mode <- WRITE_LITERAL (diff, length)
         | Some [] ->
           if deflater.last
-          then deflater.mode <- WRITE_ADLER32
+          then deflater.mode <- WRITE_EOF
           else deflater.mode <- CLEAR
       end;
 
@@ -953,6 +957,22 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       deflater.inpos <- 0;
       deflater.inmax <- 0;
       deflater.mode <- READ
+
+    and compute_write_eof deflater =
+      let get_code_and_length deflater chr = match deflater with
+        | { ty = FIXED; _ } -> fixed_huffman_length_table.(chr)
+        | { ty = DYNAMIC; dyn_nfo = Some nfo; _ } ->
+          nfo.lit_len_codes.(chr), nfo.lit_len_lengths.(chr)
+        | _ -> assert false
+      in
+      let code, length = get_code_and_length deflater 256 in
+
+      O.bits deflater.dst code length;
+
+      deflater.mode <- WRITE_ADLER32;
+
+      eval deflater
+
 
     and compute_write_adler32 deflater =
       let (a1, a2) = Adler32.get deflater.adler32 in
