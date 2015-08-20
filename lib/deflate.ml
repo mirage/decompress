@@ -807,13 +807,9 @@ module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t)
       in
       begin match deflater.mode with
         | WRITE_LITERAL (diff, length) ->
-          let code, length = get_code_and_length deflater length in
+          let code, length' = get_code_and_length deflater length in
 
-          if length > 8
-          then begin
-            O.bits deflater.dst (code land 0xFF) 8;
-            O.bits deflater.dst (code lsr 8) (length - 8)
-          end else O.bits deflater.dst code length;
+          O.bits deflater.dst code length';
 
           deflater.mode <- WRITE_EXTRA_LITERAL (diff, length)
         | _ -> assert false
