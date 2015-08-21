@@ -59,6 +59,7 @@ module type STREAM =
 
     val contents : t -> target
     val flush : t -> unit
+    val aligned : t -> bool
 
     val bit : t -> bool -> unit
     val bits : t -> int -> int -> unit
@@ -180,11 +181,19 @@ module StreamNativeInt (I : TARGET with type block = int) : STREAM
 
     let flush s =
       let size, block = s.pending in
-      s.pending <- (0, I.off);
+      s.pending <- 0, I.off; (* flushing *)
+
       let left = I.block_size - size in
       if left <> 0
       then I.flush s.buffer size block
       else update s
+
+    let aligned s =
+      let size, block = s.pending in
+      let left = I.block_size - size in
+      if left <> 0
+      then false
+      else true
   end
 
 module Target (I : ATOM) : TARGET
@@ -204,6 +213,7 @@ module Target (I : ATOM) : TARGET
     let b_sl = I.b_sl
     let b_sr = I.b_sr
     let b_or = I.b_or
+
     let on = I.on
     let off = I.off
 

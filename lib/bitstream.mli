@@ -53,6 +53,8 @@ module type STREAM =
     val flush : t -> unit
     (** [flush t] flushes pending block *)
 
+    val aligned : t -> bool
+
     val bit : t -> bool -> unit
     (** [bit s v] pushes single bit [v] to stream [s] *)
 
