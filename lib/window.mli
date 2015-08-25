@@ -44,4 +44,4 @@ module type S =
 
 module Make (X : Common.Buffer) : S with
   type buffer = X.t and
-  type crc = Adler32.Make (X).t
+  type crc = Adler32.Make(X).t

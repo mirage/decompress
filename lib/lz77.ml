@@ -4,10 +4,10 @@
 
 module type S =
   sig
-    type buffer
+    type str
 
     type elt =
-      | Buffer of buffer
+      | Buffer of str
       | Insert of int * int
 
     val compare_elt : elt -> elt -> int
@@ -20,14 +20,19 @@ module type S =
 
     val pp : Format.formatter -> t -> unit
 
-    val compress : ?window_size:int -> buffer -> t
-    val decompress : t -> buffer
+    val compress : ?window_size:int -> str -> t
+    val decompress : t -> Bytes.t
+
+    val to_freqs :
+      get_length:(int -> (int * int * int)) ->
+      get_distance:(int -> (int * int * int)) ->
+      t -> (int array * int array)
   end
 
-module Make (X : Common.Buffer) =
+module Make (X : Common.SafeString) =
   struct
     type key = (char * char * char) option
-    type buffer = X.t
+    type str = X.t
 
     let key buffer i =
       if i < X.length buffer - 3 then
@@ -60,7 +65,7 @@ module Make (X : Common.Buffer) =
       aux None 3
 
     type elt =
-      | Buffer of buffer
+      | Buffer of X.t
       | Insert of int * int
 
     let compare_elt x y = match x, y with
@@ -72,7 +77,7 @@ module Make (X : Common.Buffer) =
       | Insert _, _ -> (-1)
 
     let pp_elt fmt = function
-      | Buffer buffer -> Format.fprintf fmt "Buffer %S" (X.to_string buffer)
+      | Buffer bytes -> Format.fprintf fmt "Buffer %S" (X.to_string bytes)
       | Insert (off, len) -> Format.fprintf fmt "Insert (%d, %d)" off len
 
     type t = elt list
@@ -160,17 +165,39 @@ module Make (X : Common.Buffer) =
         | [] -> acc
         | x :: r -> length (size_of_elt x + acc) r
       in
-      let buffer = X.create (length 0 l) in
+      let buffer = Bytes.create (length 0 l) in
       let rec fill off = function
         | [] -> ()
         | x :: r ->
           let () = match x with
             | Buffer s ->
-              X.blit s 0 buffer off (X.length s)
+              Bytes.blit (X.to_bytes s) 0 buffer off (X.length s)
             | Insert (diff, len) ->
-              X.blit buffer (off - diff) buffer off len
+              Bytes.blit buffer (off - diff) buffer off len
           in
           fill (off + (size_of_elt x)) l
       in
       fill 0 l; buffer
+
+    let to_freqs ~get_length ~get_distance lz77 =
+      let freqs_lit_length = Array.make 286 0 in
+      let freqs_distance = Array.make 30 0 in
+      let rec aux = function
+        | Buffer bytes :: rest ->
+          X.iter (fun chr ->
+            let code = Char.code chr in
+            freqs_lit_length.(code) <- freqs_lit_length.(code) + 1)
+          bytes;
+          aux rest
+        | Insert (dist, length) :: rest ->
+          let code, _, _ = get_length length in
+          let dist, _, _ = get_distance dist in
+          freqs_lit_length.(code) <- freqs_lit_length.(code) + 1;
+          freqs_distance.(dist) <- freqs_distance.(dist) + 1;
+          aux rest
+        | [] -> ()
+      in
+      let () = freqs_lit_length.(256) <- 1 in
+      let () = aux lz77 in
+      freqs_lit_length, freqs_distance
   end

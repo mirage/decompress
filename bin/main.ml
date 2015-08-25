@@ -1,42 +1,15 @@
 open Decompress
 
-module Input =
-    struct
-      type t = Pervasives.in_channel
-      type buffer = Bytes.t
+module Buffer =
+  struct
+    include Bytes
 
-      let std = Pervasives.stdin
+    let to_bytes x = x
+    let of_bytes x = x
+  end
 
-      let read_byte = Pervasives.input_byte
-      let input ch n =
-        if n <= 0 then Bytes.empty
-        else
-          let bytes = Bytes.create n in
-          let len = ref n in
-          let pos = ref 0 in
-
-          try
-            while !len > 0 do
-              let rest = Pervasives.input ch bytes !pos !len in
-              if rest = 0 then raise End_of_file;
-              pos := !pos + rest;
-              len := !len - rest;
-            done;
-
-            bytes
-          with End_of_file as exn ->
-            if !pos = 0 then raise exn
-            else Bytes.sub bytes 0 !pos
-    end
-
-module Output =
-  Bitstream.StreamNativeInt(
-    Bitstream.Target(
-      Bitstream.NativeInt(
-        Bitstream.BufferNativeInt)))
-
-module Inflate = Inflate.Make(Input)(struct include Bytes let of_bytes x = x end)
-module Deflate = Deflate.Make(Input)(Output)
+module Inflate = Inflate.Make(Buffer)
+module Deflate = Deflate.Make(Buffer)
 
 type t =
   | Inflate
@@ -45,10 +18,7 @@ type t =
 let () = Printexc.record_backtrace true
 
 let () =
-  let output = Output.create 16 in
-  let buffer = Bytes.create 1 in
-  let inflater = Inflate.init Input.std buffer in
-  let deflater = Deflate.init Input.std output in
+  let buffer = Bytes.create 0xFFFF in
 
   let mode =
     if Array.length Sys.argv = 2
@@ -60,19 +30,39 @@ let () =
   (* try *)
     match mode with
     | Inflate ->
-      while not (Inflate.finish inflater)
-      do Inflate.eval inflater;
-         if not (Inflate.finish inflater)
-         then Printf.printf "%s%!" buffer;
-         Inflate.clear inflater 1
-      done;
+      let rec aux inflater = match Inflate.eval inflater with
+        | `Flush ->
+          Printf.printf "%s%!"
+            (Bytes.sub buffer 0 (Inflate.contents inflater)
+             |> Bytes.to_string);
+          Inflate.flush inflater;
+          aux inflater
+        | `Ok ->
+          if Inflate.contents inflater <> 0
+          then
+            Printf.printf "%s%!"
+              (Bytes.sub buffer 0 (Inflate.contents inflater)
+               |> Bytes.to_string)
+          else ()
+        | `Error -> Printf.eprintf "ERROR"
+      in aux (Inflate.make (`Channel stdin) buffer)
     | Deflate ->
-      while not (Deflate.finish deflater)
-      do Deflate.eval deflater
-      done;
-
-      Output.flush output;
-      Printf.printf "%s%!" (Output.contents output)
+      let rec aux deflater = match Deflate.eval deflater with
+        | `Flush ->
+          Printf.printf "%s%!"
+            (Bytes.sub buffer 0 (Deflate.contents deflater)
+             |> Bytes.to_string);
+          Deflate.flush deflater;
+          aux deflater
+        | `Ok ->
+          if Deflate.contents deflater <> 0
+          then
+            Printf.printf "%s%!"
+              (Bytes.sub buffer 0 (Deflate.contents deflater)
+               |> Bytes.to_string)
+          else ()
+        | `Error -> Printf.eprintf "ERROR"
+      in aux (Deflate.make (`Channel stdin) buffer)
   (*
   with exn ->
     Printexc.to_string exn |> Printf.fprintf stderr "!> %s\n%!";

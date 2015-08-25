@@ -1,9 +1,9 @@
 module type S =
   sig
-    type buffer
+    type str
 
     type elt =
-      | Buffer of buffer (** raw buffer *)
+      | Buffer of str (** raw buffer *)
       | Insert of int * int (** negative offset х length *)
 
     (** compare compressed elements *)
@@ -19,10 +19,15 @@ module type S =
     (** pretty-print a compression sequence *)
     val pp : Format.formatter -> t -> unit
     (** compress a buffer *)
-    val compress : ?window_size:int -> buffer -> t
+    val compress : ?window_size:int -> str -> t
     (** decompress a sequence of compressed elements *)
-    val decompress : t -> buffer
+    val decompress : t -> Bytes.t
+
+    val to_freqs :
+      get_length:(int -> (int * int * int)) ->
+      get_distance:(int -> (int * int * int)) ->
+      t -> (int array * int array)
   end
 
-module Make (X : Common.Buffer) : S with
-  type buffer = X.t
+module Make (X : Common.SafeString) : S with
+  type str = X.t

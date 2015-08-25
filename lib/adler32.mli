@@ -33,6 +33,4 @@ module type S =
     val get : t -> (int * int)
   end
 
-module Make (X : Common.Buffer) : S with type buffer = X.t
-module String : S with type buffer = String.t
-module Bytes : S with type buffer = Bytes.t
+module Make (X : Common.SafeString) : S with type buffer = X.t

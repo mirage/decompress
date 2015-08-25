@@ -1,114 +1,31 @@
+module type SafeString =
+  sig
+    type t
+
+    val make           : int -> char -> t
+
+    val get            : t -> int -> char
+    val unsafe_get     : t -> int -> char
+    val length         : t -> int
+    val iter           : (char -> unit) -> t -> unit
+    val sub            : t -> int -> int -> t
+    val compare        : t -> t -> int
+
+    val to_string      : t -> String.t
+    val to_bytes       : t -> Bytes.t
+  end
+
 module type Buffer =
   sig
-    (** The buffer is data structure that contains a fixed-length sequence of
-        (single-byte) characters. *)
-    type t
+    include SafeString
 
-    (** [get s n] returns the character at index [n] in string [s]. *)
-    val get : t -> int -> char
+    val create         : int -> t
 
-    (** [set s n c] modifies [s] in place, replacing the byte at index [n] with
-      * [c]. *)
-    val set : t -> int -> char -> unit
+    val set            : t -> int -> char -> unit
+    val unsafe_set     : t -> int -> char -> unit
+    val blit           : t -> int -> t -> int -> int -> unit
+    val unsafe_blit    : t -> int -> t -> int -> int -> unit
 
-    (** Returns the length (number of characters) of the given string. *)
-    val length : t -> int
-
-    (** It's needed to C implementation of Adler-32.
-
-        Memory representation of Bytes and String is the same. So, this function
-        is propably useless. But, I'm not sure, so TODO ! *)
-    val to_string : t -> string
-
-    (** [blit src srcoff dst dstoff len] copies [len] bytes from string [src],
-        starting at index [srcoff], to byte sequence [dst], starting at index
-        [dstoff]. *)
-    val unsafe_blit : t -> int -> t -> int -> int -> unit
-
-    val unsafe_set : t -> int -> char -> unit
-
-    val unsafe_get : t -> int -> char
-
-    (** [create n] returns a new byte sequence of length [n]. The sequence is
-        uninitialized and contains arbitrary bytes.
-
-        Raise [Invalid_argument] if [n < 0] or
-        [n > ]{!Sys.max_string_length}. *)
-    val create : int -> t
-
-    (** [make n c] returns a new byte sequence of length [n], filled with
-        the byte [c].
-
-        Raise [Invalid_argument] if [n < 0] or [n > ]{!Sys.max_string_length}. *)
-    val make : int -> char -> t
-
-    (** The comparison function for byte sequences, with the same
-        specification as {!Pervasives.compare}.  Along with the type [t],
-        this function [compare] allows the module [Bytes] to be passed as
-        argument to the functors {!Set.Make} and {!Map.Make}. *)
-    val compare : t -> t -> int
-
-    (** [sub s start len] returns a new byte sequence of length [len],
-        containing the subsequence of [s] that starts at position [start]
-        and has length [len].
-
-        Raise [Invalid_argument] if [start] and [len] do not designate a
-        valid range of [s]. *)
-    val sub : t -> int -> int -> t
-
-    (** [blit src srcoff dst dstoff len] copies [len] bytes from sequence
-        [src], starting at index [srcoff], to sequence [dst], starting at
-        index [dstoff]. It works correctly even if [src] and [dst] are the
-        same byte sequence, and the source and destination intervals
-        overlap.
-
-        Raise [Invalid_argument] if [srcoff] and [len] do not
-        designate a valid range of [src], or if [dstoff] and [len]
-        do not designate a valid range of [dst]. *)
-    val blit : t -> int -> t -> int -> int -> unit
-
-    val of_bytes : Bytes.t -> t
-  end
-
-module type Input =
-  sig
-    type t
-
-    (** Read an unsigned 8-bit integer. *)
-    val read_byte : t -> int
-
-    (** [input i n] reads a byte sequence of size up to [n] from an input.
-     *  The function should raise an exception if no input is available.
-     *  It should raise [Invalid_argument] if [n] < 0.
-     *
-     *  An example of implementation is:
-     *  let input in_ch n =
-     *    if n < 0 then raise (Invalid_argument "I.input");
-     *    if n = 0 then Bytes.empty
-     *    else
-     *      let s = Bytes.create n in
-     *      let l = ref n in
-     *      let p = ref 0 in
-     *      try
-     *        while !l > 0 do
-     *          let r = Pervasives.input in_ch s !p !l in
-     *          if r = 0 then raise No_more_input;
-     *          p := !p + r;
-     *          l := !l - r;
-     *        done;
-     *        s
-     *      with No_more_input as exn ->
-     *        if !p = 0 then raise exn;
-     *        Bytes.sub s 0 !p
-     *)
-    val input : t -> int -> Bytes.t
-  end
-
-module type Output =
-  sig
-    type t
-
-    val output_char : t -> char -> unit
-    val output_byte : t -> int -> unit
-    val output_bytes : t -> Bytes.t -> unit
+    val of_bytes       : Bytes.t -> t
+    val of_string      : String.t -> t
   end

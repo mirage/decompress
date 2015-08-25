@@ -1,16 +1,20 @@
 module type S =
   sig
     type t
-    type input
-    type output
+    type src =
+      [
+        | `String of (int * String.t)
+        | `Channel of in_channel
+        | `Manual of (unit -> (String.t * bool))
+      ]
+    type dst
 
-    val init : input -> output -> t
-    val eval : t -> unit
+    val make : [< src] -> dst -> t
+    val eval : t -> [ `Ok | `Flush | `Error ]
 
-    val finish : t -> bool
-    val trace : t -> string list
+    val contents : t -> int
+    val flush : t -> unit
   end
 
-module Make (I : Common.Input) (O : Bitstream.STREAM with type target = Bytes.t) : S
-  with type input = I.t
-   and type output = O.t
+module Make (X : Common.Buffer) : S
+  with type dst = X.t

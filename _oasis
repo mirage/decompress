@@ -14,8 +14,10 @@ AlphaFeatures:          ocamlbuild_more_args
 
 Library decompress
   Path:                 lib
-  InternalModules:      Huffman, Heap
-  Modules:              Common, Bitstream, Adler32, Window, Inflate, Lz77
+  InternalModules:      Huffman, Tree, Heap
+  Modules:              Common, Adler32, Window, Inflate, Lz77
+  ByteOpt:              -safe-string
+  NativeOpt:            -p -safe-string
 
 Document "Decompress"
   Type:                 ocamlbuild (0.4)
@@ -32,6 +34,8 @@ Executable main
   Path:                 bin
   MainIs:               main.ml
   BuildDepends:         decompress
+  CompiledObject:       native
+  NativeOpt:            -p -safe-string
 
 SourceRepository master
   Type:                 git

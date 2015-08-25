@@ -1,18 +1,22 @@
 module type S =
   sig
     type t
-    type input
-    type output
+    type src =
+      [
+        | `String of (int * String.t)
+        | `Channel of in_channel
+        | `Manual of (int -> String.t)
+      ]
+    type dst
 
-    val init : input -> output -> t
-    val trace : t -> string list
-    val eval : t -> unit
-    val finish : t -> bool
-    val clear : t -> int -> unit
-    val size : t -> int
+    val make : [< src] -> dst -> t
+    val eval : t -> [`Ok | `Flush | `Error ]
+
+    val contents : t -> int
+    val flush : t -> unit
   end
 
-module Make (I : Common.Input) (X : Common.Buffer) =
+module Make (X : Common.Buffer) =
   struct
     type mode =
       | HEAD
@@ -50,16 +54,46 @@ module Make (I : Common.Input) (X : Common.Buffer) =
     module Adler32 = Adler32.Make(X)
     module Window = Window.Make(X)
 
-    type input = I.t
-    type output = X.t
+    let hclen_order =
+      [| 16; 17; 18; 0; 8; 7; 9; 6; 10; 5; 11; 4; 12; 3; 13; 2; 14; 1; 15; |]
+    and extrabits_length =
+      [|
+        0; 0; 0; 0; 0; 0; 0; 0; 1;  1;
+        1; 1; 2; 2; 2; 2; 3; 3; 3;  3;
+        4; 4; 4; 4; 5; 5; 5; 5; 0; -1; -1;
+      |]
+    and base_length =
+      [|
+          3;  4;  5;   6;   7;   8;   9;  10;  11; 13;
+         15; 17; 19;  23;  27;  31;  35;  43;  51; 59;
+         67; 83; 99; 115; 131; 163; 195; 227; 258; -1; -1;
+      |]
+    and extrabits_distance =
+      [|
+        0; 0;  0;  0;  1;  1;  2;  2;  3;  3;
+        4; 4;  5;  5;  6;  6;  7;  7;  8;  8;
+        9; 9; 10; 10; 11; 11; 12; 12; 13; 13; -1;
+      |]
+    and base_distance =
+      [|
+           1;    2;    3;    4;    5;    7;    9;    13;    17;    25;
+          33;   49;   65;   97;  129;  193;  257;   385;   513;   769;
+        1025; 1537; 2049; 3073; 4097; 6145; 8193; 12289; 16385; 24577; -1;
+      |]
+
+    type src =
+      [
+        | `String of (int * String.t)
+        | `Channel of in_channel
+        | `Manual of (int -> String.t)
+      ]
+    type dst = X.t
 
     type t =
       {
-        src                   : input;
-        dst                   : output;
-
-        mutable mode          : mode;
-        mutable trace         : string list;
+        src_byte              : unit -> int;
+        src_bytes             : int -> String.t;
+        dst                   : dst;
 
         mutable last          : bool;
         (** true if processing last block *)
@@ -68,27 +102,12 @@ module Make (I : Common.Input) (X : Common.Buffer) =
         mutable bits          : int;
         (** number of bits in "hold" *)
 
-        mutable length        : int;
-        (** literal or length of data to copy *)
-        mutable distance      : int;
-        (** distance back to copy string from *)
-
         mutable outpos        : int;
         (** position output buffer position *)
         mutable needed        : int;
 
-        mutable window        : Window.t;
-
-        mutable length_tree   : int Huffman.t;
-        mutable distance_tree : int Huffman.t option;
-        mutable buffer        : int array;
-        (** buffer use by dynamic Huffman codes *)
+        mutable k             : t -> [ `Ok | `Flush | `Error ];
       }
-
-    let add_trace inflater trace =
-      inflater.trace <- trace :: inflater.trace
-
-    let trace inflater = inflater.trace
 
     let drop_bits inflater n =
       inflater.hold <- inflater.hold lsr n;
@@ -105,7 +124,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
       if inflater.bits = 0
         then begin
           inflater.bits <- 8;
-          inflater.hold <- I.read_byte inflater.src;
+          inflater.hold <- inflater.src_byte ();
         end;
       let result = inflater.hold land 1 = 1 in
       inflater.bits <- inflater.bits - 1;
@@ -113,16 +132,10 @@ module Make (I : Common.Input) (X : Common.Buffer) =
       result
 
     let get_bits inflater n =
-
-      assert (inflater.bits
-              + (8 * ((n - inflater.bits) / 8))
-              + (if n mod 8 <> 0 then 8 else 0)
-              < Sys.word_size);
-
       while inflater.bits < n do
         inflater.hold <-
           inflater.hold
-          lor ((I.read_byte inflater.src)
+          lor ((inflater.src_byte ())
                lsl inflater.bits);
         inflater.bits <- inflater.bits + 8;
       done;
@@ -133,8 +146,8 @@ module Make (I : Common.Input) (X : Common.Buffer) =
       result
 
     let get_ui16 inflater =
-      let a = I.read_byte inflater.src in
-      let b = I.read_byte inflater.src in
+      let a = inflater.src_byte () in
+      let b = inflater.src_byte () in
       a lor (b lsl 8)
 
     let rec get_revbits inflater n =
@@ -171,23 +184,23 @@ module Make (I : Common.Input) (X : Common.Buffer) =
           else 8)
       |> fun lengths -> Huffman.make lengths 0 288 9
 
-
     (* For even greater compactness, the code length sequences themselves are
      * compressed using a Huffman code. The alphabet for code lengths is as
      * follows:
      *)
-    let inflate_dictionnary inflater table max =
+    let inflate_dictionnary inflater lengths max =
       let i = ref 0 in
       let previous = ref 0 in
+      let r = Array.make max 0 in
       while !i < max do
         match Huffman.read_and_find
                 ~get_bit:(fun () -> get_bit inflater)
-                ~get_bits:(get_bits inflater) inflater.length_tree with
+                ~get_bits:(get_bits inflater) lengths with
 
         (* 0 - 15: Represent code lengths of 0 - 15 *)
         | n when n <= 15 ->
           previous := n;
-          Array.unsafe_set table !i n;
+          Array.unsafe_set r !i n;
           incr i;
 
         (* 16: Copy the previous code length 3 - 6 times.
@@ -203,14 +216,14 @@ module Make (I : Common.Input) (X : Common.Buffer) =
           if !i + n > max then raise Invalid_dictionnary;
 
           for j = 0 to n - 1 do
-            Array.unsafe_set table !i !previous;
+            Array.unsafe_set r !i !previous;
             incr i;
           done;
 
         (* 17: Repeat a code length of 0 for 3 - 10 times.
          *     (3 bits of length)
          *
-         * XXX: table must be initialized with 0
+         * XXX: r must be initialized with 0
          *)
         | 17 ->
           let n = 3 + get_bits inflater 3 in
@@ -220,7 +233,7 @@ module Make (I : Common.Input) (X : Common.Buffer) =
         (* 18: Repeat a code length of 0 for 11 - 138 times
          *     (7 bits of length)
          *
-         * XXX: table must be initialized with 0
+         * XXX: r must be initialized with 0
          *)
         | 18 ->
           let n = 11 + get_bits inflater 7 in
@@ -228,58 +241,79 @@ module Make (I : Common.Input) (X : Common.Buffer) =
           i := !i + n;
 
         | _ -> raise Invalid_dictionnary
-      done
+      done; r
 
-    let add_char inflater chr =
-      Window.add_char chr inflater.window;
+    let add_char inflater window chr =
+      Window.add_char chr window;
       X.unsafe_set inflater.dst inflater.outpos chr;
       inflater.needed <- inflater.needed - 1;
       inflater.outpos <- inflater.outpos + 1
 
-    let add_bytes inflater bytes =
-      Window.add_bytes bytes inflater.window;
+    let add_bytes inflater window bytes =
+      Window.add_bytes bytes window;
       X.unsafe_blit bytes 0 inflater.dst inflater.outpos (X.length bytes);
       inflater.needed <- inflater.needed - (X.length bytes);
       inflater.outpos <- inflater.outpos + (X.length bytes)
 
-    let init src dst =
+    exception No_more_input
+
+    let rec make src dst =
+      let src_byte, src_bytes = match src with
+        | `String (p, s) ->
+          let length = String.length s in
+          let position = ref p in
+          (fun () ->
+            incr position;
+            if !position = length
+            then raise End_of_file
+            else Char.code (String.unsafe_get s !position)),
+          (fun size ->
+            let read_as_possible =
+              min (length - !position) size in
+            let str = String.sub s !position read_as_possible in
+            position := !position + read_as_possible;
+            str)
+        | `Channel ch ->
+          (fun () -> input_byte ch),
+          (fun size ->
+            let bytes = Bytes.create size in
+            let l = ref size in
+            let p = ref 0 in
+            try
+              while !l > 0 do
+                let r = input ch bytes !p !l in
+                if r = 0 then raise No_more_input;
+                p := !p + r;
+                l := !l - r;
+              done; Bytes.to_string bytes
+            with No_more_input ->
+              if !p = 0 then raise End_of_file;
+              Bytes.sub_string bytes 0 !p)
+        | `Manual fill ->
+          (fun () -> String.get (fill 1) 1 |> Char.code),
+          fill
+      in
       {
-        src;
+        src_byte;
+        src_bytes;
         dst;
 
-        mode          = HEAD;
-        trace         = [];
-        last          = false;
-        hold          = 0;
-        bits          = 0;
-        length        = 0;
-        distance      = 0;
-        outpos        = 0;
-        needed        = 0;
-        window        = Window.init ();
-        length_tree   = fixed_huffman_length_tree;
-        distance_tree = None;
-        buffer        = (Array.make 19 (-1));
+        last   = false;
+        hold   = 0;
+        bits   = 0;
+
+        outpos = 0;
+        needed = X.length dst;
+
+        k      = header;
       }
 
-    let rec eval inflater =
-      let f = match inflater.mode with
-        | HEAD     -> compute_head
-        | BLOCK    -> compute_block
-        | CRC      -> compute_crc
-        | COMPRESS -> compute_compress
-        | FLAT     -> compute_flat
-        | BAD      -> compute_bad
-        | TABLE    -> compute_table
-        | DIST     -> compute_dist
-        | DISTONE  -> compute_distone
-        | DONE     -> compute_done
-      in
-      add_trace inflater (string_of_mode inflater.mode);
-      f inflater
+    and eval inflater =
+      if inflater.needed = (X.length inflater.dst - inflater.outpos)
+         && inflater.outpos < X.length inflater.dst then inflater.k inflater
+      else `Flush
 
-
-    and compute_head inflater =
+    and header inflater =
 
       (*    _______________________
        *   |  |  |  |  |  |  |  |  |  BYTE 0
@@ -299,8 +333,8 @@ module Make (I : Common.Input) (X : Common.Buffer) =
        *                  |
        *                  | next state is DICTID (1) or TYPE (0)
        *)
-      let byte0 = I.read_byte inflater.src in
-      let byte1 = I.read_byte inflater.src in
+      let byte0 = inflater.src_byte () in
+      let byte1 = inflater.src_byte () in
 
       (* Check value must be such that [byte0] and [byte1], when viewed as a
        * 16-bit unsigned integer stored in MSB order ([byte0 * 256 + byte1]), is
@@ -311,13 +345,10 @@ module Make (I : Common.Input) (X : Common.Buffer) =
       if byte0 land 0xF <> 8 || byte0 lsr 4 < 7 (* see RFC 1950 § 2.2 *)
       then raise Invalid_header;
 
-      Printf.sprintf "header check"
-      |> add_trace inflater;
-
       (* [byte0 lsr 4] is the base-2 logarithm of the LZ77 window size, minus
        * eight ([byte0 lsr 4 + 8 = 7] indicates a 32K window size). See RFC 1950
        * § 2.2. *)
-      Window.set_bits (byte0 lsr 4 + 8) inflater.window;
+      let window = Window.init ~bits:(byte0 lsr 4 + 8) () in
 
       (* If [byte1 land 0x20] is set, a dictionary identifier is present
        * immediately after the [byte1]. The dictionary is a sequence of bytes
@@ -325,14 +356,14 @@ module Make (I : Common.Input) (X : Common.Buffer) =
        * compressed output. The dictionary identifier is the Adler-32 checksum
        * of this sequence of bytes. The decompressor can use this identifier to
        * determine which dictionary has been used by the compressor. *)
-      Printf.sprintf "next mode %s"
-        ((if byte1 land 0x20 <> 0 then BAD else BLOCK) |> string_of_mode)
-      |> add_trace inflater;
+      inflater.k <-
+        if byte1 land 0x20 <> 0
+        then error
+        else block window;
 
-      inflater.mode <- if byte1 land 0x20 <> 0 then BAD else BLOCK;
       eval inflater
 
-    and compute_block inflater =
+    and block window inflater =
 
       (*    ________
        *   |  |  |  |. . .
@@ -354,72 +385,69 @@ module Make (I : Common.Input) (X : Common.Buffer) =
        *)
       inflater.last <- get_bit inflater;
 
-      Printf.sprintf "is last block: %b" inflater.last
-        |> add_trace inflater;
+      let () = (match get_bits inflater 2 with
+        | 0 ->
 
-      let type_compression = get_bits inflater 2 in
+          (* Any bites of input up to the next byte boundary are ignored. The
+           * rest of the block consists of the following information:
+           *
+           *    ___________
+           *   |  |  |  |  |. . .
+           *   |__|__|__|__|
+           *   |     |
+           *   |     | NLEN the one's complement of LEN
+           *   |
+           *   | LEN is the number of data bytes in the block
+           *)
+          let len = get_ui16 inflater in
+          let nlen = get_ui16 inflater in
 
-      Printf.sprintf "type: %d" type_compression
-        |> add_trace inflater;
+          if nlen <> 0xFFFF - len
+          then raise Invalid_complement_of_length
+          else begin
+            inflater.k <- flat window len;
+            reset_bits inflater
+          end
+        | 1 ->
 
-      begin match type_compression with
-      | 0 ->
+          (* The Huffman codes for the two alphabets are fixed, and are not
+           * represented explicitly in the data.
+           *)
+          let get_chr () =
+            Huffman.read_and_find
+              ~get_bit:(fun () -> get_bit inflater)
+              ~get_bits:(get_bits inflater)
+              fixed_huffman_length_tree
+          in
 
-        (* Any bites of input up to the next byte boundary are ignored. The rest
-         * of the block consists of the following information:
-         *
-         *    ___________
-         *   |  |  |  |  |. . .
-         *   |__|__|__|__|
-         *   |     |
-         *   |     | NLEN the one's complement of LEN
-         *   |
-         *   | LEN is the number of data bytes in the block
-         *)
-        let len = get_ui16 inflater in
-        let nlen = get_ui16 inflater in
+          (* Distance codes 0-31 are represented by (fixed-length) 5-bit
+           * codes, with possible additional bits as shown in the table
+           * [base_distance]. *)
+          let get_dst () = get_revbits inflater 5 in
+          inflater.k <- compress ~get_chr ~get_dst window
+        | 2 ->
+          inflater.k <- table window
+        | _ ->
+          raise Invalid_type_of_data)
+      in
 
-        if nlen <> 0xFFFF - len
-        then raise Invalid_complement_of_length
-        else
-          begin
-            inflater.mode <- FLAT;
-            inflater.length <- len;
-          end;
+      eval inflater
 
-        reset_bits inflater
-      | 1 ->
+    and flat window len inflater =
+      let possible_to_write = min len inflater.needed in
+      let bytes = inflater.src_bytes possible_to_write in
+      let read_as_possible = String.length bytes in
 
-        (* The Huffman codes for the two alphabets are fixed, and are not
-         * represented explicitly in the data.
-         *)
-        inflater.length_tree <- fixed_huffman_length_tree;
-        inflater.mode <- COMPRESS
-      | 2 ->
-        inflater.mode <- TABLE
-      | _ ->
-        raise Invalid_type_of_data
-    end;
-
-    eval inflater
-
-    and compute_flat inflater =
-      let possible_to_write = min inflater.length inflater.needed in
-      let bytes = I.input inflater.src possible_to_write in
-      let read_as_possible = Bytes.length bytes in
-
-      add_bytes inflater (X.of_bytes bytes);
-      inflater.length <- inflater.length - read_as_possible;
-
-      if inflater.length = 0
-      then inflater.mode <- (if inflater.last then CRC else BLOCK);
+      add_bytes inflater window (X.of_string bytes);
+      inflater.k <-
+        if len - read_as_possible = 0
+        then crc window
+        else flat window (len - read_as_possible);
 
       if inflater.needed > 0 then eval inflater
+      else `Flush
 
-    and lengths_position =
-      [| 16; 17; 18; 0; 8; 7; 9; 6; 10; 5; 11; 4; 12; 3; 13; 2; 14; 1; 15; |]
-
-    and compute_table inflater =
+    and table window inflater =
 
       (* The Huffman codes for the two alphabets appear in the block
        * immediately after the header bits and before the actual
@@ -440,37 +468,31 @@ module Make (I : Common.Input) (X : Common.Buffer) =
        *   | Literal/Length codes - 257 (257 - 286)
        *)
 
-      let hlit = get_bits inflater 5 + 257 in
       (* HLIT + 257 code lengths for the literal/length alphabet,
        *            encoded using the code length Huffman code
        *)
+      let hlit = get_bits inflater 5 + 257 in
 
-      let hdist = get_bits inflater 5 + 1 in
       (* HDIST + 1 code lengths for the distance alphabet,
        *           encoded using the code length Huffman code
        *)
+      let hdist = get_bits inflater 5 + 1 in
 
-      let hclen = get_bits inflater 4 + 4 in
       (* (HCLEN + 4) * 3 bits:
        *  code lengths for the code length alphabet given just above, in the
        *  order:
        *   16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
        *   (see [lengths_position])
        *)
+      let hclen = get_bits inflater 4 + 4 in
 
-      Printf.sprintf "hlit:  %d" hlit
-      |> add_trace inflater;
-
-      Printf.sprintf "hdist: %d" hdist
-      |> add_trace inflater;
-
-      Printf.sprintf "hclen: %d" hclen
-      |> add_trace inflater;
+      let buffer = Array.make 19 0 in
 
       for i = 0 to hclen - 1 do
-        Array.unsafe_set inflater.buffer
-          (Array.unsafe_get lengths_position i)
-          (get_bits inflater 3);
+        Array.unsafe_set
+          buffer
+          (Array.unsafe_get hclen_order i)
+          (get_bits inflater 3)
       done;
 
       (* As above, a code length of 0 means the
@@ -478,51 +500,36 @@ module Make (I : Common.Input) (X : Common.Buffer) =
        * length) is not used.
        *)
       for i = hclen to 18 do
-        Array.unsafe_set inflater.buffer
-          (Array.unsafe_get lengths_position i) 0;
+        Array.unsafe_set
+          buffer
+          (Array.unsafe_get hclen_order i)
+          0
       done;
 
-      inflater.length_tree <-
-        Huffman.make inflater.buffer 0 19 7;
-      (* These code lengths are interpreted as 3-bit integers (0-7). *)
+      let dictionary =
+        inflate_dictionnary
+          inflater
+          (Huffman.make buffer 0 19 7)
+          (hlit + hdist) in
 
-      let temp = Array.make (hlit + hdist) 0 in
-      inflate_dictionnary inflater temp (hlit + hdist);
+      let get_chr () =
+        Huffman.read_and_find
+          ~get_bit:(fun () -> get_bit inflater)
+          ~get_bits:(get_bits inflater)
+          (Huffman.make dictionary 0 hlit 16)
+      in
+      let get_dst () =
+        Huffman.read_and_find
+          ~get_bit:(fun () -> get_bit inflater)
+          ~get_bits:(get_bits inflater)
+          (Huffman.make dictionary hlit hdist 16)
+      in
 
-      inflater.distance_tree <-
-        Some (Huffman.make temp hlit hdist 16);
-      inflater.length_tree <-
-        Huffman.make temp 0 hlit 16;
-      inflater.mode <- COMPRESS;
+      inflater.k <- compress ~get_chr ~get_dst window;
 
       eval inflater
 
-    and extrabits_length =
-      [|
-        0; 0; 0; 0; 0; 0; 0; 0; 1;  1;
-        1; 1; 2; 2; 2; 2; 3; 3; 3;  3;
-        4; 4; 4; 4; 5; 5; 5; 5; 0; -1; -1;
-      |]
-    and base_length =
-      [|
-          3;  4;  5;   6;   7;   8;   9;  10;  11; 13;
-         15; 17; 19;  23;  27;  31;  35;  43;  51; 59;
-         67; 83; 99; 115; 131; 163; 195; 227; 258; -1; -1;
-      |]
-    and extrabits_distance =
-      [|
-        0; 0;  0;  0;  1;  1;  2;  2;  3;  3;
-        4; 4;  5;  5;  6;  6;  7;  7;  8;  8;
-        9; 9; 10; 10; 11; 11; 12; 12; 13; 13; -1;
-      |]
-    and base_distance =
-      [|
-           1;    2;    3;    4;    5;    7;    9;    13;    17;    25;
-          33;   49;   65;   97;  129;  193;  257;   385;   513;   769;
-        1025; 1537; 2049; 3073; 4097; 6145; 8193; 12289; 16385; 24577; -1;
-      |]
-
-    and compute_compress inflater =
+    and compress ~get_chr ~get_dst window inflater =
 
       (* As noted above, encoded data blocks in the "deflate" format
        * consist of sequences of symbols drawn from three conceptually
@@ -564,101 +571,113 @@ module Make (I : Common.Input) (X : Common.Buffer) =
        *     8   3  17-24   18   8    513-768   28   13 16385-24576
        *     9   3  25-32   19   8   769-1024   29   13 24577-32768
        *)
-      match Huffman.read_and_find
-              ~get_bit:(fun () -> get_bit inflater)
-              ~get_bits:(get_bits inflater) inflater.length_tree with
+      match get_chr () with
       | n when n < 256 ->
-        add_char inflater (Char.unsafe_chr n);
-        if inflater.needed > 0 then eval inflater
+        add_char inflater window (Char.unsafe_chr n);
+        if inflater.needed > 0
+        then eval inflater
+        else `Flush
       | 256 ->
-        inflater.mode <- if inflater.last then CRC else BLOCK;
+        inflater.k <-
+          if inflater.last
+          then crc window
+          else block window;
         eval inflater
       | n ->
+        let rec distone (distance, length) window inflater =
+          let size = min length inflater.needed in
+          let chr = Window.get_char window in
+          let bytes = X.make size chr in
+
+          add_bytes inflater window bytes;
+
+          inflater.k <-
+            if length - size = 0
+            then compress ~get_chr ~get_dst window
+            else distone (distance, length - size) window;
+
+          if inflater.needed > 0
+          then eval inflater
+          else `Flush
+
+        and dist (distance, length) window inflater =
+          let l = ref length in
+
+          while !l > 0 && inflater.needed > 0 do
+            let size = min inflater.needed (min length distance) in
+            let bytes = Window.get_buffer
+              window
+              (Window.available window - distance)
+              size in
+
+            add_bytes inflater window bytes;
+            l := !l - size;
+          done;
+
+          inflater.k <-
+            if !l = 0
+            then compress ~get_chr ~get_dst window
+            else dist (distance, !l) window;
+
+          if inflater.needed > 0
+          then eval inflater
+          else `Flush
+        in
+
         let n = n - 257 in
         let extrabits_length = Array.unsafe_get extrabits_length n in
 
-        if extrabits_length = -1 (* Note that distance codes 30-31 will never
-                                  * actually occur in the compressed data. *)
+        if extrabits_length = -1
         then raise Invalid_extrabits;
 
-        inflater.length <- Array.unsafe_get base_length n
-                           + get_bits inflater extrabits_length;
-
-        let distance = match inflater.distance_tree with
-          | None -> get_revbits inflater 5
-          (* Distance codes 0-31 are represented by (fixed-length) 5-bit
-           * codes, with possible additional bits as shown in the table
-           * [base_distance]. *)
-          | Some huffman ->
-            Huffman.read_and_find
-              ~get_bit:(fun () -> get_bit inflater)
-              ~get_bits:(get_bits inflater) huffman
+        let length =
+          Array.unsafe_get base_length n
+          + get_bits inflater extrabits_length
         in
-        let extrabits_distance = Array.unsafe_get extrabits_distance distance in
+        let n = get_dst () in
+        let extrabits_distance = Array.unsafe_get extrabits_distance n in
 
         if extrabits_distance = -1
         then raise Invalid_extrabits;
 
-        inflater.distance <- (Array.unsafe_get base_distance distance)
-                             + (get_bits inflater extrabits_distance);
+        let distance =
+          (Array.unsafe_get base_distance n)
+          + (get_bits inflater extrabits_distance)
+        in
 
-        if inflater.distance > Window.available inflater.window
+        if distance > Window.available window
         then raise Invalid_distance;
 
-        inflater.mode <- if inflater.distance = 1 then DISTONE else DIST;
+        inflater.k <-
+          if distance = 1
+          then distone (distance, length) window
+          else dist (distance, length) window;
+
         eval inflater
 
-    and compute_distone inflater =
-      let size = min inflater.length inflater.needed in
-      let chr = Window.get_char inflater.window in
-      let bytes = X.make size chr in
-
-      add_bytes inflater bytes;
-      inflater.length <- inflater.length - size;
-
-      if inflater.length = 0 then inflater.mode <- COMPRESS;
-      if inflater.needed > 0 then eval inflater
-
-    and compute_dist inflater =
-      while inflater.length > 0 && inflater.needed > 0 do
-        let size = min inflater.needed (min inflater.length inflater.distance) in
-        let bytes = Window.get_buffer
-          inflater.window
-          (Window.available inflater.window - inflater.distance)
-          size in
-
-        add_bytes inflater bytes;
-        inflater.length <- inflater.length - size;
-      done;
-
-      if inflater.length = 0 then inflater.mode <- COMPRESS;
-      if inflater.needed > 0 then eval inflater
-
-    and compute_crc inflater =
-      let a2a = I.read_byte inflater.src in
-      let a2b = I.read_byte inflater.src in
-      let a1a = I.read_byte inflater.src in
-      let a1b = I.read_byte inflater.src in
+    and crc window inflater =
+      let a2a = inflater.src_byte () in
+      let a2b = inflater.src_byte () in
+      let a1a = inflater.src_byte () in
+      let a1b = inflater.src_byte () in
 
       if Adler32.neq
         (Adler32.make ((a1a lsl 8) lor a1b) ((a2a lsl 8) lor a2b))
-        (Window.checksum inflater.window)
+        (Window.checksum window)
       then raise Invalid_crc;
 
-      inflater.mode <- DONE;
+      inflater.k <- ok;
+
       eval inflater
 
-    and compute_done inflater = ()
+    and ok inflater = `Ok
 
-    and compute_bad inflater = ()
+    and error inflater = `Error
 
-    let finish { mode; _ } =
-      if mode = DONE then true else false
-
-    let clear inflater size =
-      inflater.needed <- size;
-      inflater.outpos <- 0
-
-    let size { outpos; _ } =
+    let contents { outpos; _ } =
       outpos
+
+    let flush inflater =
+      inflater.needed <- X.length inflater.dst;
+      inflater.outpos <- 0
   end

@@ -16,7 +16,7 @@ module type S =
     val get : t -> (int * int)
   end
 
-module Make (X : Common.Buffer) : S with type buffer = X.t =
+module Make (X : Common.SafeString) : S with type buffer = X.t =
   struct
     let base = 65521
     (* largest prime smaller than 65536 *)
@@ -141,12 +141,3 @@ module Make (X : Common.Buffer) : S with type buffer = X.t =
 
     let get { a1; a2; } = (a1, a2)
   end
-
-module String = Make (struct
-                        include String
-
-                        let to_string x = x
-                        let of_bytes x = Bytes.to_string x
-                      end)
-
-module Bytes = Make (struct include Bytes let of_bytes x = x end )
