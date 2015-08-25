@@ -239,10 +239,11 @@ module Make (X : Common.Buffer) =
           let length = String.length s in
           let position = ref p in
           (fun () ->
-            incr position;
-            if !position = length
-            then raise End_of_file
-            else Char.code (String.unsafe_get s !position)),
+            let chr =
+              if !position = length
+              then raise End_of_file
+              else Char.code (String.unsafe_get s !position)
+            in incr position; chr),
           (fun size ->
             let read_as_possible =
               min (length - !position) size in
