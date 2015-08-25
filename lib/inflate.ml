@@ -18,30 +18,6 @@ module type S =
 
 module Make (X : Common.Buffer) =
   struct
-    type mode =
-      | HEAD
-      | BLOCK
-      | CRC
-      | COMPRESS
-      | FLAT
-      | BAD
-      | TABLE
-      | DIST
-      | DISTONE
-      | DONE
-
-    let string_of_mode = function
-      | HEAD     -> "HEAD"
-      | BLOCK    -> "BLOCK"
-      | CRC      -> "CRC"
-      | COMPRESS -> "COMPRESS"
-      | FLAT     -> "FLAT"
-      | BAD      -> "BAD"
-      | TABLE    -> "TABLE"
-      | DIST     -> "DIST"
-      | DISTONE  -> "DISTONE"
-      | DONE     -> "DONE"
-
     exception Invalid_huffman
     exception Invalid_dictionnary
     exception Invalid_header
