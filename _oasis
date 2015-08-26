@@ -14,8 +14,8 @@ AlphaFeatures:          ocamlbuild_more_args
 
 Library decompress
   Path:                 lib
-  InternalModules:      Huffman, Tree, Heap
-  Modules:              Common, Adler32, Window, Inflate, Lz77
+  InternalModules:      Huffman, Tree, Heap, Lz77, Window, Adler32
+  Modules:              Common, Inflate, Deflate
   ByteOpt:              -safe-string
   NativeOpt:            -p -safe-string
 
