@@ -5,16 +5,14 @@ module type S =
     type buffer
 
     val init : ?bits:int -> unit -> t
-    val slide : t -> unit
-    val add_bytes : buffer -> ?start:int -> ?size:int -> t -> unit
-    val add_char : char -> t -> unit
-    val set_bits : int -> t -> unit
-    val finish : t -> bool
-    val checksum : t -> crc
-    val available : t -> int
 
+    val add_buffer : buffer -> ?start:int -> ?size:int -> t -> unit
+    val add_char : char -> t -> unit
     val get_char : t -> char
     val get_buffer : t -> int -> int -> buffer
+
+    val checksum : t -> crc
+    val available : t -> int
   end
 
 module Make (X : Common.Buffer) =
@@ -62,7 +60,7 @@ module Make (X : Common.Buffer) =
       X.unsafe_blit window.buffer window.size tmp 0 window.have;
       window.buffer <- tmp
 
-    let rec add_bytes bytes ?(start = 0) ?(size = X.length bytes) window =
+    let rec add_buffer bytes ?(start = 0) ?(size = X.length bytes) window =
       if window.have + size > window.size lsl 1 then slide window;
 
       X.unsafe_blit bytes start window.buffer window.have size;

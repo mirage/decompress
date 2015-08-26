@@ -226,7 +226,7 @@ module Make (X : Common.Buffer) =
       inflater.outpos <- inflater.outpos + 1
 
     let add_bytes inflater window bytes =
-      Window.add_bytes bytes window;
+      Window.add_buffer bytes window;
       X.unsafe_blit bytes 0 inflater.dst inflater.outpos (X.length bytes);
       inflater.needed <- inflater.needed - (X.length bytes);
       inflater.outpos <- inflater.outpos + (X.length bytes)

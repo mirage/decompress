@@ -18,7 +18,7 @@ module type S =
     (** Add buffer in the sliding window.
 
         Call [slide] if the space is not enough. *)
-    val add_bytes : buffer -> ?start:int -> ?size:int -> t -> unit
+    val add_buffer : buffer -> ?start:int -> ?size:int -> t -> unit
     val add_char : char -> t -> unit
 
     (** Set size of window.
