@@ -6,11 +6,11 @@ Pur OCaml implementation of Zlib
 Documentation
 =============
 
-Not yet!
+You can find it [here](http://oklm-wsh.github.io/Decompress/doc).
 
 Build Requirements
 ==================
 
  * OCaml >= 4.01.0
 
-[![Build Status](https://travis-ci.org/dinosaure/Decompress.svg)](https://travis-ci.org/dinosaure/Decompress)
+[![Build Status](https://travis-ci.org/oklm-wsh/Decompress.svg)](https://travis-ci.org/oklm-wsh/Decompress)
