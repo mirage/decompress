@@ -1,3 +1,6 @@
+env:
+  global:
+  - secure: "mv/uFbJc/hh1hfhnn1HxkL2ryTXvqgiqzCsAVNUhKofQMvZSTi2SiuGB+rMg7cC4NkvCMFiL/7xLdLb6dUHx3BKNsur0kLlUINlg45ZQbz/QjZT9+/t49+UNQv7AcTxsU6JpoA9RFrXv14oRhQjPNYApRmO+HaA4mcOJBC930nI="
 language: c
 script: bash -ex .travis-ci.sh
 sudo: required
