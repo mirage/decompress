@@ -1,7 +1,11 @@
+(** LZ77 compression algorithm. *)
+
 module type S =
   sig
+    (** Safe string. *)
     type str
 
+    (** Type of compressed elements. *)
     type elt =
       | Buffer of str (** raw buffer *)
       | Insert of int * int (** negative offset х length *)

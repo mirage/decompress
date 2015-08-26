@@ -1,9 +1,9 @@
 module type S =
   sig
-    (** It's Adler-32 checksum of a buffer. *)
+    (** Adler-32 checksum of a buffer. *)
     type t
 
-    (** It's type of buffer (Bytes.t or String.t generally). *)
+    (** Type of buffer (Bytes.t or String.t generally). *)
     type buffer
 
     (** Initial Adler-32 value. *)

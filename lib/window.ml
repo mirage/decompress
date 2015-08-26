@@ -32,7 +32,7 @@ module Make (X : Common.Buffer) =
         mutable buffer : X.t;
           (* allocated sliding window, if needed *)
         mutable crc    : CRC.t;
-          (* Adler-32 *)
+          (* adler-32 *)
       }
 
     type buffer = X.t
