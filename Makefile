@@ -1,3 +1,11 @@
+PKG_NAME = $(shell oasis query name)
+PKG_VERSION = $(shell oasis query version)
+PKG_TARBALL = $(PKG_NAME)-$(PKG_VERSION).tar.gz
+
+DISTFILES = $(shell git ls-files)
+
+CONFIGUREFLAGS =
+
 # OASIS_START
 # DO NOT EDIT (digest: a3c674b4239234cbbe53afe090018954)
 
@@ -39,3 +47,16 @@ configure:
 .PHONY: build doc test all install uninstall reinstall clean distclean configure
 
 # OASIS_STOP
+
+setup.ml: _oasis
+	oasis setup -setup-update dynamic
+
+# Make a tarball
+.PHONY: dist tar
+dist tar: $(DISTFILES)
+	mkdir $(PKG_NAME)-$(PKG_VERSION)
+	cp --parents -r $(DISTFILES) $(PKG_NAME)-$(PKG_VERSION)/
+#	setup.ml independent of oasis:
+	cd $(PKG_NAME)-$(PKG_VERSION) && oasis setup
+	tar -zcvf $(PKG_TARBALL) $(PKG_NAME)-$(PKG_VERSION)
+	$(RM) -rf $(PKG_NAME)-$(PKG_VERSION)
