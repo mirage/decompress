@@ -15,9 +15,9 @@ module type S =
     val available : t -> int
   end
 
-module Make (X : Common.Buffer) =
+module Make (X : Decompress_common.Bytes) =
   struct
-    module CRC = Adler32.Make(X)
+    module CRC = Decompress_adler32.Make(X)
 
     type t =
       {

@@ -1,3 +1,5 @@
+module Heap = Decompress_heap
+
 let reverse_package_merge p n limit =
   let minimum_cost     = Array.make limit 0 in
   let flag             = Array.make limit 0 in

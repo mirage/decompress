@@ -8,8 +8,8 @@ module Bytes =
     let of_bytes x = x
   end
 
-module Inflate = Inflate.Make(Bytes)
-module Deflate = Deflate.Make(Bytes)
+module Inflate = Decompress.Inflate.Make(Bytes)
+module Deflate = Decompress.Deflate.Make(Bytes)
 
 let pipe () =
   let buffer = Buffer.create 0xFFFF in
@@ -53,4 +53,4 @@ let pipe () =
     | `Error -> ()
   in aux (Deflate.make (`Channel stdin) output)
 
-let () =pipe ()
+let () = pipe ()

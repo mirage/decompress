@@ -35,5 +35,5 @@ module type S =
     val flush : t -> unit
   end
 
-module Make (X : Common.Buffer) : S
+module Make (X : Decompress_common.Bytes) : S
   with type dst = X.t

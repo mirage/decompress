@@ -27,7 +27,7 @@ let binary_of_byte ?(size = 8) byte =
   String.make (size - List.length l) '0'
   ^ String.concat "" (aux [] byte)
 
-module Make (X : Common.Buffer) =
+module Make (X : Decompress_common.Bytes) =
   struct
     type deflate =
       | NONE
@@ -49,8 +49,9 @@ module Make (X : Common.Buffer) =
         let to_bytes = Bytes.of_string
       end
 
-    module Adler32 = Adler32.Make(String)
-    module Lz77 = Lz77.Make(String)
+    module Adler32 = Decompress_adler32.Make(String)
+    module Lz77 = Decompress_lz77.Make(String)
+    module Tree = Decompress_tree
 
     let fixed_huffman_length_table =
       Array.init 288

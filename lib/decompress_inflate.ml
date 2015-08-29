@@ -16,7 +16,7 @@ module type S =
     val flush : t -> unit
   end
 
-module Make (X : Common.Buffer) =
+module Make (X : Decompress_common.Bytes) =
   struct
     exception Invalid_huffman
     exception Invalid_dictionnary
@@ -27,8 +27,9 @@ module Make (X : Common.Buffer) =
     exception Invalid_distance
     exception Invalid_crc
 
-    module Adler32 = Adler32.Make(X)
-    module Window = Window.Make(X)
+    module Adler32 = Decompress_adler32.Make(X)
+    module Window = Decompress_window.Make(X)
+    module Huffman = Decompress_huffman
 
     let hclen_order =
       [| 16; 17; 18; 0; 8; 7; 9; 6; 10; 5; 11; 4; 12; 3; 13; 2; 14; 1; 15; |]

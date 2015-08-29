@@ -29,7 +29,7 @@ module type S =
       t -> (int array * int array)
   end
 
-module Make (X : Common.SafeString) =
+module Make (X : Decompress_common.String) =
   struct
     type key = (char * char * char) option
     type str = X.t

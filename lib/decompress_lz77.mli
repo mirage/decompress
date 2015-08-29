@@ -33,5 +33,5 @@ module type S =
       t -> (int array * int array)
   end
 
-module Make (X : Common.SafeString) : S with
+module Make (X : Decompress_common.String) : S with
   type str = X.t

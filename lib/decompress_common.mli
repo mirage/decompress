@@ -1,4 +1,4 @@
-module type SafeString =
+module type String =
   sig
     type t
 
@@ -15,9 +15,9 @@ module type SafeString =
     val to_bytes       : t -> Bytes.t
   end
 
-module type Buffer =
+module type Bytes =
   sig
-    include SafeString
+    include String
 
     val create         : int -> t
 
