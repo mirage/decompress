@@ -50,7 +50,7 @@ module Make (X : Decompress_common.Bytes) =
       end
 
     module Adler32 = Decompress_adler32.Make(String)
-    module Lz77 = Decompress_lz77.Make(String)
+    module Lz77 = Decompress_lz77.Slow(String)
     module Tree = Decompress_tree
 
     let fixed_huffman_length_table =

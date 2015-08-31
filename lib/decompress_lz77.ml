@@ -29,8 +29,45 @@ module type S =
       t -> (int array * int array)
   end
 
-module Make (X : Decompress_common.String) =
+module Common (X : Decompress_common.String) =
   struct
+    type elt =
+      | Buffer of X.t
+      | Insert of int * int
+
+    let compare_elt x y = match x, y with
+      | Buffer x, Buffer y ->
+        X.compare x y
+      | Insert (x, y), Insert (u, v) ->
+        compare (x, y) (u, v)
+      | Buffer _, _ -> 1
+      | Insert _, _ -> (-1)
+
+    let pp_elt fmt = function
+      | Buffer bytes -> Format.fprintf fmt "Buffer %S" (X.to_string bytes)
+      | Insert (off, len) -> Format.fprintf fmt "Insert (%d, %d)" off len
+
+    type t = elt list
+
+    let rec compare l1 l2 = match l1, l2 with
+      | [], [] -> 0
+      | [], _  -> (-1)
+      | _, []  -> 1
+      | x1 :: r1, x2 :: r2 ->
+        match compare_elt x1 x2 with
+        | 0 -> compare r1 r2
+        | i -> i
+
+    let rec pp fmt l =
+      Format.fprintf fmt "[@[<hov 2> ";
+      List.iter (Format.fprintf fmt "%a;@ " pp_elt) l;
+      Format.fprintf fmt "@]]@;"
+  end
+
+module Slow (X : Decompress_common.String) =
+  struct
+    include Common(X)
+
     type key = (char * char * char) option
     type str = X.t
 
@@ -63,38 +100,6 @@ module Make (X : Decompress_common.String) =
         else acc
       in
       aux None 3
-
-    type elt =
-      | Buffer of X.t
-      | Insert of int * int
-
-    let compare_elt x y = match x, y with
-      | Buffer x, Buffer y ->
-        X.compare x y
-      | Insert (x, y), Insert (u, v) ->
-        compare (x, y) (u, v)
-      | Buffer _, _ -> 1
-      | Insert _, _ -> (-1)
-
-    let pp_elt fmt = function
-      | Buffer bytes -> Format.fprintf fmt "Buffer %S" (X.to_string bytes)
-      | Insert (off, len) -> Format.fprintf fmt "Insert (%d, %d)" off len
-
-    type t = elt list
-
-    let rec compare l1 l2 = match l1, l2 with
-      | [], [] -> 0
-      | [], _  -> (-1)
-      | _, []  -> 1
-      | x1 :: r1, x2 :: r2 ->
-        match compare_elt x1 x2 with
-        | 0 -> compare r1 r2
-        | i -> i
-
-    let rec pp fmt l =
-      Format.fprintf fmt "[@[<hov 2> ";
-      List.iter (Format.fprintf fmt "%a;@ " pp_elt) l;
-      Format.fprintf fmt "@]]@;"
 
     let max_insert a b =
       match a, b with
