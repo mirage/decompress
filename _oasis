@@ -11,6 +11,7 @@ Plugins:                META (0.3), DevFiles (0.3)
 BuildTools:             ocamlbuild
 OCamlVersion:           >= 4.02
 AlphaFeatures:          ocamlbuild_more_args
+XOCamlbuildPluginTags:  package(cppo_ocamlbuild)
 
 Library decompress
   Path:                 lib
