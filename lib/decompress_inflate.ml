@@ -585,7 +585,7 @@ module Make (X : Decompress_common.Bytes) =
             let size = min inflater.needed (min length distance) in
             let bytes = Window.get_buffer
               window
-              (Window.available window - distance)
+              distance
               size in
 
             add_bytes inflater window bytes;
