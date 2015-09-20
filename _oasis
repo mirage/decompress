@@ -1,6 +1,6 @@
 OASISFormat:            0.4
 Name:                   decompress
-Version:                0.1
+Version:                0.2
 Synopsis:               Inflate and Deflate Zlib
 Description:            Pure OCaml Library for Zlib
 Authors:                Romain Calascibetta
