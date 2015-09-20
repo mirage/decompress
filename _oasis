@@ -38,5 +38,5 @@ Executable main
 
 SourceRepository master
   Type:                 git
-  Location:             https://github.com/dinosaure/Decompress.git
-  Browser:              https://github.com/dinosaure/Decompress
+  Location:             https://github.com/oklm-wsh/Decompress.git
+  Browser:              https://github.com/oklm-wsh/Decompress
