@@ -62,9 +62,54 @@ module Common (X : Decompress_common.String) =
       Format.fprintf fmt "[@[<hov 2> ";
       List.iter (Format.fprintf fmt "%a;@ " pp_elt) l;
       Format.fprintf fmt "@]]@;"
+
+    let to_freqs ~get_length ~get_distance lz77 =
+      let freqs_lit_length = Array.make 286 0 in
+      let freqs_distance = Array.make 30 0 in
+      let rec aux = function
+        | Buffer bytes :: rest ->
+          X.iter (fun chr ->
+            let code = Char.code chr in
+            freqs_lit_length.(code) <- freqs_lit_length.(code) + 1)
+          bytes;
+          aux rest
+        | Insert (dist, length) :: rest ->
+          let code, _, _ = get_length length in
+          let dist, _, _ = get_distance dist in
+          freqs_lit_length.(code) <- freqs_lit_length.(code) + 1;
+          freqs_distance.(dist) <- freqs_distance.(dist) + 1;
+          aux rest
+        | [] -> ()
+      in
+      let () = freqs_lit_length.(256) <- 1 in
+      let () = aux lz77 in
+      freqs_lit_length, freqs_distance
+
+    let size_of_elt = function
+      | Buffer buffer -> X.length buffer
+      | Insert (_, l) -> l
+
+    let decompress l =
+      let rec length acc = function
+        | [] -> acc
+        | x :: r -> length (size_of_elt x + acc) r
+      in
+      let buffer = Bytes.create (length 0 l) in
+      let rec fill off = function
+        | [] -> ()
+        | x :: r ->
+          let () = match x with
+            | Buffer s ->
+              Bytes.blit (X.to_bytes s) 0 buffer off (X.length s)
+            | Insert (diff, len) ->
+              Bytes.blit buffer (off - diff) buffer off len
+          in
+          fill (off + (size_of_elt x)) l
+      in
+      fill 0 l; buffer
   end
 
-module Slow (X : Decompress_common.String) =
+module Slow (X : Decompress_common.String) : S with type str = X.t =
   struct
     include Common(X)
 
@@ -160,49 +205,4 @@ module Slow (X : Decompress_common.String) =
       flush_last ();
 
       List.rev !res
-
-    let size_of_elt = function
-      | Buffer buffer -> X.length buffer
-      | Insert (_, l) -> l
-
-    let decompress l =
-      let rec length acc = function
-        | [] -> acc
-        | x :: r -> length (size_of_elt x + acc) r
-      in
-      let buffer = Bytes.create (length 0 l) in
-      let rec fill off = function
-        | [] -> ()
-        | x :: r ->
-          let () = match x with
-            | Buffer s ->
-              Bytes.blit (X.to_bytes s) 0 buffer off (X.length s)
-            | Insert (diff, len) ->
-              Bytes.blit buffer (off - diff) buffer off len
-          in
-          fill (off + (size_of_elt x)) l
-      in
-      fill 0 l; buffer
-
-    let to_freqs ~get_length ~get_distance lz77 =
-      let freqs_lit_length = Array.make 286 0 in
-      let freqs_distance = Array.make 30 0 in
-      let rec aux = function
-        | Buffer bytes :: rest ->
-          X.iter (fun chr ->
-            let code = Char.code chr in
-            freqs_lit_length.(code) <- freqs_lit_length.(code) + 1)
-          bytes;
-          aux rest
-        | Insert (dist, length) :: rest ->
-          let code, _, _ = get_length length in
-          let dist, _, _ = get_distance dist in
-          freqs_lit_length.(code) <- freqs_lit_length.(code) + 1;
-          freqs_distance.(dist) <- freqs_distance.(dist) + 1;
-          aux rest
-        | [] -> ()
-      in
-      let () = freqs_lit_length.(256) <- 1 in
-      let () = aux lz77 in
-      freqs_lit_length, freqs_distance
   end
