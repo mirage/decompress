@@ -33,25 +33,27 @@ module Make (X : Decompress_common.String) : S with type buffer = X.t =
 
     type buffer = X.t
 
-#define do1(buffer,current) \
-      t.a1 <- t.a1 + (X.get buffer (current) |> Char.code); \
-      t.a2 <- t.a1 + t.a2 \
+    (* TODO: unroll *)
 
-#define do2(buffer,current) \
-      do1(buffer,current); \
-      do1(buffer,current + 1)
+    let do1 buffer current t =
+      t.a1 <- t.a1 + (X.get buffer current |> Char.code);
+      t.a2 <- t.a1 + t.a2
 
-#define do4(buffer,current) \
-      do2(buffer,current); \
-      do2(buffer,current + 2)
+    let do2 buffer current adler =
+      do1 buffer current adler;
+      do1 buffer (current + 1) adler
 
-#define do8(buffer,current) \
-      do4(buffer,current); \
-      do4(buffer,current + 4)
+    let do4 buffer current adler =
+      do2 buffer current adler;
+      do2 buffer (current + 2) adler
 
-#define do16(buffer,current) \
-      do8(buffer,current); \
-      do8(buffer,current + 8)
+    let do8 buffer current adler =
+      do4 buffer current adler;
+      do4 buffer (current + 4) adler
+
+    let do16 buffer current adler =
+      do8 buffer current adler;
+      do8 buffer (current + 8) adler
 
     let init () = { a1 = 1; a2 = 0; }
 
@@ -81,7 +83,7 @@ module Make (X : Decompress_common.String) : S with type buffer = X.t =
 
         while !len >= nmax do
           for n = nmax / 16 downto 1 do
-            do16(buffer,start + !cur);
+            do16 buffer (start + !cur) t;
             cur := !cur + 16;
           done;
 
@@ -93,7 +95,8 @@ module Make (X : Decompress_common.String) : S with type buffer = X.t =
 
         if !len <> 0 then
           while !len >= 16 do
-            do16(buffer,start + !cur);
+            do16 buffer (start + !cur) t;
+
             cur := !cur + 16;
             len := !len - 16;
           done;

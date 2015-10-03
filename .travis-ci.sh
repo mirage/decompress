@@ -5,7 +5,7 @@ sudo apt-get install ocaml ocaml-native-compilers camlp4-extra opam opam
 export OPAMYES=1
 opam init
 opam update
-opam install oasis ocamlfind cppo
+opam install oasis ocamlfind
 eval `opam config env`
 
 ./configure
