@@ -129,7 +129,7 @@ module Make (X : Decompress_common.Bytes) =
     let get_char t =
       if t.wpos = 0
       then X.get t.buffer (t.size - 1)
-      else X.get t.buffer t.wpos
+      else X.get t.buffer (t.wpos - 1)
 
     let get_buffer t dist size =
       assert (dist <= available_to_read t);
