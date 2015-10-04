@@ -33,8 +33,6 @@ module Make (X : Decompress_common.String) : S with type buffer = X.t =
 
     type buffer = X.t
 
-    (* TODO: unroll *)
-
     let do1 buffer current t =
       t.a1 <- t.a1 + (X.get buffer current |> Char.code);
       t.a2 <- t.a1 + t.a2
@@ -136,7 +134,7 @@ module Make (X : Decompress_common.String) : S with type buffer = X.t =
 
     let to_string { a1; a2; } =
       let buffer = Buffer.create 16 in
-      Printf.bprintf buffer "[%d; %d]" a1 a2;
+      Printf.bprintf buffer "[%02x; %02x]" a1 a2;
       Buffer.contents buffer
 
     let get { a1; a2; } = (a1, a2)
