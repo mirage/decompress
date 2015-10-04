@@ -320,8 +320,10 @@ module Make (X : Decompress_common.Bytes) =
       if (byte0 lsl 8 + byte1) mod 31 <> 0
       then raise Invalid_header;
 
+      (* TODO: FIX BUG
       if byte0 land 0xF <> 8 || byte0 lsr 4 < 7 (* see RFC 1950 § 2.2 *)
       then raise Invalid_header;
+      *)
 
       (* [byte0 lsr 4] is the base-2 logarithm of the LZ77 window size, minus
        * eight ([byte0 lsr 4 + 8 = 7] indicates a 32K window size). See RFC 1950
