@@ -485,17 +485,21 @@ module Make (X : Decompress_common.Bytes) =
           (Huffman.make buffer 0 19 7)
           (hlit + hdist) in
 
+      let huffman_chr = Huffman.make dictionary 0 hlit 15 in
+      let huffman_dst = Huffman.make dictionary hlit hdist 15 in
+
       let get_chr () =
         Huffman.read_and_find
           ~get_bit:(fun () -> get_bit inflater)
           ~get_bits:(get_bits inflater)
-          (Huffman.make dictionary 0 hlit 16)
+          huffman_chr
       in
+
       let get_dst () =
         Huffman.read_and_find
           ~get_bit:(fun () -> get_bit inflater)
           ~get_bits:(get_bits inflater)
-          (Huffman.make dictionary hlit hdist 16)
+          huffman_dst
       in
 
       inflater.k <- compress ~get_chr ~get_dst window;
