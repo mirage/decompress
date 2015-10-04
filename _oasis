@@ -34,7 +34,8 @@ Executable main
   Install:              false
   Path:                 bin
   MainIs:               main.ml
-  BuildDepends:         decompress
+  CompiledObject:       best
+  BuildDepends:         decompress, unix
   NativeOpt:            -inline 100
 
 SourceRepository master
