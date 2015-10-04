@@ -9,7 +9,7 @@ module type S =
       ]
     type dst
 
-    val make : [< src] -> dst -> t
+    val make : ?window_bits:int -> [< src] -> dst -> t
     val eval : t -> [ `Ok | `Flush | `Error ]
 
     val contents : t -> int
@@ -73,6 +73,8 @@ module Make (X : Decompress_common.Bytes) =
       {
         src             : unit -> (String.t * bool);
         dst             : dst;
+
+        window_bits     : int;
 
         mutable last    : bool;
         mutable hold    : int;
@@ -345,13 +347,13 @@ module Make (X : Decompress_common.Bytes) =
 
     exception No_more_input
 
-    let rec make src dst =
+    let rec make ?(window_bits = 15) src dst =
       let make_input = function
         | `Manual fill -> fill
         | `Channel ch ->
           (fun () ->
-            let bytes = Bytes.create 0xFFFF in
-            let l = ref 0xFFFF in
+            let bytes = Bytes.create (1 lsl window_bits) in
+            let l = ref (1 lsl window_bits) in
             let p = ref 0 in
             try
               while !l > 0 do
@@ -368,14 +370,16 @@ module Make (X : Decompress_common.Bytes) =
           let position = ref p in
           (fun () ->
             let read_as_possible =
-              min (length - !position) 0xFFFF in
+              min (length - !position) (1 lsl window_bits) in
             let str = String.sub s !position read_as_possible in
             position := !position + read_as_possible;
-            str, if !position = length then true else false)
+            str, !position = length)
       in
       {
         src             = make_input src;
         dst;
+
+        window_bits;
 
         last            = false;
         hold            = 0;
@@ -398,9 +402,10 @@ module Make (X : Decompress_common.Bytes) =
       else `Flush
 
     and header deflate deflater =
-      let header = 0x78 lsl 8 in (* XXX: CM = 8 and CINFO = 7 for 32K window
-                                  * size and denotes the "deflate" compression
-                                  * method *)
+      let header = (8 + ((deflater.window_bits - 8) lsl 4)) lsl 8 in
+        (* XXX: CM = 8 and CINFO = 7 for 32K window
+         * size and denotes the "deflate" compression
+         * method *)
       let header = header lor (0x4 lsl 5) in (* XXX: FDICT = 0 and FLEVEL = 2,
                                               * we use a default algorithm *)
       let header = header + (31 - (header mod 31)) in
@@ -484,7 +489,7 @@ module Make (X : Decompress_common.Bytes) =
       else `Flush
 
     and fixed block deflater =
-      let lz77 = Lz77.compress block in
+      let lz77 = Lz77.compress ~window_size:(1 lsl deflater.window_bits) block in
       let get_chr chr = fixed_huffman_length_table.(chr) in
       let get_length length =
         let code, _, _ = length_code_table.(length) in
@@ -515,7 +520,7 @@ module Make (X : Decompress_common.Bytes) =
 
     and dynamic block deflater =
       let trans_lengths = Array.make 19 0 in
-      let lz77 = Lz77.compress block in
+      let lz77 = Lz77.compress ~window_size:(1 lsl deflater.window_bits) block in
 
       let freqs_lit_length,
           freqs_dist = Lz77.to_freqs

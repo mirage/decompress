@@ -18,7 +18,7 @@ module type S =
     type dst
 
     (** Returns a new input abstraction reading from the given source. *)
-    val make : [< src] -> dst -> t
+    val make : ?window_bits:int -> [< src] -> dst -> t
 
     (** [eval deflater] performs [deflater]. The value os [eval deflater] is:
         {ul
