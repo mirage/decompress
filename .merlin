@@ -1,5 +1,9 @@
 S lib
 S bin
+S lib_test
 
 B _build/lib
 B _build/bin
+B _build/lib_test
+
+PKG alcotest re camlzip cstruct

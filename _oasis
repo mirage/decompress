@@ -42,3 +42,19 @@ SourceRepository master
   Type:                 git
   Location:             https://github.com/oklm-wsh/Decompress.git
   Browser:              https://github.com/oklm-wsh/Decompress
+
+Executable test_decompress
+  Path:                 lib_test
+  Build$:               flag(tests)
+  Install:              false
+  CompiledObject:       best
+  MainIs:               decompress_test.ml
+  BuildDepends:         decompress, alcotest, re.str, camlzip, cstruct
+
+Test test_decompress
+  Run$:                 flag(tests)
+  TestTools:            test_decompress
+  Command:
+    cp ./lib/*.ml ./lib_test/files/ \
+    && $test_decompress
+  WorkingDirectory:     .
