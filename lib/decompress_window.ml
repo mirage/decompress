@@ -104,17 +104,15 @@ module Make (X : Decompress_common.Bytes) =
       then drop t (len - (available_to_write t));
 
       assert (len <= available_to_write t);
+      CRC.update buff ~start:off ~size:len t.crc;
 
       let pre = t.size - t.wpos in
       let extra = len - pre in
       if extra > 0 then begin
         X.blit buff off t.buffer t.wpos pre;
-        CRC.update buff ~start:off ~size:pre t.crc;
         X.blit buff (off + pre) t.buffer 0 extra;
-        CRC.update buff ~start:(off + pre) ~size:extra t.crc;
       end else begin
         X.blit buff off t.buffer t.wpos len;
-        CRC.update buff ~start:off ~size:len t.crc;
       end;
       move t len
 
