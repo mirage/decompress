@@ -267,9 +267,9 @@ module Make (X : Decompress_common.Bytes) =
             with No_more_input ->
               if !p = 0 then raise End_of_file;
               Bytes.sub_string bytes 0 !p)
-        | `Manual fill ->
-          (fun () -> String.get (fill 1) 1 |> Char.code),
-          fill
+        | `Manual refill ->
+          (fun () -> String.get (refill 1) 0 |> Char.code),
+          refill
       in
       {
         src_byte;
@@ -582,7 +582,7 @@ module Make (X : Decompress_common.Bytes) =
           let l = ref length in
 
           while !l > 0 && inflater.needed > 0 do
-            let size = min inflater.needed (min length distance) in
+            let size = min inflater.needed (min !l distance) in
             let bytes = Window.get_buffer
               window
               distance
