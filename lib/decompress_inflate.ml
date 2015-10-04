@@ -86,16 +86,9 @@ module Make (X : Decompress_common.Bytes) =
         mutable k             : t -> [ `Ok | `Flush | `Error ];
       }
 
-    let drop_bits inflater n =
-      inflater.hold <- inflater.hold lsr n;
-      inflater.bits <- inflater.bits - n
-
     let reset_bits inflater =
       inflater.hold <- 0;
       inflater.bits <- 0
-
-    let bits inflater n =
-      inflater.hold land ((1 lsl n) - 1)
 
     let get_bit inflater =
       if inflater.bits = 0
