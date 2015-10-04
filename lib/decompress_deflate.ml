@@ -434,6 +434,7 @@ module Make (X : Decompress_common.Bytes) =
     and last deflate buffer last deflater =
       add_bit deflater last;
 
+      deflater.last <- last;
       deflater.k <- block deflate buffer;
 
       if deflater.needed > 1
