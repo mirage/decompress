@@ -32,6 +32,7 @@ depends: [
   "alcotest" {test}
   "re" {test}
   "cstruct" {test}
+  "camlzip" {test}
 ]
 
 depopts: [
