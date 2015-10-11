@@ -9,12 +9,17 @@ dev-repo:     "https://github.com/oklm-wsh/Decompress.git"
 license:      "MIT"
 
 build: [
-  ["./configure" "--prefix=%{prefix}%"]
+  ["./configure"
+    "--%{base-unix:enable}%-unix"
+    "--prefix=%{prefix}%"]
   [make]
 ]
 
 build-test: [
-  ["./configure" "--enable-tests" "--prefix=%{prefix}%"]
+  ["./configure"
+    "--enable-tests"
+    "--%{base-unix:enable}%-unix"
+    "--prefix=%{prefix}%"]
   [make]
 ]
 
@@ -24,6 +29,13 @@ remove: ["ocamlfind" "remove" "decompress"]
 depends: [
   "oasis" {build}
   "base-bytes"
+  "alcotest" {test}
+  "re" {test}
+  "cstruct" {test}
+]
+
+depopts: [
+  "base-unix"
 ]
 
 available: [ocaml-version >= "4.01.0"]

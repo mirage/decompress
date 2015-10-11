@@ -12,6 +12,14 @@ BuildTools:             ocamlbuild
 OCamlVersion:           >= 4.02
 AlphaFeatures:          ocamlbuild_more_args
 
+Flag unix
+  Description:          Unix environment
+  Default:              true
+
+Flag example
+  Description:          Example of use Decompress
+  Default$:             flag(unix)
+
 Library decompress
   Path:                 lib
   Modules:              Decompress, Decompress_common, Decompress_inflate,
@@ -37,6 +45,7 @@ Executable dpipe
   CompiledObject:       best
   BuildDepends:         decompress, unix
   NativeOpt:            -inline 100
+  Build$:               flag(example) && flag(unix)
 
 SourceRepository master
   Type:                 git
