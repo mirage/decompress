@@ -191,15 +191,28 @@ let make_string_test ?(save = false) idx size =
 
 let make_file_test filename =
   let data = load_file filename in
-  Printf.sprintf "camlzip → decompress",
-  `Slow,
-  (fun () ->
-    Alcotest.(check string) "file"
-      (camlzip_to_decompress data) data)
+  [
+    Printf.sprintf "decompress → decompress",
+    `Slow,
+    (fun () ->
+      Alcotest.(check string) data
+        (decompress_to_decompress ~window_bits:10 data) data);
+    Printf.sprintf "decompress → camlzip",
+    `Slow,
+    (fun () ->
+      Alcotest.(check string) data
+        (decompress_to_camlzip ~window_bits:10 data) data);
+    Printf.sprintf "camlzip → decompress",
+    `Slow,
+    (fun () ->
+      Alcotest.(check string) data
+        (camlzip_to_decompress data) data);
+  ]
 
 let test_files directory =
   files directory
   |> List.map make_file_test
+  |> List.concat
 
 let test_strings number =
   Array.init number (fun idx -> make_string_test idx (0xFF + Random.int 0xFFFF))
