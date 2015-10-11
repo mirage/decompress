@@ -137,29 +137,56 @@ let decompress_to_decompress ?(window_bits = 15) str =
 
   Buffer.contents uncompressed
 
-let make_string_test idx size =
+let decompress_to_camlzip ?(window_bits = 15) str =
+  let compressed = Buffer.create 16 in
+  let flush output buf len =
+    Buffer.add_subbytes output buf 0 len in
+  let refill input =
+    let n = Cstruct.len input in
+    let to_read = ref n in
+    fun buf ->
+      let m = min !to_read (String.length buf) in
+      Cstruct.blit_to_string input (n - !to_read) buf 0 m;
+      to_read := !to_read - m;
+      m
+  in
+
+  Deflate.compress_string ~window_bits str (flush compressed);
+
+  let uncompressed = Buffer.create 16 in
+  let flush output buf len =
+    Buffer.add_substring output buf 0 len in
+
+  Zlib.uncompress
+    (refill (Buffer.contents compressed |> Cstruct.of_string))
+    (flush uncompressed);
+
+  Buffer.contents uncompressed
+
+let make_string_test ?(save = false) idx size =
   let data = generate size in
-  let ch = open_out ("string" ^ (string_of_int idx) ^ ".txt"
+  if save
+  then begin
+    let ch = open_out ("string" ^ (string_of_int idx) ^ ".txt"
                      |> Filename.concat "temp") in
-  Printf.fprintf ch "%s%!" data; close_out ch;
+    Printf.fprintf ch "%s%!" data; close_out ch;
+  end;
   [
     Printf.sprintf "decompress → decompress",
     `Slow,
     (fun () ->
       Alcotest.(check string) data
         (decompress_to_decompress ~window_bits:10 data) data);
-    (*
-    Printf.sprintf "random data with size: %d, decompress → camlzip" size,
+    Printf.sprintf "decompress → camlzip",
     `Slow,
     (fun () ->
       Alcotest.(check string) data
-        (decompress_to_camlzip ~window_bits:10 (`String (0, data))) data);
+        (decompress_to_camlzip ~window_bits:10 data) data);
     Printf.sprintf "camlzip → decompress",
     `Slow,
     (fun () ->
       Alcotest.(check string) data
         (camlzip_to_decompress data) data);
-    *)
   ]
 
 let make_file_test filename =
@@ -180,4 +207,5 @@ let test_strings number =
 
 let () =
   Alcotest.run "Decompress test"
-    [ "string", test_strings 1; ]
+    [ "string", test_strings 25;
+      "file", test_files "./lib_test/files/"]
