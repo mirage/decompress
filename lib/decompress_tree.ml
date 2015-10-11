@@ -1,5 +1,9 @@
 module Heap = Decompress_heap
 
+(** Compute the optimal bit lengths for a tree.
+
+    [p] must be sorted by increasing frequency.
+*)
 let reverse_package_merge p n limit =
   let minimum_cost     = Array.make limit 0 in
   let flag             = Array.make limit 0 in
@@ -40,6 +44,8 @@ let reverse_package_merge p n limit =
   in
   let ty = Array.init limit (fun j -> Array.make minimum_cost.(j) 0) in
 
+  (* Decrease codeword lengths indicated by the first element in [ty.(j)],
+     recursively accessing other lists if that first element is a package. *)
   let rec take_package j =
     let x = ty.(j).(current_position.(j)) in
 
@@ -51,6 +57,8 @@ let reverse_package_merge p n limit =
       end
     else code_length.(x) <- code_length.(x) - 1;
 
+    (* remove and discard the first elements of queues
+       [value.(j)] and [ty.(j)]. *)
     current_position.(j) <- current_position.(j) + 1
   in
 
@@ -102,6 +110,9 @@ let get_lengths freqs limit =
     let heap = Heap.make (2 * 286) in
     let max_code = ref (-1) in
 
+    (* Construct the initial heap, with the least frequent element in
+       heap[SMALLEST]. The sons of heap[n] are heap[2*n] and heap[2*n+1].
+       heap[0] is not used. See implementation in Heap module. *)
     Array.iteri
       (fun i freq -> if freq > 0 then (max_code := i; Heap.push i freq heap))
       freqs;
@@ -126,11 +137,14 @@ let get_lengths freqs limit =
         raise OK
       end;
 
+      (* The elements heap[length / 2 + 1 .. length] are leaves of the tree,
+         establish sub-heaps of increasing lengths: *)
       for i = 0 to Heap.length heap / 2 - 1
       do nodes.(i) <- Heap.pop heap;
          values.(i) <- nodes.(i) |> snd;
       done;
 
+      (* We can now generate the bit lengths. *)
       let code_length =
         reverse_package_merge
           values
