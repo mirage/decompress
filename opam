@@ -39,4 +39,4 @@ depopts: [
   "base-unix"
 ]
 
-available: [ocaml-version >= "4.01.0"]
+available: [ocaml-version >= "4.02.0"]

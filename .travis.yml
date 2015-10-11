@@ -4,4 +4,3 @@ script: bash -ex .travis-opam.sh
 sudo: true
 env:
   - PACKAGE="decompress" OCAML_VERSION=4.02 TESTS=true
-  - PACKAGE="decompress" OCAML_VERSION=4.01 TESTS=true

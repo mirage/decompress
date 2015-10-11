@@ -9,7 +9,7 @@ Homepage:               https://github.com/dinosaure/Decompress
 License:                MIT
 Plugins:                META (0.3), DevFiles (0.3)
 BuildTools:             ocamlbuild
-OCamlVersion:           >= 4.01
+OCamlVersion:           >= 4.02
 AlphaFeatures:          ocamlbuild_more_args
 
 Flag unix
