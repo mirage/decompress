@@ -20,7 +20,7 @@ build-test: [
     "--enable-tests"
     "--%{base-unix:enable}%-unix"
     "--prefix=%{prefix}%"]
-  [make]
+  [make "test"]
 ]
 
 install: [make "install"]
