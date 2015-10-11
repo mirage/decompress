@@ -1,4 +1,41 @@
 # OASIS_START
+# DO NOT EDIT (digest: 4f6380fc223e5f3824f9c04b1c664346)
+# Ignore VCS directories, you can use the same kind of rule outside
+# OASIS_START/STOP if you want to exclude directories that contains
+# useless stuff for the build process
+true: annot, bin_annot
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library decompress
+"lib/decompress.cmxs": use_decompress
+<lib/decompress.{cma,cmxa}>: oasis_library_decompress_native
+<lib/*.ml{,i,y}>: oasis_library_decompress_native
+# Executable dpipe
+<bin/dpipe.{native,byte}>: oasis_executable_dpipe_native
+<bin/*.ml{,i,y}>: oasis_executable_dpipe_native
+<bin/dpipe.{native,byte}>: package(unix)
+<bin/dpipe.{native,byte}>: use_decompress
+<bin/*.ml{,i,y}>: package(unix)
+<bin/*.ml{,i,y}>: use_decompress
+# Executable test_decompress
+<lib_test/decompress_test.{native,byte}>: package(alcotest)
+<lib_test/decompress_test.{native,byte}>: package(camlzip)
+<lib_test/decompress_test.{native,byte}>: package(cstruct)
+<lib_test/decompress_test.{native,byte}>: package(re.str)
+<lib_test/decompress_test.{native,byte}>: use_decompress
+<lib_test/*.ml{,i,y}>: package(alcotest)
+<lib_test/*.ml{,i,y}>: package(camlzip)
+<lib_test/*.ml{,i,y}>: package(cstruct)
+<lib_test/*.ml{,i,y}>: package(re.str)
+<lib_test/*.ml{,i,y}>: use_decompress
 # OASIS_STOP
 true: annot
 true: safe_string
