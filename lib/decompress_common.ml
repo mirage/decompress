@@ -5,7 +5,6 @@ module type String =
     val make           : int -> char -> t
 
     val get            : t -> int -> char
-    val unsafe_get     : t -> int -> char
     val length         : t -> int
     val iter           : (char -> unit) -> t -> unit
     val sub            : t -> int -> int -> t
@@ -22,9 +21,7 @@ module type Bytes =
     val create         : int -> t
 
     val set            : t -> int -> char -> unit
-    val unsafe_set     : t -> int -> char -> unit
     val blit           : t -> int -> t -> int -> int -> unit
-    val unsafe_blit    : t -> int -> t -> int -> int -> unit
 
     val of_bytes       : Bytes.t -> t
     val of_string      : String.t -> t

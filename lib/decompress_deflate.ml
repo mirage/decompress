@@ -116,7 +116,7 @@ module Make (X : Decompress_common.Bytes) =
       X.set
         deflater.dst
         deflater.outpos
-        (byte |> Char.unsafe_chr);
+        (byte |> Char.unsafe_chr); (* XXX: unsafe is mandatory *)
       deflater.needed <- deflater.needed - 1;
       deflater.outpos <- deflater.outpos + 1
 

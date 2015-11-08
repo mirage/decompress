@@ -215,13 +215,13 @@ module Make (X : Decompress_common.Bytes) =
 
     let add_char inflater window chr =
       Window.add_char chr window;
-      X.unsafe_set inflater.dst inflater.outpos chr;
+      X.set inflater.dst inflater.outpos chr;
       inflater.needed <- inflater.needed - 1;
       inflater.outpos <- inflater.outpos + 1
 
     let add_bytes inflater window bytes =
       Window.add_buffer bytes window;
-      X.unsafe_blit bytes 0 inflater.dst inflater.outpos (X.length bytes);
+      X.blit bytes 0 inflater.dst inflater.outpos (X.length bytes);
       inflater.needed <- inflater.needed - (X.length bytes);
       inflater.outpos <- inflater.outpos + (X.length bytes)
 
