@@ -41,16 +41,8 @@ module Make (X : Decompress_common.Bytes) =
       | DYNAMIC -> 2
       | RESERVED -> 3
 
-    module String =
-      struct
-        include String
-
-        let to_string x = x
-        let to_bytes = Bytes.of_string
-      end
-
-    module Adler32 = Decompress_adler32.Make(String)
-    module Lz77 = Decompress_lz77.Slow(String)
+    module Adler32 = Decompress_adler32.Make(X)
+    module Lz77 = Decompress_lz77.Slow(X)
     module Tree = Decompress_tree
 
     let fixed_huffman_length_table =
@@ -427,7 +419,7 @@ module Make (X : Decompress_common.Bytes) =
         bytes
         is_last;
 
-      Adler32.update bytes deflater.crc;
+      Adler32.update (X.of_string bytes) deflater.crc;
 
       eval deflater
 
@@ -490,7 +482,9 @@ module Make (X : Decompress_common.Bytes) =
       else `Flush
 
     and fixed block deflater =
-      let lz77 = Lz77.compress ~window_size:(1 lsl deflater.window_bits) block in
+      let lz77 = Lz77.compress
+        ~window_size:(1 lsl deflater.window_bits)
+        (X.of_string block) in
       let get_chr chr = fixed_huffman_length_table.(chr) in
       let get_length length =
         let code, _, _ = length_code_table.(length) in
@@ -521,7 +515,9 @@ module Make (X : Decompress_common.Bytes) =
 
     and dynamic block deflater =
       let trans_lengths = Array.make 19 0 in
-      let lz77 = Lz77.compress ~window_size:(1 lsl deflater.window_bits) block in
+      let lz77 = Lz77.compress
+        ~window_size:(1 lsl deflater.window_bits)
+        (X.of_string block) in
 
       let freqs_lit_length,
           freqs_dist = Lz77.to_freqs
@@ -778,8 +774,8 @@ module Make (X : Decompress_common.Bytes) =
       let () = match lz77 with
         | Lz77.Buffer data :: r ->
           deflater.i <- 0;
-          deflater.i_max <- String.length data;
-          deflater.k <- write_buffer data r
+          deflater.i_max <- X.length data;
+          deflater.k <- write_buffer (X.to_string data) r
         | Lz77.Insert (dist, length) :: r ->
           deflater.k <- write_insert (dist, length) r
         | [] -> deflater.k <- write_eof
