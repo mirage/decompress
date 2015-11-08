@@ -28,11 +28,11 @@ Library decompress
                         Decompress_lz77, Decompress_window, Decompress_adler32
   NativeOpt:            -inline 100
 
-Document "Decompress"
+Document "decompress"
   Type:                 ocamlbuild (0.4)
   BuildTools:           ocamldoc
   Title:                "Decompress"
-  PostCommand:          cp Decompress.docdir/*.html doc/
+  PostCommand:          cp doc/* decompress.docdir/
   XOCamlbuildPath:      lib
   XOCamlbuildLibraries: decompress
   XOCamlbuildExtraArgs:
