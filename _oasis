@@ -33,7 +33,7 @@ Document "decompress"
   BuildTools:           ocamldoc
   Title:                "Decompress"
   PostCommand:          cp doc/* decompress.docdir/
-  XOCamlbuildPath:      lib
+  XOCamlbuildPath:      .
   XOCamlbuildLibraries: decompress
   XOCamlbuildExtraArgs:
     "-docflags '-colorize-code -keep-code -charset utf-8'"
