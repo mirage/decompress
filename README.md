@@ -6,7 +6,7 @@ Pur OCaml implementation of Zlib
 Documentation
 =============
 
-You can find it [here](http://oklm-wsh.github.io/Decompress/doc).
+You can find it [here](http://oklm-wsh.github.io/Decompress/).
 
 Build Requirements
 ==================
