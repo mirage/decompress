@@ -39,23 +39,40 @@ let generate length =
 let () = Random.self_init ()
 let () = Printexc.record_backtrace true
 
-module Bytes =
-  struct
-    include Bytes
-
-    let to_bytes x = x
-    let of_bytes x = x
-  end
-
 exception Inflate_error
 exception Deflate_error
 
+module MS : (Decompress.String with type t = Cstruct.t) =
+  struct
+    type t = Cstruct.t
+
+    let make i c    = String.make i c |> Cstruct.of_string
+    let get         = Cstruct.get_char
+    let length      = Cstruct.len
+    let sub         = Cstruct.sub
+    let compare     = Cstruct.compare
+    let to_string   = Cstruct.to_string
+    let to_bytes x  = Cstruct.to_string x |> Bytes.of_string
+    let iter f t    = String.iter f (to_string t)
+  end
+
+module B : (Decompress.Bytes with type t = Cstruct.t) =
+  struct
+    include MS
+
+    let create      = Cstruct.create
+    let set         = Cstruct.set_char
+    let blit        = Cstruct.blit
+    let of_bytes x  = Bytes.to_string x |> Cstruct.of_string
+    let of_string s = Cstruct.of_string s
+  end
+
 module Inflate =
   struct
-    include Decompress.Inflate.Make(Bytes)
+    include Decompress.Inflate.Make(B)
 
     let decompress ?(window_bits = 15) refill flush' =
-      let t = Bytes.create 0xFF in
+      let t = Cstruct.create 0xFF in
       let inflater = make (`Manual refill) t in
       let rec aux () = match eval inflater with
         | `Ok -> flush' t (contents inflater); flush inflater
@@ -64,7 +81,7 @@ module Inflate =
       in aux ()
 
     let decompress_string ?(window_bits = 15) str flush' =
-      let t = Bytes.create 0xFF in
+      let t = Cstruct.create 0xFF in
       let inflater = make (`String (0, str)) t in
       let rec aux () = match eval inflater with
         | `Ok -> flush' t (contents inflater); flush inflater
@@ -75,10 +92,10 @@ module Inflate =
 
 module Deflate =
   struct
-    include Decompress.Deflate.Make(Bytes)
+    include Decompress.Deflate.Make(B)
 
     let compress ?(window_bits = 15) refill flush' =
-      let t = Bytes.create 0xFF in
+      let t = Cstruct.create 0xFF in
       let deflater = make ~window_bits (`Manual refill) t in
       let rec aux () = match eval deflater with
         | `Ok -> flush' t (contents deflater); flush deflater
@@ -87,7 +104,7 @@ module Deflate =
       in aux ()
 
     let compress_string ?(window_bits = 15) str flush' =
-      let t = Bytes.create 0xFF in
+      let t = Cstruct.create 0xFF in
       let deflater = make ~window_bits (`String (0, str)) t in
       let rec aux () = match eval deflater with
         | `Ok -> flush' t (contents deflater); flush deflater
@@ -114,7 +131,7 @@ let camlzip_to_decompress ?(window_bits = 15) str =
 
   let uncompressed = Buffer.create 16 in
   let flush output buf len =
-    Buffer.add_subbytes output buf 0 len in
+    Buffer.add_substring output (Cstruct.to_string buf) 0 len in
 
   Inflate.decompress_string ~window_bits
     (Buffer.contents compressed)
@@ -125,7 +142,7 @@ let camlzip_to_decompress ?(window_bits = 15) str =
 let decompress_to_decompress ?(window_bits = 15) str =
   let compressed = Buffer.create 16 in
   let flush output buf len =
-    Buffer.add_subbytes output buf 0 len in
+    Buffer.add_substring output (Cstruct.to_string buf) 0 len in
 
   Deflate.compress_string ~window_bits str (flush compressed);
 
@@ -140,7 +157,7 @@ let decompress_to_decompress ?(window_bits = 15) str =
 let decompress_to_camlzip ?(window_bits = 15) str =
   let compressed = Buffer.create 16 in
   let flush output buf len =
-    Buffer.add_subbytes output buf 0 len in
+    Buffer.add_substring output (Cstruct.to_string buf) 0 len in
   let refill input =
     let n = Cstruct.len input in
     let to_read = ref n in
