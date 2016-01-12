@@ -75,8 +75,8 @@ module Inflate =
       let t = Cstruct.create 0xFF in
       let inflater = make (`Manual refill) t in
       let rec aux () = match eval inflater with
-        | `Ok -> flush' t (contents inflater); flush inflater
-        | `Flush -> flush' t (contents inflater); flush inflater; aux ()
+        | `Ok _ -> flush' t (contents inflater); flush inflater
+        | `Flush _ -> flush' t (contents inflater); flush inflater; aux ()
         | `Error -> raise Inflate_error
       in aux ()
 
@@ -84,8 +84,8 @@ module Inflate =
       let t = Cstruct.create 0xFF in
       let inflater = make (`String (0, str)) t in
       let rec aux () = match eval inflater with
-        | `Ok -> flush' t (contents inflater); flush inflater
-        | `Flush -> flush' t (contents inflater); flush inflater; aux ()
+        | `Ok _ -> flush' t (contents inflater); flush inflater
+        | `Flush _ -> flush' t (contents inflater); flush inflater; aux ()
         | `Error -> raise Inflate_error
       in aux ()
   end

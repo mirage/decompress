@@ -10,7 +10,7 @@ module type S =
     type dst
 
     val make : [< src] -> dst -> t
-    val eval : t -> [`Ok | `Flush | `Error ]
+    val eval : t -> [`Ok of int | `Flush of int | `Error ]
 
     val contents : t -> int
     val flush : t -> unit
@@ -71,6 +71,7 @@ module Make (X : Decompress_common.Bytes) =
         src_byte              : unit -> int;
         src_bytes             : int -> String.t;
         dst                   : dst;
+        position              : int ref;
 
         mutable last          : bool;
         (** true if processing last block *)
@@ -83,7 +84,7 @@ module Make (X : Decompress_common.Bytes) =
         (** position output buffer position *)
         mutable needed        : int;
 
-        mutable k             : t -> [ `Ok | `Flush | `Error ];
+        mutable k             : t -> [ `Ok of int | `Flush of int | `Error ];
       }
 
     let reset_bits inflater =
@@ -228,10 +229,12 @@ module Make (X : Decompress_common.Bytes) =
     exception No_more_input
 
     let rec make src dst =
-      let src_byte, src_bytes = match src with
+      let position = ref 0 in
+      let src_byte, src_bytes =
+        match src with
         | `String (p, s) ->
           let length = String.length s in
-          let position = ref p in
+          position := p;
           (fun () ->
             let chr =
               if !position = length
@@ -249,25 +252,26 @@ module Make (X : Decompress_common.Bytes) =
           (fun size ->
             let bytes = Bytes.create size in
             let l = ref size in
-            let p = ref 0 in
+            position := 0;
             try
               while !l > 0 do
-                let r = input ch bytes !p !l in
+                let r = input ch bytes !position !l in
                 if r = 0 then raise No_more_input;
-                p := !p + r;
+                position := !position + r;
                 l := !l - r;
               done; Bytes.to_string bytes
             with No_more_input ->
-              if !p = 0 then raise End_of_file;
-              Bytes.sub_string bytes 0 !p)
+              if !position = 0 then raise End_of_file;
+              Bytes.sub_string bytes 0 !position)
         | `Manual refill ->
-          (fun () -> String.get (refill 1) 0 |> Char.code),
+          (fun () -> position := !position + 1;String.get (refill 1) 0 |> Char.code),
           refill
       in
       {
         src_byte;
         src_bytes;
         dst;
+        position;
 
         last   = false;
         hold   = 0;
@@ -282,7 +286,9 @@ module Make (X : Decompress_common.Bytes) =
     and eval inflater =
       if inflater.needed = (X.length inflater.dst - inflater.outpos)
          && inflater.outpos < X.length inflater.dst then inflater.k inflater
-      else `Flush
+      else begin
+        (`Flush !(inflater.position))
+      end
 
     and header inflater =
 
@@ -310,8 +316,8 @@ module Make (X : Decompress_common.Bytes) =
       (* Check value must be such that [byte0] and [byte1], when viewed as a
        * 16-bit unsigned integer stored in MSB order ([byte0 * 256 + byte1]), is
        * a multiple of 31. *)
-      if (byte0 lsl 8 + byte1) mod 31 <> 0
-      then raise Invalid_header;
+      if (byte0 lsl 8 + byte1) mod 31 <> 0 then
+        raise Invalid_header;
 
       (* TODO: FIX BUG
       if byte0 land 0xF <> 8 || byte0 lsr 4 < 7 (* see RFC 1950 § 2.2 *)
@@ -418,7 +424,7 @@ module Make (X : Decompress_common.Bytes) =
         else flat window (len - read_as_possible);
 
       if inflater.needed > 0 then eval inflater
-      else `Flush
+      else (`Flush !(inflater.position))
 
     and table window inflater =
 
@@ -553,7 +559,7 @@ module Make (X : Decompress_common.Bytes) =
         add_char inflater window (Char.unsafe_chr n);
         if inflater.needed > 0
         then eval inflater
-        else `Flush
+        else (`Flush !(inflater.position))
       | 256 ->
         inflater.k <-
           if inflater.last
@@ -575,7 +581,7 @@ module Make (X : Decompress_common.Bytes) =
 
           if inflater.needed > 0
           then eval inflater
-          else `Flush
+          else (`Flush !(inflater.position))
 
         and dist (distance, length) window inflater =
           let l = ref length in
@@ -598,7 +604,7 @@ module Make (X : Decompress_common.Bytes) =
 
           if inflater.needed > 0
           then eval inflater
-          else `Flush
+          else (`Flush !(inflater.position))
         in
 
         let n = n - 257 in
@@ -647,7 +653,8 @@ module Make (X : Decompress_common.Bytes) =
 
       eval inflater
 
-    and ok inflater = `Ok
+    and ok inflater =
+      (`Ok !(inflater.position))
 
     and error inflater = `Error
 

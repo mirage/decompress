@@ -19,8 +19,8 @@ module Inflate =
       let t = Bytes.create 0xFF in
       let inflater = make (`Manual refill) t in
       let rec aux () = match eval inflater with
-        | `Ok -> flush' t (contents inflater); flush inflater
-        | `Flush -> flush' t (contents inflater); flush inflater; aux ()
+        | `Ok _ -> flush' t (contents inflater); flush inflater
+        | `Flush _ -> flush' t (contents inflater); flush inflater; aux ()
         | `Error -> raise Inflate_error
       in aux ()
 
@@ -28,8 +28,8 @@ module Inflate =
       let t = Bytes.create 0xFF in
       let inflater = make (`String (0, str)) t in
       let rec aux () = match eval inflater with
-        | `Ok -> flush' t (contents inflater); flush inflater
-        | `Flush -> flush' t (contents inflater); flush inflater; aux ()
+        | `Ok _ -> flush' t (contents inflater); flush inflater
+        | `Flush _ -> flush' t (contents inflater); flush inflater; aux ()
         | `Error -> raise Inflate_error
       in aux ()
   end
@@ -43,7 +43,7 @@ module Deflate =
       let deflater = make ~window_bits (`Manual refill) t in
       let rec aux () = match eval deflater with
         | `Ok -> flush' t (contents deflater); flush deflater
-        | `Flush -> flush' t (contents deflater); flush deflater; aux ()
+        | `Flush _ -> flush' t (contents deflater); flush deflater; aux ()
         | `Error -> raise Deflate_error
       in aux ()
 
@@ -52,7 +52,7 @@ module Deflate =
       let deflater = make (`String (0, str)) t in
       let rec aux () = match eval deflater with
         | `Ok -> flush' t (contents deflater); flush deflater
-        | `Flush -> flush' t (contents deflater); flush deflater; aux ()
+        | `Flush _ -> flush' t (contents deflater); flush deflater; aux ()
         | `Error -> raise Deflate_error
       in aux ()
   end

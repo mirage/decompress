@@ -22,17 +22,18 @@ module type S =
     (** [eval inflater] performs [inflater]. The value os [eval inflater] is:
         {ul
         {- [`Ok] complete the document}
-        {- [`Flush] wait to flush the [dst] for re-writing a news values in
-           [dst]}
+        {- [`Flush n] wait to flush the [dst] for re-writing a news values in
+           [dst]; [n] bytes were read from the source }
         {- [`Error] a very bad state}
         } *)
-    val eval : t -> [`Ok | `Flush | `Error ]
+    val eval : t -> [`Ok of int | `Flush of int | `Error ]
 
     (** Returns a number of bytes writing in the [dst]. *)
     val contents : t -> int
 
     (** Clean the [dst] to re-writing a news values after. *)
     val flush : t -> unit
+
   end
 
 module Make (X : Decompress_common.Bytes) : S
