@@ -43,7 +43,7 @@ module Deflate =
       let deflater = make ~window_bits (`Manual refill) t in
       let rec aux () = match eval deflater with
         | `Ok -> flush' t (contents deflater); flush deflater
-        | `Flush _ -> flush' t (contents deflater); flush deflater; aux ()
+        | `Flush -> flush' t (contents deflater); flush deflater; aux ()
         | `Error -> raise Deflate_error
       in aux ()
 
@@ -52,7 +52,7 @@ module Deflate =
       let deflater = make (`String (0, str)) t in
       let rec aux () = match eval deflater with
         | `Ok -> flush' t (contents deflater); flush deflater
-        | `Flush _ -> flush' t (contents deflater); flush deflater; aux ()
+        | `Flush -> flush' t (contents deflater); flush deflater; aux ()
         | `Error -> raise Deflate_error
       in aux ()
   end
