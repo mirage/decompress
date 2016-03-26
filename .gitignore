@@ -8,3 +8,4 @@ lib/decompress_conf.ml
 *.tar.gz
 _tests
 lib_test/files
+zpipe

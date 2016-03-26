@@ -1,37 +1,69 @@
-(** LZ77 compression algorithm. *)
+module type IATOM =
+sig
+  type t = char
+end
+
+module type ISCALAR =
+sig
+  type elt
+  type t
+end
+
+module type OATOM =
+sig
+  type t = char
+
+  val to_int : t -> int
+end
+
+module type OSCALAR =
+sig
+  type elt
+  type t
+  type i
+
+  val create   : int -> t
+  val set      : t -> int -> elt -> unit
+  val blit     : t -> int -> t -> int -> int -> unit
+  val length   : t -> int
+  val get      : t -> int -> elt
+  val get_u16  : t -> int -> int
+  val get_u64  : t -> int -> int64
+  val sub      : t -> int -> int -> t
+
+  val of_input : i -> t
+end
 
 module type S =
-  sig
-    (** Safe string. *)
-    type str
+sig
+  type buffer
+  type output
 
-    (** Type of compressed elements. *)
-    type elt =
-      | Buffer of str (** raw buffer *)
-      | Insert of int * int (** negative offset х length *)
+  type elt =
+    | Buffer of output
+    | Insert of int * int
 
-    (** compare compressed elements *)
-    val compare_elt : elt -> elt -> int
-    (** pretty-print a compressed element *)
-    val pp_elt : Format.formatter -> elt -> unit
+  type t = elt list
 
-    (** the type for compression sequences *)
-    type t = elt list
+  val pp_elt          : Format.formatter -> elt -> unit
+  val pp              : Format.formatter -> t -> unit
 
-    (** compare compression sequences *)
-    val compare : t -> t -> int
-    (** pretty-print a compression sequence *)
-    val pp : Format.formatter -> t -> unit
-    (** compress a buffer *)
-    val compress : ?window_size:int -> str -> t
-    (** decompress a sequence of compressed elements *)
-    val decompress : t -> Bytes.t
+  type state
 
-    val to_freqs :
-      get_length:(int -> (int * int * int)) ->
-      get_distance:(int -> (int * int * int)) ->
-      t -> (int array * int array)
-  end
+  val make            : ?window_bits:int -> ?level:int -> unit -> state
+  val is_empty        : state -> bool
+  val window_bits     : state -> int
 
-module Slow (X : Decompress_common.String) : S with
-  type str = X.t
+  val atomic_compress : state -> buffer -> int -> int -> unit
+  val finish          : state -> (t * int array * int array)
+
+  val compress        : ?window_bits:int -> ?level:int -> ?chunk:int ->
+                        buffer -> int -> int ->
+                        (t * int array * int array)
+end
+
+module Make
+  (IAtom : IATOM) (IScalar : ISCALAR with type elt = IAtom.t)
+  (OAtom : OATOM) (OScalar : OSCALAR with type elt = OAtom.t and type i = IScalar.t) : S
+  with type buffer = IScalar.t
+   and type output = OScalar.t

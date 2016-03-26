@@ -1,6 +1,6 @@
 type code = bool list
 
-let pp fmt code =
+let pp_code fmt code =
   Format.fprintf fmt "[@[<hov 2>@;";
   List.iter (fun b -> Format.fprintf fmt "%d@ " @@ if b then 1 else 0) code;
   Format.fprintf fmt "@]]"
@@ -83,7 +83,12 @@ let rec compress ~default t =
       | _ -> assert false
     end
   | depth ->
-    let size = 1 lsl depth in (* 2^depth *)
+    (* TODO: assert (depth <= 8)
+       because, in read_and_find*, we use [get_bits] with [depth] argument.
+       if depth > 8, we possibly lost a byte in compute. In other case,
+       we can recompute read_and_find* with saved path to catch the result. *)
+
+    let size = 1 lsl depth in (* 2 ** depth *)
     let table = Array.make size (Leaf default) in
     walk ~default table 0 0 depth t;
 
@@ -94,14 +99,84 @@ and walk ~default table index level depth = function
     walk ~default table (index lor (1 lsl level)) (level + 1) (depth - 1) b;
   | t -> Array.set table index (compress ~default t)
 
-let rec read_and_find ~get_bit ~get_bits = function
+type path =
+  | Bit of bool
+  | Nth of int
+
+exception Expected_data of int * path list
+exception Invalid_path
+
+let rec read_and_find ?(acc = []) ~get_bit ~get_bits = function
   | Leaf i -> i
   | Node (a, b) ->
-    read_and_find ~get_bit ~get_bits
-      (if get_bit () then b else a)
+    (try let bit = get_bit () in
+        read_and_find ~acc:(Bit bit :: acc) ~get_bit ~get_bits (if bit then b else a)
+     with exn ->
+       let n = (1 + min (depth a) (depth b)) / 8 in
+       raise (Expected_data (n, List.rev acc)))
   | Flat (depth, a) ->
-    read_and_find ~get_bit ~get_bits
-      (Array.unsafe_get a (get_bits depth))
+    (try let nth = get_bits depth in
+        read_and_find ~acc:(Nth nth :: acc) ~get_bit ~get_bits (Array.get a nth)
+     with exn ->
+       let n = depth / 8 in
+       raise (Expected_data (n, List.rev acc)))
+
+module List =
+struct
+  include List
+
+  let rec min ~default = function
+    | [] -> default
+    | [ x ] -> if x < default then x else default
+    | x :: r -> min ~default:(if x < default then x else default) r
+end
+
+let rec depth = function
+  | Leaf _ -> 0
+  | Node (a, b) ->
+    1 + min (depth a) (depth b)
+  | Flat (d, a) ->
+    List.map (fun x -> d + depth x) (Array.to_list a) |> List.min ~default:d
+
+let rec read_and_find_with_path ?(acc = []) ~get_bit ~get_bits ?(path = []) node =
+  match path, node with
+  | [], Leaf i -> (List.rev acc, i)
+  | [], Node (a, b) ->
+    begin try let bit = get_bit () in
+              read_and_find_with_path
+                ~acc:(Bit bit :: acc)
+                ~get_bit
+                ~get_bits
+                (if bit then b else a)
+          with Expected_data _ as exn -> raise exn
+             | _ -> raise (Expected_data (depth node / 8, List.rev acc))
+    end
+  | [], Flat (d, a) ->
+    begin try let nth = get_bits d in
+              read_and_find_with_path
+                ~acc:(Nth nth :: acc)
+                ~get_bit
+                ~get_bits
+                (Array.get a nth) (* XXX: handle [Index_of_bound] *)
+          with Expected_data _ as exn -> raise exn
+             | _ ->
+               raise (Expected_data (depth node / 8, List.rev acc))
+    end
+  | Bit bit :: path, Node (a, b) ->
+    read_and_find_with_path
+      ~acc:(Bit bit :: acc)
+      ~get_bit
+      ~get_bits
+      ~path
+      (if bit then b else a)
+  | Nth nth :: path, Flat (d, a) ->
+    read_and_find_with_path
+      ~acc:(Nth nth :: acc)
+      ~get_bit
+      ~get_bits
+      ~path
+      (Array.get a nth)
+  | _ -> raise Invalid_path
 
 (* This algorithm is describe at RFC 1951 § 3.2.2.
  *
@@ -119,11 +194,11 @@ let make table position size max_bits =
   (* Count the number of codes for each code length. Let [bl_count.[N]] be
    * the number of codes of length N, N >= 1. *)
   for i = 0 to size - 1 do
-    let p = Array.unsafe_get table (i + position) in
+    let p = Array.get table (i + position) in
 
     if p >= (max_bits + 1) then raise Invalid_huffman;
 
-    Array.unsafe_set bl_count p (Array.unsafe_get bl_count p + 1);
+    Array.set bl_count p (Array.get bl_count p + 1);
   done;
 
   (* Find the numerical value of the smallest code for each code length: *)
@@ -131,8 +206,8 @@ let make table position size max_bits =
   let next_code = Array.make (max_bits + 1) 0 in
 
   for i = 1 to max_bits - 1 do
-    code := (!code + Array.unsafe_get bl_count i) lsl 1;
-    Array.unsafe_set next_code i !code;
+    code := (!code + Array.get bl_count i) lsl 1;
+    Array.set next_code i !code;
   done;
 
   (* Assign numerical values to all codes, using consecutive
@@ -144,11 +219,11 @@ let make table position size max_bits =
   let bits = Hashtbl.create 0 in
 
   for i = 0 to size - 1 do
-    let l = Array.unsafe_get table (i + position) in
+    let l = Array.get table (i + position) in
 
     if l <> 0 then begin
-      let n = Array.unsafe_get next_code (l - 1) in
-      Array.unsafe_set next_code (l - 1) (n + 1);
+      let n = Array.get next_code (l - 1) in
+      Array.set next_code (l - 1) (n + 1);
       Hashtbl.add bits (n, l) i;
     end;
   done;

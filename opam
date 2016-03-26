@@ -33,6 +33,7 @@ depends: [
   "re" {test}
   "cstruct" {test}
   "camlzip" {test}
+  "lwt" {test}
 ]
 
 depopts: [

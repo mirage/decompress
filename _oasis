@@ -20,13 +20,25 @@ Flag example
   Description:          Example of use Decompress
   Default$:             flag(unix)
 
+Flag trace
+  Description:          Trace all compute of decompress
+  Default$:             false
+
 Library decompress
   Path:                 lib
   Modules:              Decompress, Decompress_common, Decompress_inflate,
                         Decompress_deflate
   InternalModules:      Decompress_huffman, Decompress_tree, Decompress_heap,
+                        Decompress_ringbuffer,
                         Decompress_lz77, Decompress_window, Decompress_adler32
   NativeOpt:            -inline 100
+
+Executable ppx_debug
+  Path:                 ppx
+  Build$:               flag(trace)
+  MainIs:               ppx_debug.ml
+  BuildDepends:         compiler-libs.common
+  CompiledObject:       byte
 
 Document "decompress"
   Type:                 ocamlbuild (0.4)
@@ -46,6 +58,15 @@ Executable dpipe
   BuildDepends:         decompress, unix
   NativeOpt:            -inline 100
   Build$:               flag(example) && flag(unix)
+
+Executable loop
+  Install:              false
+  Path:                 bin
+  MainIs:               loop.ml
+  CompiledObject:       best
+  BuildDepends:         decompress, camlzip, cstruct, cmdliner
+  NativeOpt:            -inline 100
+  Build$:               flag(example)
 
 SourceRepository master
   Type:                 git

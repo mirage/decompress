@@ -1,143 +1,83 @@
+module type ATOM =
+sig
+  type t
+
+  val to_int : t -> int
+end
+
+module type SCALAR =
+sig
+  type elt
+  type t
+
+  val create : int -> t
+  val blit   : t -> int -> t -> int -> int -> unit
+  val get    : t -> int -> elt
+  val set    : t -> int -> elt -> unit
+end
+
 module type S =
-  sig
-    type t
-    type crc
-    type buffer
+sig
+  type t
+  type crc
+  type atom
+  type buffer
 
-    val init : ?bits:int -> unit -> t
+  val init : ?bits:int -> unit -> t
 
-    val add_buffer : buffer -> ?start:int -> ?size:int -> t -> unit
-    val add_char : char -> t -> unit
-    val get_char : t -> char
-    val get_buffer : t -> int -> int -> buffer
+  val add_buffer : buffer -> int -> int -> t -> unit
+  val add_atom   : atom -> t -> unit
 
-    val checksum : t -> crc
-    val available : t -> int
-  end
+  val last   : t -> atom
+  val get    : t -> int -> atom
+  val buffer : t -> int -> int -> buffer
 
-module Make (X : Decompress_common.Bytes) =
-  struct
-    module CRC = Decompress_adler32.Make(X)
+  val checksum  : t -> crc
+  val available : t -> int
+end
 
-    type t =
-      {
-        bits         : int;
-          (* log base 2 of requested window size *)
-        size         : int;
-          (* window size *)
-        mutable rpos : int;
-          (* current read position *)
-        mutable wpos : int;
-          (* current write position *)
-        buffer       : X.t;
-          (* allocated sliding window, if needed *)
-        mutable crc  : CRC.t;
-          (* adler-32 *)
-      }
+module Make (Atom : ATOM) (Scalar : SCALAR with type elt = Atom.t) : S
+  with type crc = Decompress_adler32.Make(Atom)(Scalar).t
+   and type atom = Atom.t
+   and type buffer = Scalar.t =
+struct
+  module CRC = Decompress_adler32.Make(Atom)(Scalar)
+  module RingBuffer = Decompress_ringbuffer.Make(Atom)(Scalar)
 
-    type buffer = X.t
-    type crc = CRC.t
+  type t =
+    { bits         : int
+    ; window       : RingBuffer.t
+    ; mutable crc  : CRC.t }
 
-    let init ?(bits = 15) () =
-      {
-        bits   = bits;
-        size   = 1 lsl bits + 1;
-        rpos   = 0;
-        wpos   = 0;
-        (* size + 1 so we can store full buffers, while keeping
-         * rpos and wpos different for implementation matters *)
-        buffer = X.create ((1 lsl bits) + 1);
-        crc    = CRC.init ();
-      }
+  type crc = CRC.t
+  type atom = CRC.atom
+  type buffer = CRC.buffer
 
-    let available_to_read t =
-      if t.wpos >= t.rpos then (t.wpos - t.rpos)
-      else t.size - (t.rpos - t.wpos)
+  let init ?(bits = 15) () =
+    { bits   = bits
+    ; window = RingBuffer.create (1 lsl bits)
+    ; crc    = CRC.init () }
 
-    let available_to_write t =
-      if t.wpos >= t.rpos then t.size - (t.wpos - t.rpos) - 1
-      else (t.rpos - t.wpos) - 1
+  let add_buffer buff off len t =
+    RingBuffer.write t.window buff off len;
+    CRC.update buff off len t.crc
 
-    let drop t n =
-      assert (n <= available_to_read t);
-      if t.rpos + n < t.size then t.rpos <- t.rpos + n
-      else t.rpos <- t.rpos + n - t.size
+  let add_atom atom t =
+    let buff = Scalar.create 1 in
+    Scalar.set buff 0 atom;
+    RingBuffer.write t.window buff 0 1;
+    CRC.update buff 0 1 t.crc
 
-    let transmit t f =
-      if t.wpos = t.rpos then 0
-      else
-        let len0 =
-          if t.wpos >= t.rpos then t.wpos - t.rpos
-          else t.size - t.rpos
-        in
-        let len = f t.buffer t.rpos len0 in
-        assert (len <= len0);
-        drop t len;
-        len
+  let checksum t = t.crc
 
-    let pp fmt t =
-      if t.rpos <= t.wpos
-      then Printf.fprintf fmt "[ rpos: %d; ... wpos: %d; ]" t.rpos t.wpos
-      else Printf.fprintf fmt "[ wpos: %d; ... rpos: %d; ]" t.wpos t.rpos
+  let available t = RingBuffer.available_to_read t.window
 
-    let move t n =
-      assert (n <= available_to_write t);
-      if t.wpos + n < t.size then t.wpos <- t.wpos + n
-      else t.wpos <- t.wpos + n - t.size
+  let last t =
+    RingBuffer.rget t.window 1 (* dist one *)
 
-    let peek t buff ?(rpos = t.rpos) off len =
-      assert (len <= available_to_read t);
-      let pre = t.size - rpos in
-      let extra = len - pre in
-      if extra > 0 then begin
-        X.blit t.buffer rpos buff off pre;
-        X.blit t.buffer 0 buff (off + pre) extra;
-      end else
-        X.blit t.buffer rpos buff off len
+  let get t idx =
+    RingBuffer.rget t.window idx
 
-    let read t buff off len =
-      peek t buff off len;
-      drop t len
-
-    let write t buff off len =
-      if len > available_to_write t
-      then drop t (len - (available_to_write t));
-
-      assert (len <= available_to_write t);
-      CRC.update buff ~start:off ~size:len t.crc;
-
-      let pre = t.size - t.wpos in
-      let extra = len - pre in
-      if extra > 0 then begin
-        X.blit buff off t.buffer t.wpos pre;
-        X.blit buff (off + pre) t.buffer 0 extra;
-      end else begin
-        X.blit buff off t.buffer t.wpos len;
-      end;
-      move t len
-
-    let add_buffer bytes ?(start = 0) ?(size = X.length bytes) t =
-      write t bytes start size
-
-    let add_char chr t =
-      write t (X.make 1 chr) 0 1
-
-    let checksum t = t.crc
-
-    let available = available_to_read
-
-    let get_char t =
-      if t.wpos = 0
-      then X.get t.buffer (t.size - 1)
-      else X.get t.buffer (t.wpos - 1)
-
-    let get_buffer t dist size =
-      assert (dist <= available_to_read t);
-      assert (size <= dist);
-      let buffer = X.create size in
-      let rpos =
-        if t.wpos - dist < 0
-        then t.wpos - dist + t.size
-        else t.wpos - dist
-      in peek t buffer ~rpos 0 size; buffer
+  let buffer t dist size =
+    RingBuffer.rsub t.window dist size
 end

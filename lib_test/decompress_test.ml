@@ -39,149 +39,159 @@ let generate length =
 let () = Random.self_init ()
 let () = Printexc.record_backtrace true
 
-exception Inflate_error
-exception Deflate_error
-
-module MS : (Decompress.String with type t = Cstruct.t) =
+module CamlZip =
+struct
+  module Deflate =
   struct
-    type t = Cstruct.t
+    let string str =
+      let compressed = Buffer.create 16 in
 
-    let make i c    = String.make i c |> Cstruct.of_string
-    let get         = Cstruct.get_char
-    let length      = Cstruct.len
-    let sub         = Cstruct.sub
-    let compare     = Cstruct.compare
-    let to_string   = Cstruct.to_string
-    let to_bytes x  = Cstruct.to_string x |> Bytes.of_string
-    let iter f t    = String.iter f (to_string t)
+      let refill input =
+        let n = String.length input in
+        let to_read = ref n in
+        fun buf ->
+          let m = min !to_read (String.length buf) in
+          String.blit input (n - !to_read) buf 0 m;
+          to_read := !to_read - m;
+          m
+      in
+
+      let flush output buf len =
+        Buffer.add_substring output buf 0 len in
+
+      Zlib.compress (refill str) (flush compressed);
+      Buffer.contents compressed
   end
 
-module B : (Decompress.Bytes with type t = Cstruct.t) =
+  module Inflate =
   struct
-    include MS
+    let string str =
+      let uncompressed = Buffer.create 16 in
 
-    let create      = Cstruct.create
-    let set         = Cstruct.set_char
-    let blit        = Cstruct.blit
-    let of_bytes x  = Bytes.to_string x |> Cstruct.of_string
-    let of_string s = Cstruct.of_string s
+      let refill input =
+        let n = String.length input in
+        let to_read = ref n in
+        fun buf ->
+          let m = min !to_read (String.length buf) in
+          String.blit input (n - !to_read) buf 0 m;
+          to_read := !to_read - m;
+          m
+      in
+
+      let flush output buf len =
+        Buffer.add_substring output buf 0 len in
+
+      Zlib.uncompress (refill str) (flush uncompressed);
+      Buffer.contents uncompressed
   end
+end
+
+module ExtString =
+struct
+  module Atom =
+  struct
+    type t = char
+
+    let to_int = Char.code
+    let of_int = Char.chr
+  end
+
+  type elt = char
+
+  include Bytes
+end
+
+module ExtBytes =
+struct
+  module Atom =
+  struct
+    type t = char
+
+    let to_int = Char.code
+    let of_int = Char.chr
+  end
+
+  type elt = char
+
+  include Bytes
+
+  type i = Bytes.t
+
+  external get_u16 : t -> int -> int = "%caml_string_get16u"
+  external get_u64 : t -> int -> int64 = "%caml_string_get64u"
+  let of_input x = x
+end
 
 module Inflate =
-  struct
-    include Decompress.Inflate.Make(B)
+struct
+  include Decompress.Inflate.Make(ExtString)(ExtBytes)
 
-    let decompress ?(window_bits = 15) refill flush' =
-      let t = Cstruct.create 0xFF in
-      let inflater = make (`Manual refill) t in
-      let rec aux () = match eval inflater with
-        | `Ok _ -> flush' t (contents inflater); flush inflater
-        | `Flush _ -> flush' t (contents inflater); flush inflater; aux ()
-        | `Error -> raise Inflate_error
-      in aux ()
+  let string str size_i size_o =
+    let i = Bytes.create size_i in
+    let o = Bytes.create size_o in
+    let uncompressed = Buffer.create (String.length str) in
 
-    let decompress_string ?(window_bits = 15) str flush' =
-      let t = Cstruct.create 0xFF in
-      let inflater = make (`String (0, str)) t in
-      let rec aux () = match eval inflater with
-        | `Ok _ -> flush' t (contents inflater); flush inflater
-        | `Flush _ -> flush' t (contents inflater); flush inflater; aux ()
-        | `Error -> raise Inflate_error
-      in aux ()
-  end
+    let refill input =
+      let n = String.length input in
+      let to_read = ref n in
+      fun buf ->
+        let m = min !to_read (String.length buf) in
+        String.blit input (n - !to_read) buf 0 m;
+        to_read := !to_read - m;
+        m
+    in
+
+    let flush output buf len =
+      Buffer.add_subbytes output buf 0 len; len
+    in
+
+    decompress i o (refill str) (flush uncompressed);
+    Buffer.contents uncompressed
+end
 
 module Deflate =
-  struct
-    include Decompress.Deflate.Make(B)
+struct
+  include Decompress.Deflate.Make(ExtString)(ExtBytes)
 
-    let compress ?(window_bits = 15) refill flush' =
-      let t = Cstruct.create 0xFF in
-      let deflater = make ~window_bits (`Manual refill) t in
-      let rec aux () = match eval deflater with
-        | `Ok -> flush' t (contents deflater); flush deflater
-        | `Flush -> flush' t (contents deflater); flush deflater; aux ()
-        | `Error -> raise Deflate_error
-      in aux ()
+  let string str size_i size_o =
+    let i = Bytes.create size_i in
+    let o = Bytes.create size_o in
+    let compressed = Buffer.create (String.length str) in
+    let position = ref 0 in
+    let size = String.length str in
 
-    let compress_string ?(window_bits = 15) str flush' =
-      let t = Cstruct.create 0xFF in
-      let deflater = make ~window_bits (`String (0, str)) t in
-      let rec aux () = match eval deflater with
-        | `Ok -> flush' t (contents deflater); flush deflater
-        | `Flush -> flush' t (contents deflater); flush deflater; aux ()
-        | `Error -> raise Deflate_error
-      in aux ()
-  end
+    let refill' input =
+      let n = min (size - !position) (Bytes.length input) in
+      Bytes.blit_string str !position input 0 n;
+      position := !position + n;
+      if !position >= size then true, n else false, n
+    in
 
-let camlzip_to_decompress ?(window_bits = 15) str =
-  let compressed = Buffer.create 16 in
-  let refill input =
-    let n = Cstruct.len input in
-    let to_read = ref n in
-    fun buf ->
-      let m = min !to_read (String.length buf) in
-      Cstruct.blit_to_string input (n - !to_read) buf 0 m;
-      to_read := !to_read - m;
-      m
-  in
-  let flush output buf len =
-    Buffer.add_substring output buf 0 len in
+    let flush' input size =
+      Buffer.add_subbytes compressed input 0 size;
+      size
+    in
 
-  Zlib.compress (refill (Cstruct.of_string str)) (flush compressed);
+    compress i o refill' flush';
+    Buffer.contents compressed
+end
 
-  let uncompressed = Buffer.create 16 in
-  let flush output buf len =
-    Buffer.add_substring output (Cstruct.to_string buf) 0 len in
+let c2d si so data =
+  CamlZip.Deflate.string data
+  |> fun o -> Inflate.string o si so
 
-  Inflate.decompress_string ~window_bits
-    (Buffer.contents compressed)
-    (flush uncompressed);
+let d2c si so data =
+  Deflate.string data si so
+  |> CamlZip.Inflate.string
 
-  Buffer.contents uncompressed
-
-let decompress_to_decompress ?(window_bits = 15) str =
-  let compressed = Buffer.create 16 in
-  let flush output buf len =
-    Buffer.add_substring output (Cstruct.to_string buf) 0 len in
-
-  Deflate.compress_string ~window_bits str (flush compressed);
-
-  let uncompressed = Buffer.create 16 in
-
-  Inflate.decompress_string ~window_bits
-    (Buffer.contents compressed)
-    (flush uncompressed);
-
-  Buffer.contents uncompressed
-
-let decompress_to_camlzip ?(window_bits = 15) str =
-  let compressed = Buffer.create 16 in
-  let flush output buf len =
-    Buffer.add_substring output (Cstruct.to_string buf) 0 len in
-  let refill input =
-    let n = Cstruct.len input in
-    let to_read = ref n in
-    fun buf ->
-      let m = min !to_read (String.length buf) in
-      Cstruct.blit_to_string input (n - !to_read) buf 0 m;
-      to_read := !to_read - m;
-      m
-  in
-
-  Deflate.compress_string ~window_bits str (flush compressed);
-
-  let uncompressed = Buffer.create 16 in
-  let flush output buf len =
-    Buffer.add_substring output buf 0 len in
-
-  Zlib.uncompress
-    (refill (Buffer.contents compressed |> Cstruct.of_string))
-    (flush uncompressed);
-
-  Buffer.contents uncompressed
+let d2d si so data =
+  Deflate.string data si so
+  |> fun o -> Inflate.string o si so
 
 let make_string_test ?(save = false) idx size =
   let data = generate size in
+  let size_input = Random.(int 30 + 2) in
+  let size_output = Random.(int 30 + 2) in
   if save
   then begin
     let ch = open_out ("string" ^ (string_of_int idx) ^ ".txt"
@@ -189,41 +199,43 @@ let make_string_test ?(save = false) idx size =
     Printf.fprintf ch "%s%!" data; close_out ch;
   end;
   [
-    Printf.sprintf "decompress → decompress",
+    Printf.sprintf "d2d",
     `Slow,
     (fun () ->
       Alcotest.(check string) data
-        (decompress_to_decompress ~window_bits:10 data) data);
-    Printf.sprintf "decompress → camlzip",
+        (d2d size_input size_output data) data);
+    Printf.sprintf "d2c",
     `Slow,
     (fun () ->
       Alcotest.(check string) data
-        (decompress_to_camlzip ~window_bits:10 data) data);
-    Printf.sprintf "camlzip → decompress",
+        (d2c size_input size_output data) data);
+    Printf.sprintf "c2d",
     `Slow,
     (fun () ->
       Alcotest.(check string) data
-        (camlzip_to_decompress data) data);
+        (c2d size_input size_output data) data);
   ]
 
 let make_file_test filename =
   let data = load_file filename in
+  let size_input = Random.(int 30 + 2) in
+  let size_output = Random.(int 30 + 2) in
   [
-    Printf.sprintf "decompress → decompress",
+    Printf.sprintf "d2d (input: %d, output: %d) %s" size_input size_output filename,
     `Slow,
     (fun () ->
       Alcotest.(check string) data
-        (decompress_to_decompress ~window_bits:10 data) data);
-    Printf.sprintf "decompress → camlzip",
+        (d2d size_input size_output data) data);
+    Printf.sprintf "d2c (input: %d, output: %d) %s" size_input size_output filename,
     `Slow,
     (fun () ->
       Alcotest.(check string) data
-        (decompress_to_camlzip ~window_bits:10 data) data);
-    Printf.sprintf "camlzip → decompress",
+        (d2c size_input size_output data) data);
+    Printf.sprintf "c2d (input: %d, output: %d) %s" size_input size_output filename,
     `Slow,
     (fun () ->
       Alcotest.(check string) data
-        (camlzip_to_decompress data) data);
+        (c2d size_input size_output data) data);
   ]
 
 let test_files directory =

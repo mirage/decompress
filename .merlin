@@ -1,9 +1,15 @@
 S lib
 S bin
+S ppx
 S lib_test
 
 B _build/lib
 B _build/bin
 B _build/lib_test
+B _build/ppx
+
+FLG -ppx './_build/ppx/ppx_debug.byte -debug'
 
 PKG alcotest re camlzip cstruct
+PKG oasis ocamlbuild compiler-libs
+PKG ppx_debug logs logs.cli
