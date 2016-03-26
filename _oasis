@@ -83,7 +83,7 @@ Executable test_decompress
   Install:              false
   CompiledObject:       best
   MainIs:               decompress_test.ml
-  BuildDepends:         decompress, alcotest, re.str, camlzip, cstruct
+  BuildDepends:         decompress, alcotest, re.str, camlzip
 
 Test test_decompress
   Run$:                 flag(tests)
