@@ -3,54 +3,6 @@ let save_file file string =
   output_string channel string;
   close_out channel
 
-module CamlZip =
-struct
-  module Deflate =
-  struct
-    let string str =
-      let input  = Cstruct.of_string str in
-      let output = Buffer.create (String.length str) in
-      let n      = Cstruct.len input in
-      let toread = ref n in
-
-      let refill buf =
-        let m = min !toread (String.length buf) in
-        Cstruct.blit_to_string input (n - !toread) buf 0 m;
-        toread := !toread - m;
-        m
-      in
-
-      let flush buf len =
-        Buffer.add_string output (String.sub buf 0 len)
-      in
-
-      Zlib.compress refill flush;
-      Buffer.contents output
-  end
-
-  module Inflate =
-  struct
-    let string str =
-      let uncompressed = Buffer.create 16 in
-
-      let refill input =
-        let n = String.length input in
-        let to_read = ref n in
-        fun buf ->
-          let m = min !to_read (String.length buf) in
-          String.blit input (n - !to_read) (Bytes.of_string buf) 0 m;
-          to_read := !to_read - m;
-          m
-      in
-
-      let flush output buf len =
-        Buffer.add_substring output buf 0 len in
-
-      Zlib.uncompress (refill str) (flush uncompressed);
-      Buffer.contents uncompressed
-  end
-end
-
 module ExtString =
 struct
   module Atom =

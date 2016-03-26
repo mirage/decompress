@@ -16,9 +16,13 @@ Flag unix
   Description:          Unix environment
   Default:              true
 
+Flag cmdliner
+  Description:          cmdliner package
+  Default:              false
+
 Flag example
   Description:          Example of use Decompress
-  Default$:             flag(unix)
+  Default$:             flag(unix) && flag(cmdliner)
 
 Flag trace
   Description:          Trace all compute of decompress
@@ -64,9 +68,9 @@ Executable loop
   Path:                 bin
   MainIs:               loop.ml
   CompiledObject:       best
-  BuildDepends:         decompress, camlzip, cstruct, cmdliner
+  BuildDepends:         decompress, cmdliner
   NativeOpt:            -inline 100
-  Build$:               flag(example)
+  Build$:               flag(example) && flag(unix) && flag(cmdliner)
 
 SourceRepository master
   Type:                 git

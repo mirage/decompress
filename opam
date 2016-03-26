@@ -11,7 +11,8 @@ license:      "MIT"
 build: [
   ["./configure"
     "--%{base-unix:enable}%-unix"
-    "--prefix=%{prefix}%"]
+    "--prefix=%{prefix}%"
+    "--%{cmdliner:enable}%-cmdliner"]
   [make]
 ]
 
@@ -19,6 +20,7 @@ build-test: [
   ["./configure"
     "--enable-tests"
     "--%{base-unix:enable}%-unix"
+    "--%{cmdliner:enable}%-cmdliner"
     "--prefix=%{prefix}%"]
   [make "test"]
 ]
@@ -27,13 +29,12 @@ install: [make "install"]
 remove: ["ocamlfind" "remove" "decompress"]
 
 depends: [
-  "oasis" {build}
+  "oasis"    {build}
   "base-bytes"
   "alcotest" {test}
-  "re" {test}
-  "cstruct" {test}
-  "camlzip" {test}
-  "lwt" {test}
+  "re"       {test}
+  "camlzip"  {test}
+  "cmdliner" {test}
 ]
 
 depopts: [
