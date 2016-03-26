@@ -68,7 +68,7 @@ Executable loop
   Path:                 bin
   MainIs:               loop.ml
   CompiledObject:       best
-  BuildDepends:         decompress, cmdliner
+  BuildDepends:         decompress, unix, cmdliner
   NativeOpt:            -inline 100
   Build$:               flag(example) && flag(unix) && flag(cmdliner)
 
