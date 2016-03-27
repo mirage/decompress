@@ -136,7 +136,9 @@ struct
   let sanitize t i = i mod t.size
 
   let rget t idx =
-    assert (idx < available_to_read t);
+    (* TODO: assert (idx < available_to_read t);
+     * it's not good assertion, so we need to found another assertion with
+     * [rget]. *)
     let pre = t.wpos - idx in
     let pos = t.size + (* - *) pre in
     if pre < 0
