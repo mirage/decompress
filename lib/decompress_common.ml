@@ -1,28 +1,35 @@
-module type String =
-  sig
-    type t
+module ExtString =
+struct
+  module Atom =
+  struct
+    type t = char
 
-    val make           : int -> char -> t
-
-    val get            : t -> int -> char
-    val length         : t -> int
-    val iter           : (char -> unit) -> t -> unit
-    val sub            : t -> int -> int -> t
-    val compare        : t -> t -> int
-
-    val to_string      : t -> String.t
-    val to_bytes       : t -> Bytes.t
+    let to_int = Char.code
+    let of_int = Char.chr
   end
 
-module type Bytes =
-  sig
-    include String
+  type elt = char
 
-    val create         : int -> t
+  include String
+end
 
-    val set            : t -> int -> char -> unit
-    val blit           : t -> int -> t -> int -> int -> unit
+module ExtBytes =
+struct
+  module Atom =
+  struct
+    type t = char
 
-    val of_bytes       : Bytes.t -> t
-    val of_string      : String.t -> t
+    let to_int = Char.code
+    let of_int = Char.chr
   end
+
+  type elt = char
+
+  include Bytes
+
+  type i = String.t
+
+  external get_u16 : t -> int -> int = "%caml_string_get16u"
+  external get_u64 : t -> int -> int64 = "%caml_string_get64u"
+  let of_input x = Bytes.of_string x
+end

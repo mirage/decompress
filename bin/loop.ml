@@ -3,57 +3,24 @@ let save_file file string =
   output_string channel string;
   close_out channel
 
-module ExtString =
-struct
-  module Atom =
-  struct
-    type t = char
-
-    let to_int = Char.code
-    let of_int = Char.chr
-  end
-
-  type elt = char
-
-  include Bytes
-end
-
-module ExtBytes =
-struct
-  module Atom =
-  struct
-    type t = char
-
-    let to_int = Char.code
-    let of_int = Char.chr
-  end
-
-  type elt = char
-
-  include Bytes
-
-  type i = Bytes.t
-
-  external get_u16 : t -> int -> int = "%caml_string_get16u"
-  external get_u64 : t -> int -> int64 = "%caml_string_get64u"
-  let of_input x = x
-end
+open Decompress
 
 module Inflate =
 struct
-  include Decompress.Inflate.Make(ExtString)(ExtBytes)
+  include
+  Inflate.Make(ExtString)(ExtBytes)
 
   let string ?(input_size = 2) ?(output_size = 2) ?(window_bits = 15) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
     let size     = String.length document in
 
-    let input    = ExtBytes.create input_size in
-    let output   = ExtBytes.create output_size in
+    let input    = Bytes.create input_size in
+    let output   = Bytes.create output_size in
 
     let refill' input =
-      let n = min (size - !position) (ExtBytes.length input) in
-      ExtBytes.blit_string document !position input 0 n;
+      let n = min (size - !position) (String.length input) in
+      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
       position := !position + n;
       n
     in
@@ -63,25 +30,25 @@ struct
       size
     in
 
-    decompress ~window_bits input output refill' flush';
+    decompress ~window_bits (Bytes.unsafe_to_string input) output refill' flush';
     Buffer.contents buffer
 end
 
 module Deflate =
 struct
-  include Decompress.Deflate.Make(ExtString)(ExtBytes)
+  include Deflate.Make(ExtString)(ExtBytes)
 
   let string ?(input_size = 2) ?(output_size = 2) ?(window_bits = 15) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
     let size     = String.length document in
 
-    let input    = ExtBytes.create input_size in
-    let output   = ExtBytes.create output_size in
+    let input    = Bytes.create input_size in
+    let output   = Bytes.create output_size in
 
     let refill' input =
-      let n = min (size - !position) (ExtBytes.length input) in
-      ExtBytes.blit_string document !position input 0 n;
+      let n = min (size - !position) (String.length input) in
+      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
       position := !position + n;
       if !position >= size then true, n else false, n
     in
@@ -91,7 +58,7 @@ struct
       size
     in
 
-    compress ~window_bits input output refill' flush';
+    compress ~window_bits (Bytes.unsafe_to_string input) output refill' flush';
     Buffer.contents buffer
 end
 
@@ -115,11 +82,11 @@ let string_of_channel ?(use_unix = true) ic =
     else input ic, Bytes.create 65536
   in
   let rec loop b input s =
-    let rc = input s 0 (String.length s) in
+    let rc = input s 0 (Bytes.length s) in
     if rc = 0 then Buffer.contents b else
-    (Buffer.add_substring b s 0 rc; loop b input s)
+    (Buffer.add_subbytes b s 0 rc; loop b input s)
   in
-  loop b input s |> Bytes.to_string
+  loop b input s
 
 open Cmdliner
 

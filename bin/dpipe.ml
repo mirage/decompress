@@ -3,45 +3,9 @@ open Decompress
 exception Inflate_error
 exception Deflate_error
 
-module ExtString =
-struct
-  module Atom =
-  struct
-    type t = char
-
-    let to_int = Char.code
-    let of_int = Char.chr
-  end
-
-  type elt = char
-
-  include Bytes
-end
-
-module ExtBytes =
-struct
-  module Atom =
-  struct
-    type t = char
-
-    let to_int = Char.code
-    let of_int = Char.chr
-  end
-
-  type elt = char
-
-  include Bytes
-
-  type i = Bytes.t
-
-  external get_u16 : t -> int -> int = "%caml_string_get16u"
-  external get_u64 : t -> int -> int64 = "%caml_string_get64u"
-  let of_input x = x
-end
-
 module Inflate =
 struct
-  include Decompress.Inflate.Make(ExtString)(ExtBytes)
+  include Inflate.Make(ExtString)(ExtBytes)
 
   let string ?(window_bits = 15) document =
     let buffer   = Buffer.create 16 in
@@ -52,8 +16,8 @@ struct
     let output   = Bytes.create 2 in
 
     let refill' input =
-      let n = min (size - !position) (Bytes.length input) in
-      Bytes.blit_string document !position input 0 n;
+      let n = min (size - !position) (String.length input) in
+      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
       position := !position + n;
       n
     in
@@ -63,13 +27,13 @@ struct
       size
     in
 
-    decompress ~window_bits input output refill' flush';
+    decompress ~window_bits (Bytes.unsafe_to_string input) output refill' flush';
     Buffer.contents buffer
 end
 
 module Deflate =
 struct
-  include Decompress.Deflate.Make(ExtString)(ExtBytes)
+  include Deflate.Make(ExtString)(ExtBytes)
 
   let string ?(window_bits = 15) document =
     let buffer   = Buffer.create 16 in
@@ -80,8 +44,8 @@ struct
     let output   = Bytes.create 16 in
 
     let refill' input =
-      let n = min (size - !position) (Bytes.length input) in
-      Bytes.blit_string document !position input 0 n;
+      let n = min (size - !position) (String.length input) in
+      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
       position := !position + n;
       if !position >= size then true, n else false, n
     in
@@ -91,7 +55,7 @@ struct
       size
     in
 
-    compress ~window_bits input output refill' flush';
+    compress ~window_bits (Bytes.unsafe_to_string input) output refill' flush';
     Buffer.contents buffer
 end
 

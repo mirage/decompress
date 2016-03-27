@@ -51,7 +51,7 @@ struct
         let to_read = ref n in
         fun buf ->
           let m = min !to_read (String.length buf) in
-          String.blit input (n - !to_read) buf 0 m;
+          String.blit input (n - !to_read) (Bytes.unsafe_of_string buf) 0 m;
           to_read := !to_read - m;
           m
       in
@@ -73,7 +73,7 @@ struct
         let to_read = ref n in
         fun buf ->
           let m = min !to_read (String.length buf) in
-          String.blit input (n - !to_read) buf 0 m;
+          String.blit input (n - !to_read) (Bytes.unsafe_of_string buf) 0 m;
           to_read := !to_read - m;
           m
       in
@@ -86,45 +86,11 @@ struct
   end
 end
 
-module ExtString =
-struct
-  module Atom =
-  struct
-    type t = char
-
-    let to_int = Char.code
-    let of_int = Char.chr
-  end
-
-  type elt = char
-
-  include Bytes
-end
-
-module ExtBytes =
-struct
-  module Atom =
-  struct
-    type t = char
-
-    let to_int = Char.code
-    let of_int = Char.chr
-  end
-
-  type elt = char
-
-  include Bytes
-
-  type i = Bytes.t
-
-  external get_u16 : t -> int -> int = "%caml_string_get16u"
-  external get_u64 : t -> int -> int64 = "%caml_string_get64u"
-  let of_input x = x
-end
+open Decompress
 
 module Inflate =
 struct
-  include Decompress.Inflate.Make(ExtString)(ExtBytes)
+  include Inflate.Make(ExtString)(ExtBytes)
 
   let string str size_i size_o =
     let i = Bytes.create size_i in
@@ -136,7 +102,7 @@ struct
       let to_read = ref n in
       fun buf ->
         let m = min !to_read (String.length buf) in
-        String.blit input (n - !to_read) buf 0 m;
+        String.blit input (n - !to_read) (Bytes.unsafe_of_string buf) 0 m;
         to_read := !to_read - m;
         m
     in
@@ -145,13 +111,13 @@ struct
       Buffer.add_subbytes output buf 0 len; len
     in
 
-    decompress i o (refill str) (flush uncompressed);
+    decompress (Bytes.unsafe_to_string i) o (refill str) (flush uncompressed);
     Buffer.contents uncompressed
 end
 
 module Deflate =
 struct
-  include Decompress.Deflate.Make(ExtString)(ExtBytes)
+  include Deflate.Make(ExtString)(ExtBytes)
 
   let string str size_i size_o =
     let i = Bytes.create size_i in
@@ -161,8 +127,8 @@ struct
     let size = String.length str in
 
     let refill' input =
-      let n = min (size - !position) (Bytes.length input) in
-      Bytes.blit_string str !position input 0 n;
+      let n = min (size - !position) (String.length input) in
+      String.blit str !position (Bytes.unsafe_of_string input) 0 n;
       position := !position + n;
       if !position >= size then true, n else false, n
     in
@@ -172,7 +138,7 @@ struct
       size
     in
 
-    compress i o refill' flush';
+    compress (Bytes.unsafe_to_string i) o refill' flush';
     Buffer.contents compressed
 end
 
