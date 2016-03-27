@@ -899,12 +899,10 @@ struct
     and read_a1b window (a2a, a2b, a1a) inflater =
       try let a1b = src_byte inflater in
 
-        (*
         if Adler32.neq
             (Adler32.make ((a1a lsl 8) lor a1b) ((a2a lsl 8) lor a2b))
             (Window.checksum window)
         then raise Invalid_crc;
-        *)
 
         inflater.k <- ok;
 
