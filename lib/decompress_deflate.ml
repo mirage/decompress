@@ -203,34 +203,11 @@ struct
       mutable k         : t -> [ `Ok | `Flush | `Error | `Wait ];
     }
 
-  type dynamic =
-    {
-      lit_len_lengths : int array;
-      lit_len_codes   : int array;
-
-      dist_lengths    : int array;
-      dist_codes      : int array;
-
-      tree_codes      : int array;
-      tree_lengths    : int array;
-      tree_symbols    : int array;
-
-      trans_lengths   : int array;
-
-      hlit            : int;
-      hdist           : int;
-      hclen           : int;
-
-      lz77            : Lz77.t;
-    }
-
   type writing =
-    [
-      | `Length
-      | `Extra_length
-      | `Dist
-      | `Extra_dist
-    ]
+    [ `Length
+    | `Extra_length
+    | `Dist
+    | `Extra_dist ]
 
   let put_byte deflater byte =
     [%debug Logs.debug @@ fun m -> m "put one byte: 0x%02x" byte];
@@ -891,60 +868,43 @@ struct
 
     eval deflater
 
-  and initialize_dynamic after_block (lz77, freqs_lit_length, freqs_dist) deflater =
+  and initialize_dynamic after_block (lz77, freqs_literal, freqs_distance) deflater =
     [%debug Logs.debug @@ fun m -> m "state: initialize_dynamic"];
 
-    let trans_lengths = Array.make 19 0 in
-    let lit_len_lengths = Tree.get_lengths freqs_lit_length 15 in
-    let lit_len_codes = Tree.get_codes_from_lengths lit_len_lengths in
-    let dist_lengths = Tree.get_lengths freqs_dist 7 in
-    let dist_codes = Tree.get_codes_from_lengths dist_lengths in
+    let trans_length = Array.make 19 0 in
+    let literal_length  = Tree.get_lengths freqs_literal 15 in
+    let literal_code    = Tree.get_codes_from_lengths literal_length in
+    let distance_length = Tree.get_lengths freqs_distance 7 in
+    let distance_code   = Tree.get_codes_from_lengths distance_length in
 
     let hlit = ref 286 in
-    while !hlit > 257 && lit_len_lengths.(!hlit - 1) = 0 do decr hlit done;
+    while !hlit > 257 && literal_length.(!hlit - 1) = 0 do decr hlit done;
 
     let hdist = ref 30 in
-    while !hdist > 1 && dist_lengths.(!hdist - 1) = 0 do decr hdist done;
+    while !hdist > 1 && distance_length.(!hdist - 1) = 0 do decr hdist done;
 
-    let tree_symbols, tree_freqs =
-      get_tree_symbols !hlit lit_len_lengths !hdist dist_lengths in
+    let tree_symbol, freqs_tree =
+      get_tree_symbols !hlit literal_length !hdist distance_length in
 
-    let tree_lengths = Tree.get_lengths tree_freqs 7 in
+    let tree_length = Tree.get_lengths freqs_tree 7 in
 
     for i = 0 to 18
-    do trans_lengths.(i) <- tree_lengths.(hclen_order.(i)) done;
+    do trans_length.(i) <- tree_length.(hclen_order.(i)) done;
 
     let hclen = ref 19 in
-    while !hclen > 4 && trans_lengths.(!hclen - 1) = 0 do decr hclen done;
+    while !hclen > 4 && trans_length.(!hclen - 1) = 0 do decr hclen done;
 
-    let tree_codes = Tree.get_codes_from_lengths tree_lengths in
-
-    let info =
-      { lit_len_lengths
-      ; lit_len_codes
-
-      ; dist_lengths
-      ; dist_codes
-
-      ; tree_codes
-      ; tree_lengths
-      ; tree_symbols
-
-      ; trans_lengths
-
-      ; hlit  = !hlit
-      ; hdist = !hdist
-      ; hclen = !hclen
-
-      ; lz77  = lz77 }
-    in
+    let tree_code = Tree.get_codes_from_lengths tree_length in
+    let hlit  = !hlit in
+    let hdist = !hdist in
+    let hclen = !hclen in
 
     let rec write_hlit deflater =
       [%debug Logs.debug @@ fun m -> m "state: write_hlit"];
 
       if deflater.needed > 1
       then begin
-        add_bits deflater (info.hlit - 257) 5;
+        add_bits deflater (hlit - 257) 5;
         deflater.k <- write_hdist;
 
         eval deflater
@@ -955,7 +915,7 @@ struct
 
       if deflater.needed > 1
       then begin
-        add_bits deflater (info.hdist - 1) 5;
+        add_bits deflater (hdist - 1) 5;
         deflater.k <- write_hclen;
 
         eval deflater
@@ -966,10 +926,10 @@ struct
 
       if deflater.needed > 1
       then begin
-        add_bits deflater (info.hclen - 4) 4;
+        add_bits deflater (hclen - 4) 4;
 
         deflater.i <- 0;
-        deflater.i_max <- info.hclen;
+        deflater.i_max <- hclen;
         deflater.k <- write_trans;
 
         eval deflater
@@ -980,14 +940,14 @@ struct
 
       if deflater.needed > 1
       then begin
-        add_bits deflater info.trans_lengths.(deflater.i) 3;
+        add_bits deflater trans_length.(deflater.i) 3;
 
         deflater.i <- deflater.i + 1;
         deflater.k <-
           if deflater.i = deflater.i_max
           then begin
             deflater.i <- 0;
-            deflater.i_max <- Array.length info.tree_symbols;
+            deflater.i_max <- Array.length tree_symbol;
             write_symbols
           end else write_trans;
 
@@ -999,9 +959,9 @@ struct
 
       if deflater.needed > 1
       then begin
-        let code = info.tree_symbols.(deflater.i) in
+        let code = tree_symbol.(deflater.i) in
 
-        add_bits deflater info.tree_codes.(code) info.tree_lengths.(code);
+        add_bits deflater tree_code.(code) tree_length.(code);
 
         deflater.i <- deflater.i + 1;
         deflater.k <-
@@ -1026,7 +986,7 @@ struct
 
       if deflater.needed > 1
       then begin
-        add_bits deflater info.tree_symbols.(deflater.i) bitlen;
+        add_bits deflater tree_symbol.(deflater.i) bitlen;
 
         deflater.i <- deflater.i + 1;
         deflater.k <-
@@ -1040,18 +1000,11 @@ struct
     and dynamic_getter deflater =
       [%debug Logs.debug @@ fun m -> m "state: dynamic_getter"];
 
-      let get_chr chr = info.lit_len_codes.(chr), info.lit_len_lengths.(chr) in
+      let get_chr chr = literal_code.(chr), literal_length.(chr) in
       let get_length length =
-        [%debug Logs.debug @@ fun m -> m "get dynamic length %03d" length];
         let code = _length.(length) in
-        [%debug Logs.debug @@ fun m ->
-          m "get dynamic length length(%03d) = %03d"
-          length code];
-        let code, length = info.lit_len_codes.(code + 256 + 1),
-                           info.lit_len_lengths.(code + 256 + 1) in
-        [%debug Logs.debug @@ fun m -> m "we will write %a"
-          Huffman.pp_code (Huffman.code_of_int ~size:length code)];
-        code, length
+        literal_code.(code + 256 + 1),
+        literal_length.(code + 256 + 1)
       in
       let get_extra_length length =
         let code = _length.(length) in
@@ -1061,7 +1014,7 @@ struct
       in
       let get_dist dist =
         let code = _distance dist in
-        info.dist_codes.(code), info.dist_lengths.(code)
+        distance_code.(code), distance_length.(code)
       in
       let get_extra_dist dist =
         let code = _distance dist in
@@ -1076,7 +1029,7 @@ struct
           ~get_extra_length
           ~get_dist
           ~get_extra_dist
-          info.lz77;
+          lz77;
 
       eval deflater
     in
