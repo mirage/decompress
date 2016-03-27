@@ -539,7 +539,7 @@ struct
     ; bits            = 0
 
     ; outpos          = 0
-    ; needed          = O.length dst
+    ; needed          = 0
 
     ; inpos           = 0
     ; available       = 0
@@ -1209,6 +1209,7 @@ struct
     let is_last, size = refill' input in
     last deflater is_last;
     refill deflater size;
+    flush deflater (O.length output);
 
     let rec aux () = match eval deflater with
       | `Ok ->
