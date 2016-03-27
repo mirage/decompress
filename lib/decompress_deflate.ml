@@ -613,10 +613,9 @@ struct
             "read and write flat data (size: %d byte(s))" size];
 
           (* write flat data to output buffer *)
-          (* O.iblit
-            deflater.src deflater.inpos
-            buffer deflater.outpos
-            size; *)
+          let s = O.of_input deflater.src in
+          for i = deflater.inpos to size - 1
+          do O.set buffer (real_size + i) (O.get s i) done;
 
           (* update CRC *)
           Adler32.update deflater.src deflater.inpos size deflater.crc;
