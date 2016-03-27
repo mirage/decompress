@@ -2,7 +2,7 @@ module type INPUT =
 sig
   module Atom :
   sig
-    type t
+    type t = char
 
     val to_int : t -> int
     val of_int : int -> t
