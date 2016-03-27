@@ -13,12 +13,8 @@ sig
   type dst
   type mode
 
-  val dynamic : int -> mode
-  val static  : int -> mode
-  val flat    : int -> mode
-
   (** Returns a new input abstraction reading from the given source. *)
-  val make : ?window_bits:int -> ?mode:mode -> src -> dst -> t
+  val make : ?window_bits:int -> ?level:int -> src -> dst -> t
 
   (** [eval deflater] performs [deflater]. The value os [eval deflater] is:
       {ul

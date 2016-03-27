@@ -5,11 +5,7 @@ sig
   type dst
   type mode
 
-  val dynamic : int -> mode
-  val static  : int -> mode
-  val flat    : int -> mode
-
-  val make : ?window_bits:int -> ?mode:mode -> src -> dst -> t
+  val make : ?window_bits:int -> ?level:int -> src -> dst -> t
   val eval : t -> [ `Ok | `Flush | `Error | `Wait ]
 
   val contents : t -> int
@@ -102,8 +98,8 @@ struct
     | Static lz77 | Dynamic lz77 -> Lz77.window_bits lz77
     | Flat (buffer, _, window_bits) -> window_bits
 
-  let dynamic window_bits = Dynamic (Lz77.make ~window_bits ())
-  let static  window_bits = Static (Lz77.make ~window_bits ())
+  let dynamic ~level window_bits = Dynamic (Lz77.make ~window_bits ~level ())
+  let static  ~level window_bits = Static (Lz77.make ~window_bits ~level ())
   let flat    window_bits = Flat (O.create (1 lsl window_bits), 0, window_bits)
 
   type flush =
@@ -519,12 +515,20 @@ struct
 
   exception No_more_input
 
-  let rec make ?(window_bits = 15) ?(mode = Dynamic (Lz77.make ~window_bits ()))
-          src dst =
-    (* XXX: may be we ensure that [window_bits] is the same between the user
-       want and the mode. *)
-    assert (window_bits = window_bits_of_mode mode);
-
+  let rec make ?(window_bits = 15) ?(level = 4) src dst =
+    let mode = match level with
+      | 0 -> flat window_bits
+      | 1 -> static ~level window_bits
+      | 2 -> static ~level window_bits
+      | 3 -> static ~level window_bits
+      | 4 -> dynamic ~level window_bits
+      | 5 -> dynamic ~level window_bits
+      | 6 -> dynamic ~level window_bits
+      | 7 -> dynamic ~level window_bits
+      | 8 -> dynamic ~level window_bits
+      | 9 -> dynamic ~level window_bits
+      | _ -> raise (Invalid_argument "Deflate.make: invalid level")
+    in
     { src
     ; dst
 
