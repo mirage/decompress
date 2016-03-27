@@ -60,7 +60,6 @@ struct
 
     let flush' input size =
       Buffer.add_subbytes buffer input 0 size;
-      Printf.printf "> %s\n%!" (Buffer.contents buffer);
       size
     in
 
@@ -132,7 +131,7 @@ let do_cmd inf seed input_size output_size window_bits =
   let contents = string_of_channel (src inf) in
   Deflate.string ~input_size ~output_size ~window_bits contents
   |> Inflate.string ~input_size ~output_size ~window_bits
-  |> print_string
+  |> fun o -> Printf.printf "equal: %b\n%!" (contents = o)
 
 let file =
   let doc = "The input file. Reads from stdin if unspecified." in
