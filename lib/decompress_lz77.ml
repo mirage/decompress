@@ -353,8 +353,17 @@ struct
         [%debug Logs.debug @@ fun m -> m "we lookup a pattern in hash table"];
         let hval = hash !ip in
 
+        let sanitize_anchor = RingBuffer.sanitize state.ringbuffer (rpos + anchor) in
         op       := Array.get state.htab hval;
-        distance := (rpos + anchor) - !op;
+        distance :=
+          if sanitize_anchor >= !op then sanitize_anchor - !op
+          else ((1 lsl state.window_bits) + 1) - (!op - sanitize_anchor);
+        (* XXX: we need to sanitize distance if the [sanitize_anchor] < [op].
+         * in this case, that means the previous writing in ring buffer update
+         * [rpos] at the begin of (ring) buffer. *)
+
+        [%debug Logs.debug @@ fun m -> m "we have a distance %d with the old \
+          pattern [rpos = %d, anchor = %d, op = %d]" !distance rpos anchor !op];
 
         if (!distance land 1) = 0 (* TODO *)
         then Array.set state.htab hval
