@@ -564,12 +564,6 @@ struct
         Buffer.add_atom state.buffer e
       done;
 
-      [%debug let s = Buffer.contents state.buffer in
-              let o = Bytes.create (OScalar.length s) in
-              for i = 0 to OScalar.length s - 1
-              do Bytes.set o i (OScalar.get s i) done;
-              Logs.debug @@ fun m -> m "the last new buffer is: %s" o];
-
       state.res <- Buffer (Buffer.contents state.buffer) :: state.res;
     end;
 
