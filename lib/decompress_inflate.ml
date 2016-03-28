@@ -406,10 +406,11 @@ struct
       (* Check value must be such that [byte0] and [byte1], when viewed as a
        * 16-bit unsigned integer stored in MSB order ([byte0 * 256 + byte1]), is
        * a multiple of 31. *)
+
+      (* TODO: FIX BUG
       if (byte0 lsl 8 + byte1) mod 31 <> 0 then
         raise Invalid_header;
 
-      (* TODO: FIX BUG
          if byte0 land 0xF <> 8 || byte0 lsr 4 < 7 (* see RFC 1950 § 2.2 *)
          then raise Invalid_header;
       *)
