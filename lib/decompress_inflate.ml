@@ -47,6 +47,8 @@ sig
   val contents : t -> int
   val flush    : t -> int -> unit
   val refill   : t -> int -> unit
+  val used_in  : t -> int
+  val used_out : t -> int
 
   val decompress : src -> dst -> (src -> int) -> (dst -> int -> int) -> unit
 end
@@ -928,6 +930,9 @@ struct
   let refill inflater refill =
     inflater.available <- refill;
     inflater.inpos <- 0
+
+  let used_in { inpos; _ } = inpos
+  let used_out { outpos; _ } = outpos
 
   let decompress input output refill' flush' =
     let inflater = make input output in
