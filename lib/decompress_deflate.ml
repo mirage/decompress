@@ -12,7 +12,7 @@ sig
   val flush    : t -> int -> unit
   val refill   : t -> int -> unit
 
-  val compress : ?window_bits:int -> src -> dst -> (src -> bool * int) -> (dst -> int -> int) -> unit
+  val compress : ?window_bits:int -> ?level:int -> src -> dst -> (src -> bool * int) -> (dst -> int -> int) -> unit
 end
 
 module type INPUT =
@@ -1202,8 +1202,8 @@ struct
   let last deflater is_last =
     deflater.last <- is_last
 
-  let compress ?(window_bits = 15) input output refill' flush' =
-    let deflater = make input output in
+  let compress ?(window_bits = 15) ?(level = 4) input output refill' flush' =
+    let deflater = make ~window_bits ~level input output in
 
     let is_last, size = refill' input in
     last deflater is_last;

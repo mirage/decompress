@@ -33,7 +33,7 @@ sig
 
   val refill : t -> int -> unit
 
-  val compress : ?window_bits:int -> src -> dst -> (src -> bool * int) -> (dst -> int -> int) -> unit
+  val compress : ?window_bits:int -> ?level:int -> src -> dst -> (src -> bool * int) -> (dst -> int -> int) -> unit
 end
 
 module type INPUT =
