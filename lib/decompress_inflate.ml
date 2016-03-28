@@ -48,7 +48,7 @@ sig
   val flush    : t -> int -> unit
   val refill   : t -> int -> unit
 
-  val decompress : ?window_bits:int -> src -> dst -> (src -> int) -> (dst -> int -> int) -> unit
+  val decompress : src -> dst -> (src -> int) -> (dst -> int -> int) -> unit
 end
 
 module Make (I : INPUT) (O : OUTPUT) : S
@@ -929,7 +929,7 @@ struct
     inflater.available <- refill;
     inflater.inpos <- 0
 
-  let decompress ?(window_bits = 15) input output refill' flush' =
+  let decompress input output refill' flush' =
     let inflater = make input output in
 
     let size = refill' input in

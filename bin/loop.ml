@@ -30,7 +30,7 @@ struct
       size
     in
 
-    decompress ~window_bits (Bytes.unsafe_to_string input) output refill' flush';
+    decompress (Bytes.unsafe_to_string input) output refill' flush';
     Buffer.contents buffer
 end
 

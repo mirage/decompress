@@ -48,7 +48,7 @@ sig
   val flush    : t -> int -> unit
   val refill   : t -> int -> unit
 
-  val decompress : ?window_bits:int -> src -> dst -> (src -> int) -> (dst -> int -> int) -> unit
+  val decompress : src -> dst -> (src -> int) -> (dst -> int -> int) -> unit
 end
 
 module Make (I : INPUT) (O : OUTPUT) : S
