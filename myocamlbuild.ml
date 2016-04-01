@@ -60,13 +60,11 @@ let link_c_library istub so libname env build =
     | Outcome.Good o -> o
     | Outcome.Bad exn -> raise exn
   end results in
-  Seq
-  [ Cmd (S [ !Options.ocamlopt
-           ; A "-runtime-variant"; A "_pic"
-           ; A "-o"; Px so
-           ; T (tags_of_pathname so ++ "ocaml" ++ "output_obj" ++ "native" ++ "link" ++ ("use_" ^ libname))
-           ; Command.atomize objs ])
-  ; Cmd (S [ A "ln"; A "-f"; A so; A ("../" ^ so)]) ]
+  Cmd (S [ !Options.ocamlopt
+         ; A "-runtime-variant"; A "_pic"
+         ; A "-o"; Px so
+         ; T (tags_of_pathname so ++ "ocaml" ++ "output_obj" ++ "native" ++ "link" ++ ("use_" ^ libname))
+         ; Command.atomize objs ])
 
 let () =
   rule "istub & (o|obj)* -> (so|dll)"
