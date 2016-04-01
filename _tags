@@ -3,4 +3,4 @@
 true: annot
 true: safe_string
 <lib/*.ml{,i}>: ppx_debug
-<bin/clib.ml>: use_istub
+<bin/rev/*.ml{,i}>: use_istub
