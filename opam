@@ -31,6 +31,7 @@ remove: ["ocamlfind" "remove" "decompress"]
 
 depends: [
   "oasis"          {build}
+  "ocamlfind"      {build}
   "base-bytes"
   "alcotest"       {test}
   "re"             {test}
