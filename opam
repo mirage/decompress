@@ -30,13 +30,14 @@ install: [make "install"]
 remove: ["ocamlfind" "remove" "decompress"]
 
 depends: [
-  "oasis"    {build}
+  "oasis"          {build}
   "base-bytes"
-  "alcotest" {test}
-  "re"       {test}
-  "camlzip"  {test}
-  "cmdliner" {test}
-  "ctypes"   {test}
+  "alcotest"       {test}
+  "re"             {test}
+  "camlzip"        {test}
+  "cmdliner"       {test}
+  "ctypes"         {test}
+  "ctypes-foreign" {test}
 ]
 
 depopts: [

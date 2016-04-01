@@ -8,6 +8,7 @@ open Ocamlbuild_plugin
 let env_filename = Pathname.basename BaseEnvLight.default_filename
 let env          = BaseEnvLight.load ~filename:env_filename ~allow_empty:true ()
 let trace        = bool_of_string (BaseEnvLight.var_get "trace" env)
+let istub        = bool_of_string (BaseEnvLight.var_get "istub" env)
 let ppx_debug debug =
   "./ppx/ppx_debug.byte " ^ (if debug then "-debug" else "-no-debug")
   (* XXX: OASIS de merde. *)
@@ -81,26 +82,30 @@ let ocaml_dir = run_and_read "ocamlopt -where" |> fun s -> String.sub s 0 (Strin
 let () = dispatch
   (function
    | After_hygiene ->
-       (* we add new rule *)
-       istub_rule "gen/generate.native" "istub" "decompress";
+       if istub
+       then begin
+         (* we add new rule *)
+         istub_rule "gen/generate.native" "istub" "decompress";
 
-       (* we specify by the hand the dependency with [abindingis.ml] *)
-       dep ["file:bindings/apply/abindings.ml"] ["istub/decompress_bindings.cmx"];
-       (* we use the new tag [use_istub] *)
-       dep ["use_istub"] ["libdecompress.so"];
+         (* we specify by the hand the dependency with [abindingis.ml] *)
+         dep ["file:bindings/apply/abindings.ml"] ["istub/decompress_bindings.cmx"];
+         (* we use the new tag [use_istub] *)
+         dep ["use_istub"] ["libdecompress.so"];
+
+         (* we specify the compilation of [abindings.ml] *)
+         flag ["ocaml"; "compile"; "file:bindings/apply/abindings.ml"]
+           (S [ A "-g"
+              ; A "-I"; A "istub"
+              ; A "-I"; A "bindings" ]);
+         (* we specify the compilation of [*.so] *)
+         flag ["c"; "compile"; "file:istub/decompress.c"]
+           (S [ A "-ccopt"; A "-fPIC"
+              ; A "-ccopt"; A "-g"
+              ; A "-ccopt"; A ("-I"^ocaml_dir)
+              ; A "-I"; A (Findlib.query "ctypes").Findlib.location ]);
+       end;
+
        dep ["ppx_debug"] [ppx_debug];
-
-       (* we specify the compilation of [abindings.ml] *)
-       flag ["ocaml"; "compile"; "file:bindings/apply/abindings.ml"]
-         (S [ A "-g"
-            ; A "-I"; A "istub"
-            ; A "-I"; A "bindings" ]);
-       (* we specify the compilation of [*.so] *)
-       flag ["c"; "compile"; "file:istub/decompress.c"]
-         (S [ A "-ccopt"; A "-fPIC"
-            ; A "-ccopt"; A "-g"
-            ; A "-ccopt"; A ("-I"^ocaml_dir)
-            ; A "-I"; A (Findlib.query "ctypes").Findlib.location ]);
 
        if trace
        then begin
