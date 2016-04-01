@@ -261,9 +261,14 @@ struct
 
   let align deflater =
     if deflater.bits > 8
-    then put_short deflater deflater.hold
-    else if deflater.bits > 0
-    then put_byte deflater (deflater.hold land 0xFF);
+    then begin
+      [%debug Logs.debug @@ fun m -> m "we have a data pending: %02x" deflater.hold];
+      put_short deflater deflater.hold
+    end else if deflater.bits > 0
+    then begin
+      [%debug Logs.debug @@ fun m -> m "we have a data pending: %02x" deflater.hold];
+      put_byte deflater (deflater.hold land 0xFF)
+    end;
 
     deflater.hold <- 0;
     deflater.bits <- 0
@@ -607,22 +612,27 @@ struct
     let rec aux deflater =
       let new_mode, read = match deflater.mode with
         | Flat (buffer, real_size, window_bits) ->
-          let size = min ((1 lsl window_bits - 1) - real_size) deflater.available in
+          let len = min ((1 lsl window_bits - 1) - real_size) deflater.available in
 
           [%debug Logs.debug @@ fun m -> m
-            "read and write flat data (size: %d byte(s))" size];
+            "read and write flat data (size: %d byte(s))" len];
 
           (* write flat data to output buffer *)
           let s = O.of_input deflater.src in
-          for i = deflater.inpos to size - 1
-          do O.set buffer (real_size + i) (O.get s i) done;
+          let i = ref 0 in
+
+          while !i < len
+          do
+            O.set buffer (real_size + !i) (O.get s (deflater.inpos + !i));
+            incr i;
+          done;
 
           (* update CRC *)
-          Adler32.update deflater.src deflater.inpos size deflater.crc;
+          Adler32.update deflater.src deflater.inpos len deflater.crc;
 
-          [%debug Logs.debug @@ fun m -> m "the size of new buffer of flat is %d" (real_size + size)];
+          [%debug Logs.debug @@ fun m -> m "the size of new buffer of flat is %d" (real_size + len)];
 
-          Flat (buffer, real_size + size, window_bits), size
+          Flat (buffer, real_size + len, window_bits), len
 
         | Dynamic lz77 ->
           [%debug Logs.debug @@ fun m -> m "read input data and complete Lz77 dictionary for a dynamic Huffman tree"];
@@ -822,10 +832,12 @@ struct
   and write_flat after_block buffer deflater =
     [%debug Logs.debug @@ fun m -> m "state: write_flat"];
 
-    let size = min (deflater.i_max - deflater.i) deflater.needed in
+    let len = min (deflater.i_max - deflater.i) deflater.needed in
 
-    O.blit buffer deflater.i deflater.dst deflater.outpos size;
-    deflater.i <- deflater.i + size;
+    for i = 0 to len - 1
+    do put_byte deflater (O.get buffer (deflater.i + i) |> O.Atom.to_int) done;
+
+    deflater.i <- deflater.i + len;
 
     deflater.k <-
       if deflater.i = deflater.i_max
