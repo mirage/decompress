@@ -21,6 +21,7 @@ build-test: [
     "--enable-tests"
     "--%{base-unix:enable}%-unix"
     "--%{cmdliner:enable}%-cmdliner"
+    "--enable-istub"
     "--prefix=%{prefix}%"]
   [make "test"]
 ]
@@ -35,6 +36,7 @@ depends: [
   "re"       {test}
   "camlzip"  {test}
   "cmdliner" {test}
+  "ctypes"   {test}
 ]
 
 depopts: [

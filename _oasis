@@ -31,7 +31,7 @@ Flag trace
 
 Flag istub
   Description:          Produce a shared library of decompress
-  Default:              true
+  Default:              false
 
 Library decompress
   Path:                 lib
