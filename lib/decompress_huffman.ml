@@ -216,7 +216,7 @@ let make table position size max_bits =
    * (which have a bit length of zero) must not be assigned a
    * value.
   *)
-  let bits = Hashtbl.create 0 in
+  let bits = Hashtbl.create 16 in
 
   for i = 0 to size - 1 do
     let l = Array.get table (i + position) in

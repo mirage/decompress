@@ -74,8 +74,10 @@ main(int ac, const char **av)
     exit(EXIT_FAILURE);
   }
 
+  /*
   char * caml_av[1] = { NULL };
   caml_startup(caml_av);
+  */
 
   if (ac == 1)
   {

@@ -3,3 +3,4 @@ bindings/bindings.cmx
 istub/decompress_bindings.cmx
 bindings/apply/abindings.cmx
 istub/decompress.o
+istub/init.o

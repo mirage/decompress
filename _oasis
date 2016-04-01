@@ -84,7 +84,7 @@ Executable rev
   CompiledObject:       best
   BuildDepends:         unix, ctypes.stubs, ctypes.foreign
   NativeOpt:            -inline 100
-  CCLib:                -Wl,-no-as-needed -L. -ldecompress
+# CCLib:                -Wl,-no-as-needed -L. -ldecompress
   Build$:               flag(unix) && flag(istub)
 
 Object bindings
