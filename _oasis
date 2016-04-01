@@ -11,6 +11,7 @@ Plugins:                META (0.3), DevFiles (0.3)
 BuildTools:             ocamlbuild
 OCamlVersion:           >= 4.02
 AlphaFeatures:          ocamlbuild_more_args
+BetaFeatures:           section_object
 
 Flag unix
   Description:          Unix environment
@@ -26,7 +27,11 @@ Flag example
 
 Flag trace
   Description:          Trace all compute of decompress
-  Default$:             false
+  Default:              false
+
+Flag istub
+  Description:          Produce a shared library of decompress
+  Default:              true
 
 Library decompress
   Path:                 lib
@@ -71,6 +76,38 @@ Executable loop
   BuildDepends:         decompress, unix, cmdliner
   NativeOpt:            -inline 100
   Build$:               flag(example) && flag(unix) && flag(cmdliner)
+
+Executable clib
+  Install:              false
+  Path:                 bin
+  MainIs:               clib.ml
+  CompiledObject:       best
+  BuildDepends:         unix, ctypes.stubs, ctypes.foreign
+  NativeOpt:            -inline 100
+  CCLib:                -Wl,-no-as-needed -L. -ldecompress
+  Build$:               flag(unix) && flag(istub)
+
+Object bindings
+  Install:              false
+  Path:                 bindings
+  Modules:              Bindings
+  BuildDepends:         decompress, ctypes.stubs, ctypes.foreign
+  Build$:               flag(istub)
+
+Object abindings
+  Install:              false
+  Path:                 bindings/apply
+  Modules:              Abindings
+  BuildDepends:         bindings
+  Build$:               flag(istub)
+
+Executable generate
+  Install:              false
+  Path:                 gen
+  MainIs:               generate.ml
+  CompiledObject:       best
+  BuildDepends:         bindings
+  Build$:               flag(istub)
 
 SourceRepository master
   Type:                 git

@@ -12,9 +12,10 @@ SRC=main.c
 OBJ=$(BUILDDIR)/main.o
 
 all: $(BUILDDIR)/$(NAME)
+	ln -f $(BUILDDIR)/$(NAME) $(NAME)
 
 $(BUILDDIR)/$(NAME): $(OBJ)
 	$(LD) -o $@ $^ -L$(BUILDDIR)/.. -ldecompress
 
 $(BUILDDIR)/%.o: %.c
-	$(CC) -c -o $@ -I $(OCAMLDIR) -I $(BUILDDIR)/../out $<
+	$(CC) -c -o $@ -I $(BUILDDIR)/../istub $<

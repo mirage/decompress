@@ -1,9 +1,8 @@
-let generate dirname =
-  let prefix = "decompress" in
+let generate prefix dirname =
   let path basename = Filename.concat dirname basename in
-  let ml_fd = open_out (path "decompress_bindings.ml") in
-  let c_fd = open_out (path "decompress.c") in
-  let h_fd = open_out (path "decompress.h") in
+  let ml_fd = open_out (path (prefix ^ "_bindings.ml")) in
+  let c_fd = open_out (path (prefix ^ ".c")) in
+  let h_fd = open_out (path (prefix ^ ".h")) in
   let stubs = (module Bindings.Stubs : Cstubs_inverted.BINDINGS) in
   begin
     Cstubs_inverted.write_ml
@@ -19,4 +18,4 @@ let generate dirname =
   close_out c_fd;
   close_out ml_fd
 
-let () = generate (Sys.argv.(1))
+let () = generate (Sys.argv.(1)) (Sys.argv.(2))

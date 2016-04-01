@@ -18,9 +18,11 @@
 #define LEVEL 4
 
 void
-printer(char *buff, int off, int len)
+printer(char *buff, int off, int len, void *acc)
 {
   int i = off;
+
+  (void) acc;
 
   while (i < len)
   {
@@ -37,16 +39,8 @@ main(int ac, const char **av)
   size_t ins;
   char * buf;
 
-  buf = malloc(sizeof(char) * CHUNK);
+  buf = NULL;
   len = 0;
-
-  if (buf == NULL)
-  {
-    perror("Failed to allocate content");
-    exit(EXIT_FAILURE);
-  }
-
-  buf[0] = '\0';
 
   SET_BINARY_MODE(stdin);
   SET_BINARY_MODE(stdout);
@@ -55,12 +49,17 @@ main(int ac, const char **av)
   {
     char * old = buf;
 
-    buf = realloc(buf, len + ins);
+    if (buf != NULL)
+      buf = realloc(buf, len + ins);
+    else
+      buf = malloc(len + ins);
 
     if (buf == NULL)
     {
       perror("Failed to reallocate content");
-      free(old);
+
+      if (old != NULL) free(old);
+
       exit(EXIT_FAILURE);
     }
 
@@ -80,12 +79,12 @@ main(int ac, const char **av)
 
   if (ac == 1)
   {
-    (void) decompress_deflate(buf, len, LEVEL, CHUNK, &printer);
+    (void) decompress_deflate(buf, len, LEVEL, CHUNK, NULL, &printer);
     return (EXIT_SUCCESS);
   }
   else if (ac == 2 && strcmp(av[1], "-d") == 0)
   {
-    (void) decompress_inflate(buf, len, CHUNK, &printer);
+    (void) decompress_inflate(buf, len, CHUNK, NULL, &printer);
     return (EXIT_SUCCESS);
   }
   else
