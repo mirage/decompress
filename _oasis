@@ -61,26 +61,26 @@ Document "decompress"
 
 Executable dpipe
   Install:              false
-  Path:                 bin
+  Path:                 bin/dpipe
   MainIs:               dpipe.ml
   CompiledObject:       best
   BuildDepends:         decompress, unix
   NativeOpt:            -inline 100
   Build$:               flag(example) && flag(unix)
 
-Executable loop
+Executable dcpr
   Install:              false
-  Path:                 bin
-  MainIs:               loop.ml
+  Path:                 bin/dcpr
+  MainIs:               dcpr.ml
   CompiledObject:       best
   BuildDepends:         decompress, unix, cmdliner
   NativeOpt:            -inline 100
   Build$:               flag(example) && flag(unix) && flag(cmdliner)
 
-Executable clib
+Executable rev
   Install:              false
-  Path:                 bin
-  MainIs:               clib.ml
+  Path:                 bin/rev
+  MainIs:               rev.ml
   CompiledObject:       best
   BuildDepends:         unix, ctypes.stubs, ctypes.foreign
   NativeOpt:            -inline 100
