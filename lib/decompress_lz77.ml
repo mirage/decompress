@@ -416,7 +416,7 @@ struct
             let value1   = repeat pattern in
 
             try begin
-              while !ip < (bound - 8 - 2)
+              while !ip < (bound - 8 - 2) && (!ip - 3 - anchor) < 256
               do
                 let value2 = rb_u64 !op in
 
@@ -426,7 +426,7 @@ struct
                 if value1 <> value2
                 then begin
                   (* find the byte that starts to differ *)
-                  while !ip < bound
+                  while !ip < bound && (!ip - 3 - anchor) < 256
                   do [%debug Logs.debug @@ fun m -> m "we compare [%c] <> [%c]"
                        (rb_chr !op) pattern];
 
@@ -444,14 +444,15 @@ struct
               raise Break
             end with Break ->
               (* sanitize [ip] and [op] to lower than [bound]. *)
-              if !ip > bound
+              if !ip > bound || (!ip - 3 - anchor) >= 256
               then begin
                 [%debug Logs.debug @@ fun m -> m "we need to sanitize [ip = %d] \
                   and [op = %d]" !ip !op];
 
-                let l = !ip - bound in
-                ip := !ip - l;
-                op := RingBuffer.sanitize state.ringbuffer (!op - l);
+                let bound' = !ip - bound in
+                let length' = (!ip - 3 - anchor) - 255 in
+                ip := !ip - bound' - length';
+                op := RingBuffer.sanitize state.ringbuffer (!op - bound' - length');
               end;
 
           (* in this case, we compute a general [Insert] value (not a specific
@@ -467,7 +468,7 @@ struct
             [%debug Logs.debug @@ fun m -> m "we have a match"];
 
             try begin
-              while !ip < (bound - 8 - 2)
+              while !ip < (bound - 8 - 2) && (!ip - 3 - anchor) < 256
               do
                 [%debug Logs.debug @@ fun m -> m "we compare %Ld <> %Ld"
                   (ip_u64 !ip) (rb_u64 !op)];
@@ -475,7 +476,7 @@ struct
                 if rb_u64 !op <> ip_u64 !ip
                 then begin
                   (* find the byte that starts to differ *)
-                  while !ip < bound
+                  while !ip < bound && (!ip - 3 - anchor) < 256
                   do [%debug Logs.debug @@ fun m -> m "we compare [%d:%c] <> [%d:%c]"
                        !ip (ip_chr !ip) !op (rb_chr !op)];
 
@@ -487,14 +488,32 @@ struct
 
               raise Break
             end with Break ->
-              if !ip > bound
+              if !ip > bound || (!ip - 3 - anchor) >= 256
               then begin
                 [%debug Logs.debug @@ fun m -> m "we need to sanitize [ip = %d] \
                   and [op = %d]" !ip !op];
 
-                let l = !ip - bound in
-                ip := !ip - l;
-                op := RingBuffer.sanitize state.ringbuffer (!op - l);
+                let bound' = !ip - bound in
+
+                (** TODO:  may be is  useful to split in a  little piece a large
+                    length (for example, if we have a length = 845), it's may be
+                    good to split to (845 / 255) [Insert] block.
+
+                    If we want that, we have 3 cases.
+
+                    One case  if (845  mod 255) >=  3 to  add the  last [Insert]
+                    block.
+
+                    The second case is (845 mod 255) < 3,  so we split in (845 /
+                    255)  [Insert] block  and add  (845  mod  255)  literal(s) -
+                    because a [Insert] block need a [length] > 3.
+
+                    The final case is length <= 255, so nothing to do a specific
+                    compute.
+                *)
+                let length' = (!ip - 3 - anchor) - 255 in
+                ip := !ip - bound' - length';
+                op := RingBuffer.sanitize state.ringbuffer (!op - bound' - length');
               end
           end;
 
