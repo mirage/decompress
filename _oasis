@@ -33,6 +33,10 @@ Flag istub
   Description:          Produce a shared library of decompress
   Default:              false
 
+Flag camlzip
+  Description:          camlzip package
+  Default:              false
+
 Library decompress
   Path:                 lib
   Modules:              Decompress, Decompress_common, Decompress_inflate,
@@ -73,9 +77,9 @@ Executable dcpr
   Path:                 bin/dcpr
   MainIs:               dcpr.ml
   CompiledObject:       best
-  BuildDepends:         decompress, unix, cmdliner
+  BuildDepends:         decompress, unix, cmdliner, camlzip
   NativeOpt:            -inline 100
-  Build$:               flag(example) && flag(unix) && flag(cmdliner)
+  Build$:               flag(example) && flag(unix) && flag(cmdliner) && flag(camlzip)
 
 Executable rev
   Install:              false
@@ -84,7 +88,6 @@ Executable rev
   CompiledObject:       best
   BuildDepends:         unix, ctypes.stubs, ctypes.foreign
   NativeOpt:            -inline 100
-# CCLib:                -Wl,-no-as-needed -L. -ldecompress
   Build$:               flag(unix) && flag(istub)
 
 Object bindings
@@ -116,14 +119,14 @@ SourceRepository master
 
 Executable test_decompress
   Path:                 lib_test
-  Build$:               flag(tests)
+  Build$:               flag(tests) && flag(unix) && flag(camlzip)
   Install:              false
   CompiledObject:       best
   MainIs:               decompress_test.ml
   BuildDepends:         decompress, alcotest, re.str, camlzip
 
 Test test_decompress
-  Run$:                 flag(tests)
+  Run$:                 flag(tests) && flag(unix) && flag(camlzip)
   TestTools:            test_decompress
   Command:
     cp ./lib/*.ml ./lib_test/files/ \

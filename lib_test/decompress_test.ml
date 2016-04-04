@@ -26,7 +26,7 @@ let load_file filename =
   close_in ic;
   s |> Bytes.to_string
 
-let files directory = walk directory ".*\\.ml"
+let files directory = walk directory ".*"
 
 let generate length =
   let gen () = match Random.int (26 + 26 + 10) with
@@ -156,26 +156,23 @@ let d2d si so data =
 
 let make_string_test ?(save = false) idx size =
   let data = generate size in
-  let size_input = Random.(int 30 + 2) in
-  let size_output = Random.(int 30 + 2) in
-  if save
-  then begin
-    let ch = open_out ("string" ^ (string_of_int idx) ^ ".txt"
-                     |> Filename.concat "temp") in
-    Printf.fprintf ch "%s%!" data; close_out ch;
-  end;
+  let size_input = Random.(int 2048 + 2) in
+  let size_output = Random.(int 2048 + 2) in
   [
-    Printf.sprintf "d2d",
+    Printf.sprintf "--input-size %04d --output-size %04d"
+      size_input size_output,
     `Slow,
     (fun () ->
       Alcotest.(check string) data
         (d2d size_input size_output data) data);
-    Printf.sprintf "d2c",
+    Printf.sprintf "--input-size %04d --output-size %04d --use-camlzip=out"
+      size_input size_output,
     `Slow,
     (fun () ->
       Alcotest.(check string) data
         (d2c size_input size_output data) data);
-    Printf.sprintf "c2d",
+    Printf.sprintf "--input-size %04d --output-size %04d --use-camlzip=in"
+      size_input size_output,
     `Slow,
     (fun () ->
       Alcotest.(check string) data
@@ -184,20 +181,23 @@ let make_string_test ?(save = false) idx size =
 
 let make_file_test filename =
   let data = load_file filename in
-  let size_input = Random.(int 30 + 2) in
-  let size_output = Random.(int 30 + 2) in
+  let size_input = Random.(int 2048 + 2) in
+  let size_output = Random.(int 2048 + 2) in
   [
-    Printf.sprintf "d2d (input: %d, output: %d) %s" size_input size_output filename,
+    Printf.sprintf "--input-size %04d --output-size %04d %s"
+      size_input size_output filename,
     `Slow,
     (fun () ->
       Alcotest.(check string) data
         (d2d size_input size_output data) data);
-    Printf.sprintf "d2c (input: %d, output: %d) %s" size_input size_output filename,
+    Printf.sprintf "--input-size %04d --output-size %04d --use-camlzip=out %s"
+      size_input size_output filename,
     `Slow,
     (fun () ->
       Alcotest.(check string) data
         (d2c size_input size_output data) data);
-    Printf.sprintf "c2d (input: %d, output: %d) %s" size_input size_output filename,
+    Printf.sprintf "--input-size %04d --output-size %04d --use-camlzip=in  %s"
+      size_input size_output filename,
     `Slow,
     (fun () ->
       Alcotest.(check string) data
@@ -215,5 +215,6 @@ let test_strings number =
 
 let () =
   Alcotest.run "Decompress test"
-    [ "string", test_strings 25;
-      "file", test_files "./lib_test/files/"]
+    [ "random string", test_strings 25
+    ; "decompress files", test_files "./lib_test/files/"
+    ; "bin files", test_files "/bin/" ]

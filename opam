@@ -21,6 +21,7 @@ build-test: [
     "--enable-tests"
     "--%{base-unix:enable}%-unix"
     "--%{cmdliner:enable}%-cmdliner"
+    "--%{camlzip:enable}-camlzip"
     "--enable-istub"
     "--prefix=%{prefix}%"]
   [make "test"]
