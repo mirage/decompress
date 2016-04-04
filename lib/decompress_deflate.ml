@@ -671,7 +671,7 @@ struct
       deflater.k <- flushing_method
     in
 
-    if deflater.available > 0
+    if deflater.available > 0 || deflater.last = true
     then begin
       aux deflater;
       eval deflater
