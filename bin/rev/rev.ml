@@ -1,6 +1,8 @@
 open Ctypes
 open Foreign
 
+let () = Printexc.record_backtrace true
+
 let read_line ic =
   try Some (input_line ic)
   with End_of_file -> None
