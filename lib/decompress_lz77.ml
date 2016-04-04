@@ -412,7 +412,11 @@ struct
         (* if we have a pattern (size of pattern is 3-bytes at least) *)
         if !distance = 0
            || !distance >= ((1 lsl state.window_bits) + 8191 - 1)
-              (* TODO: max far distance, check that! *)
+              (* XXX: check max far distance. *)
+           || !distance >= (RingBuffer.available_to_write state.ringbuffer)
+              (* XXX: check if the distance is lower than the size of ring
+                 buffer. If we don't check that, it's possible to found a
+                 pattern of the buff in the buff. *)
            || cmp_and_incr () = false
            || cmp_and_incr () = false
            || cmp_and_incr () = false
