@@ -22,7 +22,7 @@ let write_output str =
 
 let from = Dl.(dlopen ~filename:"libdecompress.so" ~flags:[RTLD_NOW])
 
-let print = funptr (string @-> int @-> int @-> ptr void @-> returning void)
+let print = funptr (ptr char @-> int @-> int @-> ptr void @-> returning void)
 
 let inflate = foreign ~from "decompress_inflate"
     (string @-> int @-> int @-> ptr void @-> print @-> returning int)
@@ -31,13 +31,17 @@ let deflate = foreign ~from "decompress_deflate"
 
 let inflate ?(chunk = 1024) buff =
   let buffer = Buffer.create (String.length buff) in
-  let printer buff off len _ = Buffer.add_substring buffer buff off len in
+  let printer buff off len _ =
+    let buff = Ctypes.string_from_ptr ~length:len buff in
+    Buffer.add_substring buffer buff off len in
   let _ = inflate buff (String.length buff) chunk null printer in
   Buffer.contents buffer
 
 let deflate ?(level = 4) ?(chunk = 1024) buff =
   let buffer = Buffer.create (String.length buff) in
-  let printer buff off len _ = Buffer.add_substring buffer buff off len in
+  let printer buff off len _ =
+    let buff = Ctypes.string_from_ptr ~length:len buff in
+    Buffer.add_substring buffer buff off len in
   let _ = deflate buff (String.length buff) level chunk null printer in
   Buffer.contents buffer
 

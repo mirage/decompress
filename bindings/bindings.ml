@@ -25,7 +25,7 @@ let inflate buff len chunk acc print =
   in
 
   let flush' _ len =
-    print (Ctypes.ocaml_bytes_start output) 0 len acc;
+    print ((Ctypes.coerce Ctypes.string (ptr char)) (Bytes.unsafe_to_string output)) 0 len acc;
     output_size := !output_size + len;
     len
   in
@@ -51,7 +51,7 @@ let deflate buff len level chunk acc print =
   in
 
   let flush' _ len =
-    print (Ctypes.ocaml_bytes_start output) 0 len acc;
+    print ((Ctypes.coerce Ctypes.string (ptr char)) (Bytes.unsafe_to_string output)) 0 len acc;
     output_size := !output_size + len;
     len
   in
@@ -59,7 +59,7 @@ let deflate buff len level chunk acc print =
   Deflate.compress ~level (Bytes.unsafe_to_string input) output refill' flush';
   !output_size
 
-let print = funptr (Ctypes.ocaml_bytes @-> int @-> int @-> ptr void @-> returning void)
+let print = funptr (ptr char @-> int @-> int @-> ptr void @-> returning void)
 
 module Stubs (I : Cstubs_inverted.INTERNAL) =
 struct
