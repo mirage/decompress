@@ -553,22 +553,6 @@ struct
               then begin
                 let bound' = !ip - bound in
 
-                (** TODO:  may be is  useful to split in a  little piece a large
-                    length (for example, if we have a length = 845), it's may be
-                    good to split to (845 / 255) [Insert] block.
-
-                    If we want that, we have 3 cases.
-
-                    One case  if (845  mod 255) >=  3 to  add the  last [Insert]
-                    block.
-
-                    The second case is (845 mod 255) < 3,  so we split in (845 /
-                    255)  [Insert] block  and add  (845  mod  255)  literal(s) -
-                    because a [Insert] block need a [length] > 3.
-
-                    The final case is length <= 255, so nothing to do a specific
-                    compute.
-                *)
                 ip := !ip - bound';
                 op := RingBuffer.sanitize state.ringbuffer (!op - bound');
               end
@@ -581,17 +565,85 @@ struct
 
           flushing ();
 
+          let add_match len distance =
+            [%debug Logs.debug @@ fun m -> m "we write len: %d and distance: %d"
+              len distance];
+            [%debug assert (len >= 0 && len < 256)];
+
+            let leng = _length len in
+            let dist = _distance distance in
+
+            state.freqs_literal.(leng + 256 + 1) <-
+              state.freqs_literal.(leng + 256 + 1) + 1;
+            state.freqs_distance.(dist) <- state.freqs_distance.(dist) + 1;
+
+            [%debug
+              let s =
+                if distance = 0
+                then
+                  let op = RingBuffer.sanitize state.ringbuffer (!op - 1) in
+                  String.make (len + 3) (rb_chr op)
+                else begin
+                  let s = Bytes.create (len + 3) in
+                  for i = 0 to len + 3 - 1 do
+                  Logs.debug @@ fun m -> m "we get the character at [%d - %d + %d = %d]" !op len i (!op - len + i);
+                    let j = RingBuffer.sanitize state.ringbuffer (!op - len + i) in
+                    Bytes.set s i (rb_chr j) done;
+                  Bytes.unsafe_to_string s
+                end
+              in
+              Logs.debug @@ fun m -> m "we add Insert [%S] at %d (available read: %d) (available write: %d)"
+                s (state.idx + anchor)
+                (RingBuffer.available_to_read state.ringbuffer)
+                (RingBuffer.available_to_write state.ringbuffer)];
+
+            state.res <- Insert (distance, len) :: state.res;
+          in
+
+          let add_literal chr =
+            state.freqs_literal.(OAtom.to_int chr) <-
+              state.freqs_literal.(OAtom.to_int chr) + 1;
+            Buffer.add_atom state.buffer chr;
+          in
+
           [%debug Logs.debug @@ fun m -> m "we found length: %d and distance: %d"
             !len !distance];
 
-          let leng = _length !len in
-          let dist = _distance !distance in
+          (** TODO: I limit the len to 245 + 8 + 2 = 255 in distone or dist
+              match because the max of length is 255. BUT, I try to add multiple
+              [Insert] if the length > 255 and we have 3 cases (I think):
 
-          state.freqs_literal.(leng + 256 + 1) <-
-            state.freqs_literal.(leng + 256 + 1) + 1;
-          state.freqs_distance.(dist) <- state.freqs_distance.(dist) + 1;
+              * The first case is if [length mod 255] >= 3 because a [Insert]
+                block need 3 bytes before (see Lz77 compression).
+              * The second case is if [length mod 255] < 3. In this case, we add
+                after the last [Insert] block [length mod 255] literal(s) to
+                complete the data.
+              * The last case is [length < 256], it's a cool and simple case.
 
-          state.res <- Insert (!distance, !len) :: state.res;
+              So, the code (except the third case) is dead. But if I have a time
+              to do this, I have a PoC.
+          *)
+          if !len > 255 && (!len mod 255) >= 3
+          then begin
+            [%debug Logs.debug @@ fun m -> m "multiple insert, we have len %d > 255 and (len mod 255) >= 3, the distance is %d" !len !distance];
+            let times = !len / 255 in
+            for i = 0 to times - 1
+            do add_match 255 !distance done;
+
+            add_match (!len mod 255) !distance
+          end else if !len > 255 && (!len mod 255) < 3
+          then begin
+            [%debug Logs.debug @@ fun m -> m "multiple insert, we have len %d > 255 and (len mod 255) < 3, the distance is %d" !len !distance];
+            let times = !len / 255 in
+            for i = 0 to times - 1
+            do add_match 255 !distance done;
+
+            let times = !len mod 255 in
+            for i = 0 to times - 1
+            do add_literal (rb_chr (RingBuffer.sanitize state.ringbuffer (!op - i))) done;
+          end else begin
+            add_match !len !distance
+          end;
 
           (* update the match at match boundary *)
           Array.set state.htab (hash !ip)
