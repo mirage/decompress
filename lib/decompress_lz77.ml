@@ -275,7 +275,47 @@ struct
     let ip_chr, ip_u16, ip_u64 = OScalar.get buff, OScalar.get_u16 buff, OScalar.get_u64 buff in
     let rb_chr, rb_u16, rb_u64 =
       let buff = RingBuffer.to_buffer state.ringbuffer in
-      OScalar.get buff, OScalar.get_u16 buff, OScalar.get_u64 buff
+      OScalar.get buff,
+      (fun idx ->
+        let r = (OScalar.get buff (RingBuffer.sanitize state.ringbuffer (idx + 1)) |> OAtom.to_int) in
+        (r lsr 8) lor (OScalar.get buff idx |> OAtom.to_int)),
+      (fun idx ->
+        let r = ref Int64.zero in
+        let a = ref 0 in
+        let ( >|< ) atom n =
+          Int64.shift_left
+            (Int64.of_int (OAtom.to_int atom)) n in
+        let ( lor ) i n =
+          [%debug Logs.debug @@ fun m -> m "%Ld ^ %Ld"
+            i n];
+          Int64.logor i n in
+        let l = (1 lsl state.window_bits) + 1 in
+        [%debug Logs.debug @@ fun m -> m "rb_u64, rest = %d" (l - idx)];
+
+        while idx + (!a * 2) < l && idx + (!a * 2) < 8
+        do [%debug Logs.debug @@ fun m -> m "1: rb_64, get character [%c] at %d"
+              (OScalar.get buff (idx + (!a * 2))) (idx + (!a * 2))];
+           r := !r lor ((OScalar.get buff (idx + (!a * 2))) >|< ((!a * 2) * 8));
+           [%debug Logs.debug @@ fun m -> m "2: rb_64, get character [%c] at %d"
+              (OScalar.get buff (idx + (!a * 2) + 1)) (idx + (!a * 2) + 1)];
+           r := !r lor ((OScalar.get buff (idx + (!a * 2) + 1)) >|< ((!a * 2) * 8 + 8));
+           incr a;
+        done;
+
+        [%debug Logs.debug @@ fun m -> m "we read %02d byte(s) for [rb_u64]"
+          (!a * 2)];
+        [%debug Logs.debug @@ fun m -> m "we read %02d byte(s) for [rb_u64]"
+          (8 - (!a * 2))];
+
+        for i = (!a * 2) to 7
+        do
+          [%debug Logs.debug @@ fun m -> m "rb_64, get character [%c] at %d"
+            (OScalar.get buff (RingBuffer.sanitize state.ringbuffer (idx + i)))
+            (idx + i)];
+          r := !r lor
+            ((OScalar.get buff (RingBuffer.sanitize state.ringbuffer (idx + i)))
+             >|< (i * 8)); done;
+        !r)
     in
 
     let hash idx =
