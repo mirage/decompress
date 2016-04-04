@@ -142,7 +142,9 @@ struct
      * it's not good assertion, so we need to found another assertion with
      * [rget]. *)
     let pre = t.wpos - idx in
-    let pos = t.size + (* - *) pre in
+    [%debug Logs.debug @@ fun m -> m "we have reverse get with pre = %d - %d = %d" t.wpos idx pre];
+    let pos = t.size - (abs pre) in
+    [%debug Logs.debug @@ fun m -> m "we have reverse get with pos = %d - %d = %d" t.size (abs pre) pos];
     if pre < 0
     then Scalar.get t.buffer pos
     else Scalar.get t.buffer pre
