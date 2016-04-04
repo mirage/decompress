@@ -133,7 +133,9 @@ struct
 
   let wpos t = t.wpos
   let rpos t = t.rpos
-  let sanitize t i = i mod t.size
+  let rec sanitize t i =
+    if i >= 0 then i mod t.size
+    else sanitize t (t.size - i)
 
   let rget t idx =
     (* TODO: assert (idx < available_to_read t);
