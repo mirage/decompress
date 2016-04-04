@@ -460,7 +460,7 @@ struct
             let value1   = repeat pattern in
 
             try begin
-              while !ip < (bound - 8 - 2) && (!ip - 3 - anchor) < 256
+              while !ip < (bound - 8 - 2) && (!ip - 3 - anchor) < 245
               do
                 let value2 = rb_u64 !op in
 
@@ -470,7 +470,7 @@ struct
                 if value1 <> value2
                 then begin
                   (* find the byte that starts to differ *)
-                  while !ip < bound && (!ip - 3 - anchor) < 256
+                  while !ip < bound && (!ip - 3 - anchor) < 245
                   do [%debug Logs.debug @@ fun m -> m "we compare [%c] <> [%c]"
                        (rb_chr !op) pattern];
 
@@ -488,15 +488,14 @@ struct
               raise Break
             end with Break ->
               (* sanitize [ip] and [op] to lower than [bound]. *)
-              if !ip > bound || (!ip - 3 - anchor) >= 256
+              if !ip > bound
               then begin
                 [%debug Logs.debug @@ fun m -> m "we need to sanitize [ip = %d] \
                   and [op = %d]" !ip !op];
 
                 let bound' = !ip - bound in
-                let length' = (!ip - 3 - anchor) - 255 in
-                ip := !ip - bound' - length';
-                op := RingBuffer.sanitize state.ringbuffer (!op - bound' - length');
+                ip := !ip - bound';
+                op := RingBuffer.sanitize state.ringbuffer (!op - bound');
               end;
 
           (* in this case, we compute a general [Insert] value (not a specific
@@ -512,7 +511,7 @@ struct
             [%debug Logs.debug @@ fun m -> m "we have a match"];
 
             try begin
-              while !ip < (bound - 8 - 2) && (!ip - 3 - anchor) < 256
+              while !ip < (bound - 8 - 2) && (!ip - 3 - anchor) < 245
               do
                 [%debug Logs.debug @@ fun m -> m "we compare %Ld <> %Ld"
                   (ip_u64 !ip) (rb_u64 !op)];
@@ -520,7 +519,7 @@ struct
                 if rb_u64 !op <> ip_u64 !ip
                 then begin
                   (* find the byte that starts to differ *)
-                  while !ip < bound && (!ip - 3 - anchor) < 256
+                  while !ip < bound && (!ip - 3 - anchor) < 245
                   do [%debug Logs.debug @@ fun m -> m "we compare [%d:%c] <> [%d:%c]"
                        !ip (ip_chr !ip) !op (rb_chr !op)];
 
@@ -532,11 +531,9 @@ struct
 
               raise Break
             end with Break ->
-              if !ip > bound || (!ip - 3 - anchor) >= 256
+              (* sanitize [ip] and [op] to lower than [bound]. *)
+              if !ip > bound
               then begin
-                [%debug Logs.debug @@ fun m -> m "we need to sanitize [ip = %d] \
-                  and [op = %d]" !ip !op];
-
                 let bound' = !ip - bound in
 
                 (** TODO:  may be is  useful to split in a  little piece a large
@@ -555,9 +552,8 @@ struct
                     The final case is length <= 255, so nothing to do a specific
                     compute.
                 *)
-                let length' = (!ip - 3 - anchor) - 255 in
-                ip := !ip - bound' - length';
-                op := RingBuffer.sanitize state.ringbuffer (!op - bound' - length');
+                ip := !ip - bound';
+                op := RingBuffer.sanitize state.ringbuffer (!op - bound');
               end
           end;
 
