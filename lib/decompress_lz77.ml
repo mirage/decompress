@@ -327,6 +327,13 @@ struct
     let flushing () =
       if Buffer.empty state.buffer = false
       then begin
+        [%debug
+           let o = Buffer.contents state.buffer in
+           let s = Bytes.create (OScalar.length o) in
+           for i = 0 to OScalar.length o - 1
+           do Bytes.set s i (OScalar.get o i) done;
+           Logs.debug @@ fun m -> m "we need to flush buffer [%S]"
+             (Bytes.unsafe_to_string s)];
         state.res <- Buffer (Buffer.contents state.buffer) :: state.res;
         Buffer.clear state.buffer;
       end
@@ -376,7 +383,17 @@ struct
       in
 
       try
-        [%debug Logs.debug @@ fun m -> m "we try a distone match"];
+        [%debug
+          let a = Bytes.create 2 in
+          Bytes.set a 0 (ip_chr (!ip - 1));
+          Bytes.set a 0 (ip_chr !ip);
+          let b = Bytes.create 2 in
+          Bytes.set b 0 (ip_chr (!ip + 1));
+          Bytes.set b 0 (ip_chr (!ip + 2));
+          Logs.debug @@ fun m -> m "we try a distone match: [%c:%d] = [%c:%d] and [%S:%d] = [%S:%d]"
+            (ip_chr !ip) !ip (ip_chr (!ip - 1)) (!ip - 1)
+            (Bytes.unsafe_to_string a) (!ip - 1)
+            (Bytes.unsafe_to_string b) (!ip + 1)];
         (* if we have ['a'; 'a'; 'a'; 'a'], so we have a distone match. *)
         if ip_chr !ip = ip_chr (!ip - 1)
            && ip_u16 (!ip - 1) = ip_u16 (!ip + 1)
@@ -464,15 +481,18 @@ struct
               do
                 let value2 = rb_u64 !op in
 
-                [%debug Logs.debug @@ fun m -> m "we compare %Ld <> %Ld"
-                  value1 value2];
+                [%debug
+                  let s = Bytes.create 8 in
+                  for i = 0 to 7 do Bytes.set s i (rb_chr (RingBuffer.sanitize state.ringbuffer (!op + i))) done;
+                  Logs.debug @@ fun m -> m "we compare %Ld <> [%Ld:%d:%S]"
+                    value1 value2 !op (Bytes.unsafe_to_string s)];
 
                 if value1 <> value2
                 then begin
                   (* find the byte that starts to differ *)
                   while !ip < bound && (!ip - 3 - anchor) < 245
-                  do [%debug Logs.debug @@ fun m -> m "we compare [%c] <> [%c]"
-                       (rb_chr !op) pattern];
+                  do [%debug Logs.debug @@ fun m -> m "we compare [%c:%d] <> [%c]"
+                       (rb_chr !op) !op pattern];
 
                      if rb_chr !op <> pattern
                      then raise Break
@@ -490,9 +510,6 @@ struct
               (* sanitize [ip] and [op] to lower than [bound]. *)
               if !ip > bound
               then begin
-                [%debug Logs.debug @@ fun m -> m "we need to sanitize [ip = %d] \
-                  and [op = %d]" !ip !op];
-
                 let bound' = !ip - bound in
                 ip := !ip - bound';
                 op := RingBuffer.sanitize state.ringbuffer (!op - bound');
@@ -557,7 +574,9 @@ struct
               end
           end;
 
+          [%debug Logs.debug @@ fun m -> m "we drop the first 3 bytes of [ip = %d]" !ip];
           ip  := !ip - 3;
+          [%debug Logs.debug @@ fun m -> m "we compute len of match: [%d - %d = %d]" !ip anchor (!ip - anchor)];
           len := !ip - anchor;
 
           flushing ();
@@ -587,6 +606,7 @@ struct
       end
     done;
 
+    [%debug state.idx <- state.idx + !ip];
     RingBuffer.drop state.ringbuffer !ip
 
   let atomic_compress state buff off len =
