@@ -61,30 +61,23 @@ struct
 
   let hclen_order =
     [| 16; 17; 18; 0; 8; 7; 9; 6; 10; 5; 11; 4; 12; 3; 13; 2; 14; 1; 15; |]
-  and extrabits_length =
-    [|
-      0; 0; 0; 0; 0; 0; 0; 0; 1;  1;
-      1; 1; 2; 2; 2; 2; 3; 3; 3;  3;
-      4; 4; 4; 4; 5; 5; 5; 5; 0; -1; -1;
-    |]
-  and base_length =
-    [|
-      3;  4;  5;   6;   7;   8;   9;  10;  11; 13;
-      15; 17; 19;  23;  27;  31;  35;  43;  51; 59;
-      67; 83; 99; 115; 131; 163; 195; 227; 258; -1; -1;
-    |]
-  and extrabits_distance =
-    [|
-      0; 0;  0;  0;  1;  1;  2;  2;  3;  3;
-      4; 4;  5;  5;  6;  6;  7;  7;  8;  8;
-      9; 9; 10; 10; 11; 11; 12; 12; 13; 13; -1;
-    |]
-  and base_distance =
-    [|
-      1;    2;    3;    4;    5;    7;    9;    13;    17;    25;
-      33;   49;   65;   97;   129;  193;  257;  385;   513;   769;
-      1025; 1537; 2049; 3073; 4097; 6145; 8193; 12289; 16385; 24577; -1;
-    |]
+
+  let _extra_lbits =
+    [| 0; 0; 0; 0; 0; 0; 0; 0; 1; 1; 1; 1; 2; 2; 2; 2; 3; 3; 3; 3; 4; 4; 4; 4;
+       5; 5; 5; 5; 0 |]
+
+  let _extra_dbits =
+    [|  0; 0; 0; 0; 1; 1; 2; 2; 3; 3; 4; 4; 5; 5; 6; 6; 7; 7; 8; 8; 9; 9; 10;
+       10; 11; 11; 12; 12; 13; 13; -1 |]
+
+  let _base_length =
+    [|  0;  1;  2;  3;  4;  5;   6;   7;   8;  10;  12; 14; 16; 20; 24; 28; 32;
+       40; 48; 56; 64; 80; 96; 112; 128; 160; 192; 224; 0 |]
+
+  let _base_dist =
+    [|    0;    1;    2;     3;     4;     6;   8;  12;   16;   24;   32;   48;
+         64;   96;  128;   192;   256;   384; 512; 768; 1024; 1536; 2048; 3072;
+       4096; 6144; 8192; 12288; 16384; 24576; |]
 
   type dst = O.t
   type src = I.t
@@ -782,7 +775,7 @@ struct
         and read_extralength window length inflater =
           [%debug Logs.debug @@ fun m -> m "state: read_extralength"];
 
-          try let size = Array.get extrabits_length length in
+          try let size = Array.get _extra_lbits length in
 
             if size = -1
             then raise Invalid_extrabits;
@@ -792,7 +785,7 @@ struct
             [%debug Logs.debug @@ fun m -> m "extra_length: %02d" extra_length];
 
             inflater.k <- read_distance window
-              length (Array.get base_length length + extra_length);
+              length ((Array.get _base_length length) + 3 + extra_length);
 
             eval inflater
           with Expected_data -> `Wait
@@ -815,7 +808,7 @@ struct
         and read_extradistance window length extra_length distance inflater =
           [%debug Logs.debug @@ fun m -> m "state: read_extradistance"];
 
-          try let size = Array.get extrabits_distance distance in
+          try let size = Array.get _extra_dbits distance in
 
             (* TODO: size maybe > 8, so we can lost data if
                [inflater.bits] + 8 < size. so we need a input buffer larger
@@ -834,7 +827,7 @@ struct
                                            extra_distance];
 
             let extra_distance =
-              (Array.get base_distance distance) + extra_distance in
+              ((Array.get _base_dist distance) + 1) + extra_distance in
 
             if extra_distance > Window.available window
             then raise Invalid_distance;
