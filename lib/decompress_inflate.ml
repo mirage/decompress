@@ -142,6 +142,13 @@ struct
   let get_bit inflater =
     if inflater.bits = 0
     then begin
+      [%debug Logs.debug @@ fun m -> m "need one byte to get %02d bit(s) \
+                                        (we have %02d bit(s))" 1 inflater.bits];
+      [%debug if 1 > inflater.bits + 8
+              then begin
+                Logs.warn @@ fun m -> m "we try to read %02d bits and \
+                                         possibly lost data" 1;
+              end];
       inflater.hold <- src_byte inflater;
       inflater.bits <- 8;
     end;
@@ -180,10 +187,10 @@ struct
       t.(bits)
 
   let get_bits inflater n =
-    [%debug Logs.debug @@ fun m -> m "get_bits with hold %a and bits %02d"
+    [%debug Logs.debug @@ fun m -> m "get_bits with hold %a and bits %02d and n = %02d"
                                      Huffman.pp_code (Huffman.code_of_int
                                      ~size:inflater.bits inflater.hold)
-                                     inflater.bits];
+                                     inflater.bits n];
 
     while inflater.bits < n do
       let byte = src_byte inflater in
@@ -210,6 +217,8 @@ struct
     let result = inflater.hold land (1 lsl n - 1) in
     inflater.bits <- inflater.bits - n;
     inflater.hold <- inflater.hold lsr n;
+
+    [%debug Logs.debug @@ fun m -> m "get_bits returns %d" result];
     result
 
   let get_ui16 inflater =
@@ -568,7 +577,11 @@ struct
          XXX: the size to read is 5, so if [get_revbits] fails, we don't
          lost data (5 < 8) and previous_path in this case is every time an
          empty list because we don't need to save any data for this compute. *)
-      let get_dst ?(previous_path = []) () = [], get_revbits inflater 5 in
+      let get_dst ?(previous_path = []) () =
+        let n = get_revbits inflater 5 in
+
+        [%debug Logs.debug @@ fun m -> m "(dist code) get_revbits 5 = %d" n];
+        [], n in
 
       inflater.k <- decompress ~get_chr ~get_dst window
     | 2 ->
@@ -836,7 +849,7 @@ struct
             `Wait
 
         and read_extradistance window length extra_length distance inflater =
-          [%debug Logs.debug @@ fun m -> m "state: read_extradistance"];
+          [%debug Logs.debug @@ fun m -> m "state: read_extradistance (with length: %d, extra_length: %d, distance: %d)" length extra_length distance];
 
           try let size = Array.get _extra_dbits distance in
 
