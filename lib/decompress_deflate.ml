@@ -398,7 +398,7 @@ struct
        (163,  8); ( 99,  8); (227,  8) |]
 
   let _static_dtree =
-    [| ( 0, 5); (15, 5); ( 8, 5); (24, 5); ( 4, 5);
+    [| ( 0, 5); (16, 5); ( 8, 5); (24, 5); ( 4, 5);
        (20, 5); (12, 5); (28, 5); ( 2, 5); (18, 5);
        (10, 5); (26, 5); ( 6, 5); (22, 5); (14, 5);
        (30, 5); ( 1, 5); (17, 5); ( 9, 5); (25, 5);
@@ -838,7 +838,7 @@ struct
     let get_chr chr = _static_ltree.(chr) in
     let get_length length =
       let code = _length.(length) in
-      _static_ltree.(code)
+      _static_ltree.(code + 256 + 1)
     in
     let get_extra_length length =
       let code = _length.(length) in
