@@ -11,7 +11,7 @@ module CamlZip =
 struct
   module Deflate =
   struct
-    let string str =
+    let string ?(level = 4) str =
       let compressed = Buffer.create 16 in
 
       let refill input =
@@ -27,7 +27,7 @@ struct
       let flush output buf len =
         Buffer.add_substring output buf 0 len in
 
-      Zlib.compress (refill str) (flush compressed);
+      Zlib.compress ~level (refill str) (flush compressed);
       Buffer.contents compressed
   end
 
@@ -61,7 +61,7 @@ struct
   include
   Inflate.Make(ExtString)(ExtBytes)
 
-  let string ?(input_size = 2) ?(output_size = 2) ?(window_bits = 15) document =
+  let string ?(input_size = 2) ?(output_size = 2) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
     let size     = String.length document in
@@ -89,7 +89,7 @@ module Deflate =
 struct
   include Deflate.Make(ExtString)(ExtBytes)
 
-  let string ?(input_size = 2) ?(output_size = 2) ?(window_bits = 15) document =
+  let string ?(input_size = 2) ?(output_size = 2) ?(level = 4) ?(window_bits = 15) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
     let size     = String.length document in
@@ -109,7 +109,7 @@ struct
       size
     in
 
-    compress ~window_bits (Bytes.unsafe_to_string input) output refill' flush';
+    compress ~window_bits ~level (Bytes.unsafe_to_string input) output refill' flush';
     Buffer.contents buffer
 end
 
@@ -141,19 +141,19 @@ let string_of_channel ?(use_unix = true) ic =
 
 open Cmdliner
 
-let do_cmd inf seed input_size output_size window_bits use_camlzip =
+let do_cmd inf seed input_size output_size level window_bits use_camlzip =
   let () = match seed with
     | Some seed -> Random.init seed
     | None -> Random.self_init ()
   in
   let contents = string_of_channel (src inf) in
   let deflater = match use_camlzip with
-    | Some In -> CamlZip.Deflate.string
-    | _ -> Deflate.string ~input_size ~output_size ~window_bits
+    | Some In -> CamlZip.Deflate.string ~level
+    | _ -> Deflate.string ~input_size ~output_size ~level ~window_bits
   in
   let inflater = match use_camlzip with
     | Some Out -> CamlZip.Inflate.string
-    | _ -> Inflate.string ~input_size ~output_size ~window_bits
+    | _ -> Inflate.string ~input_size ~output_size
   in
   deflater contents |> inflater
   |> fun o -> Printf.printf "%b\n%!" (o = contents)
@@ -205,9 +205,13 @@ let use_camlzip =
   let doc = "Use CamlZip in Inflate or Deflater (in or out)" in
   Arg.(value & opt (some in_or_out) None & info ["use-camlzip"] ~doc)
 
-let window_size =
+let window_bits =
   let doc = "Size of windows (the bit between 1 and 15)" in
   Arg.(value & opt (nat ~a:0 ~b:16 ()) 15 & info ["window-bits"] ~doc)
+
+let level =
+  let doc = "Level of compression" in
+  Arg.(value & opt (nat ~a:(-1) ~b:10 ()) 4 & info ["level"] ~doc)
 
 let cmd =
   let doc = "Deflate and inflate any document." in
@@ -216,7 +220,7 @@ let cmd =
   ; `P "$(tname) takes a document (standard input or file), \
         deflate the document and inflate the document." ]
   in
-  Term.(pure do_cmd $ file $ seed $ input_size $ output_size $ window_size $ use_camlzip),
+  Term.(pure do_cmd $ file $ seed $ input_size $ output_size $ level $ window_bits $ use_camlzip),
   Term.info "loop" ~doc ~man
 
 let () = match Term.eval cmd with
