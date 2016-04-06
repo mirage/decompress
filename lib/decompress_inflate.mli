@@ -1,38 +1,20 @@
 module type INPUT =
 sig
-  module Atom :
-  sig
-    type t = char
-
-    val to_int : t -> int
-    val of_int : int -> t
-  end
-
-  type elt = Atom.t
   type t
 
-  val get : t -> int -> elt
+  val get : t -> int -> char
   val sub : t -> int -> int -> t
 end
 
 module type OUTPUT =
 sig
-  module Atom :
-  sig
-    type t
-
-    val to_int : t -> int
-    val of_int : int -> t
-  end
-
-  type elt = Atom.t
   type t
 
   val create : int -> t
   val length : t -> int
   val blit   : t -> int -> t -> int -> int -> unit
-  val get    : t -> int -> elt
-  val set    : t -> int -> elt -> unit
+  val get    : t -> int -> char
+  val set    : t -> int -> char -> unit
 end
 
 module type S =

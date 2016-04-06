@@ -1,38 +1,20 @@
 module type INPUT =
 sig
-  module Atom :
-  sig
-    type t = char
-
-    val to_int : t -> int
-    val of_int : int -> t
-  end
-
-  type elt = Atom.t
   type t
 
-  val get : t -> int -> elt
+  val get : t -> int -> char
   val sub : t -> int -> int -> t
 end
 
 module type OUTPUT =
 sig
-  module Atom :
-  sig
-    type t
-
-    val to_int : t -> int
-    val of_int : int -> t
-  end
-
-  type elt = Atom.t
   type t
 
   val create : int -> t
   val length : t -> int
   val blit   : t -> int -> t -> int -> int -> unit
-  val get    : t -> int -> elt
-  val set    : t -> int -> elt -> unit
+  val get    : t -> int -> char
+  val set    : t -> int -> char -> unit
 end
 
 module type S =
@@ -70,8 +52,9 @@ struct
   exception Invalid_crc
   exception Expected_data
 
-  module Adler32 = Decompress_adler32.Make(O.Atom)(O)
-  module Window  = Decompress_window.Make(O.Atom)(O)
+  module O = struct type elt = char include O end
+  module Adler32 = Decompress_adler32.Make(Char)(O)
+  module Window  = Decompress_window.Make(Char)(O)
   module Huffman = Decompress_huffman
 
   exception Expected_extended_code of Huffman.path list
@@ -133,7 +116,7 @@ struct
   let src_byte inflater =
     if inflater.available - inflater.inpos > 0
     then begin
-      let code = I.get inflater.src inflater.inpos |> I.Atom.to_int in
+      let code = Char.code @@ I.get inflater.src inflater.inpos in
       [%debug Logs.debug @@ fun m -> m "read one byte: 0x%02x" code];
       inflater.inpos <- inflater.inpos + 1;
       code
@@ -577,14 +560,14 @@ struct
     match src_bytes inflater (min len inflater.needed) with
     | `Partial (len', buff) ->
       for i = 0 to len' - 1
-      do add_char inflater window (I.get buff i |> I.Atom.to_int |> O.Atom.of_int) done;
+      do add_char inflater window (I.get buff i) done;
 
       inflater.k <- flat window (len - len');
 
       `Wait
     | `Ok (len', buff) ->
       for i = 0 to len' - 1
-      do add_char inflater window (I.get buff i |> I.Atom.to_int |> O.Atom.of_int) done;
+      do add_char inflater window (I.get buff i) done;
 
       inflater.k <-
         if len' = len
@@ -727,7 +710,7 @@ struct
         [%debug Logs.debug @@ fun m -> m "length is literal [%c]"
                                        (Char.unsafe_chr n)];
 
-        add_char inflater window (O.Atom.of_int n);
+        add_char inflater window (Char.chr n);
         inflater.k <- decompress ~get_chr ~get_dst window;
 
         if inflater.needed > 0
@@ -756,10 +739,10 @@ struct
           for j = 0 to len - 1 do O.set buff j atom done;
 
           [%debug Logs.debug @@ fun m -> m "write [%02x] at %d in output"
-                                         (O.Atom.to_int atom) inflater.outpos];
+                                         (Char.code atom) inflater.outpos];
 
           add_bytes inflater window buff 0 len;
-          [%debug Logs.debug @@ fun m -> m "we put the byte [%c] %d time(s)" (Char.chr (O.Atom.to_int atom)) len];
+          [%debug Logs.debug @@ fun m -> m "we put the byte [%c] %d time(s)" atom len];
 
           inflater.k <-
             if length - len = 0
@@ -781,7 +764,7 @@ struct
               distance];
 
             let byte = Window.get window distance in
-            [%debug Logs.debug @@ fun m -> m "we put the byte [%c]" (Char.chr (O.Atom.to_int byte))];
+            [%debug Logs.debug @@ fun m -> m "we put the byte [%c]" byte];
 
             add_char inflater window byte;
             decr l;

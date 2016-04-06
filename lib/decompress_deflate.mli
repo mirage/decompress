@@ -38,38 +38,22 @@ end
 
 module type INPUT =
 sig
-  module Atom :
-  sig
-    type t = char
-
-    val to_int : t -> int
-  end
-
-  type elt = Atom.t
   type t
 
   val length : t -> int
-  val get    : t -> int -> elt
+  val get    : t -> int -> char
 end
 
 module type OUTPUT =
 sig
-  module Atom :
-  sig
-    type t = char
-
-    val to_int : t -> int
-  end
-
-  type elt = Atom.t
   type t
   type i
 
   val create   : int -> t
   val length   : t -> int
   val blit     : t -> int -> t -> int -> int -> unit
-  val set      : t -> int -> elt -> unit
-  val get      : t -> int -> elt
+  val set      : t -> int -> char -> unit
+  val get      : t -> int -> char
   val get_u16  : t -> int -> int
   val get_u64  : t -> int -> int64
   val sub      : t -> int -> int -> t

@@ -1,32 +1,13 @@
-module type IATOM =
-sig
-  type t = char
-end
-
-module type ISCALAR =
-sig
-  type elt
-  type t
-end
-
-module type OATOM =
-sig
-  type t = char
-
-  val to_int : t -> int
-end
-
 module type OSCALAR =
 sig
-  type elt
   type t
   type i
 
   val create   : int -> t
-  val set      : t -> int -> elt -> unit
+  val set      : t -> int -> char -> unit
   val blit     : t -> int -> t -> int -> int -> unit
   val length   : t -> int
-  val get      : t -> int -> elt
+  val get      : t -> int -> char
   val get_u16  : t -> int -> int
   val get_u64  : t -> int -> int64
   val sub      : t -> int -> int -> t
@@ -63,7 +44,6 @@ sig
 end
 
 module Make
-  (IAtom : IATOM) (IScalar : ISCALAR with type elt = IAtom.t)
-  (OAtom : OATOM) (OScalar : OSCALAR with type elt = OAtom.t and type i = IScalar.t) : S
-  with type buffer = IScalar.t
+  (OScalar : OSCALAR): S
+  with type buffer = OScalar.i
    and type output = OScalar.t

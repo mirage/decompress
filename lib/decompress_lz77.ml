@@ -1,32 +1,13 @@
-module type IATOM =
-sig
-  type t = char
-end
-
-module type ISCALAR =
-sig
-  type elt
-  type t
-end
-
-module type OATOM =
-sig
-  type t = char (* It's mandatory *)
-
-  val to_int : t -> int
-end
-
 module type OSCALAR =
 sig
-  type elt
   type t
   type i
 
   val create   : int -> t
-  val set      : t -> int -> elt -> unit
+  val set      : t -> int -> char -> unit
   val blit     : t -> int -> t -> int -> int -> unit
   val length   : t -> int
-  val get      : t -> int -> elt
+  val get      : t -> int -> char
   val get_u16  : t -> int -> int
   val get_u64  : t -> int -> int64
   val sub      : t -> int -> int -> t
@@ -62,14 +43,12 @@ sig
                         (t * int array * int array)
 end
 
-module Common
-  (IAtom : IATOM) (IScalar : ISCALAR with type elt = IAtom.t)
-  (OAtom : OATOM) (OScalar : OSCALAR with type elt = OAtom.t and type i = IScalar.t) =
+module Common (OScalar : OSCALAR) =
 struct
   let () = [%debug Logs.set_level (Some Logs.Debug)]
   let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
 
-  type buffer = IScalar.t
+  type buffer = OScalar.i
   type output = OScalar.t
 
   type elt =
@@ -150,10 +129,8 @@ struct
     fun code -> Array.get t code
 end
 
-module Make
-  (IAtom : IATOM) (IScalar : ISCALAR with type elt = IAtom.t)
-  (OAtom : OATOM) (OScalar : OSCALAR with type elt = OAtom.t and type i = IScalar.t) : S
-  with type buffer = IScalar.t
+module Make (OScalar : OSCALAR) : S
+  with type buffer = OScalar.i
    and type output = OScalar.t =
 struct
   module Buffer =
@@ -204,9 +181,9 @@ struct
     let empty { position; _ } = position = 0
   end
 
-  module RingBuffer = Decompress_ringbuffer.Make(OAtom)(OScalar)
+  module RingBuffer = Decompress_ringbuffer.Make(Char)(struct type elt = char include OScalar end)
 
-  include Common(IAtom)(IScalar)(OAtom)(OScalar)
+  include Common(OScalar)
 
   exception Match
   exception Literal
@@ -277,14 +254,14 @@ struct
       let buff = RingBuffer.to_buffer state.ringbuffer in
       OScalar.get buff,
       (fun idx ->
-        let r = (OScalar.get buff (RingBuffer.sanitize state.ringbuffer (idx + 1)) |> OAtom.to_int) in
-        (r lsr 8) lor (OScalar.get buff idx |> OAtom.to_int)),
+        let r = (Char.code @@ OScalar.get buff (RingBuffer.sanitize state.ringbuffer (idx + 1))) in
+        (r lsr 8) lor (Char.code @@ OScalar.get buff idx)),
       (fun idx ->
         let r = ref Int64.zero in
         let a = ref 0 in
         let ( >|< ) atom n =
           Int64.shift_left
-            (Int64.of_int (OAtom.to_int atom)) n in
+            (Int64.of_int (Char.code atom)) n in
         let ( lor ) i n =
           [%debug Logs.debug @@ fun m -> m "%Ld ^ %Ld"
             i n];
@@ -345,12 +322,12 @@ struct
     RingBuffer.peek state.ringbuffer buff 0 len;
 
     (* we can't predicte something at this time, so we complete the [buffer]. *)
-    state.freqs_literal.(ip_chr !ip |> OAtom.to_int) <-
-      state.freqs_literal.(ip_chr !ip |> OAtom.to_int) + 1;
+    state.freqs_literal.(Char.code @@ ip_chr !ip) <-
+      state.freqs_literal.(Char.code @@ ip_chr !ip) + 1;
     Buffer.add_atom state.buffer (ip_chr !ip);
     incr ip;
-    state.freqs_literal.(ip_chr !ip |> OAtom.to_int) <-
-      state.freqs_literal.(ip_chr !ip |> OAtom.to_int) + 1;
+    state.freqs_literal.(Char.code @@ ip_chr !ip) <-
+      state.freqs_literal.(Char.code @@ ip_chr !ip) + 1;
     Buffer.add_atom state.buffer (ip_chr !ip);
     incr ip;
 
@@ -454,8 +431,8 @@ struct
       | Literal ->
         [%debug Logs.debug @@ fun m -> m "we have a literal [%c]" (ip_chr anchor)];
 
-        state.freqs_literal.(ip_chr anchor |> OAtom.to_int) <-
-          state.freqs_literal.(ip_chr anchor |> OAtom.to_int) + 1;
+        state.freqs_literal.(Char.code @@ ip_chr anchor) <-
+          state.freqs_literal.(Char.code @@ ip_chr anchor) + 1;
         Buffer.add_atom state.buffer (ip_chr anchor);
         ip := anchor + 1;
 
@@ -601,8 +578,8 @@ struct
           in
 
           let add_literal chr =
-            state.freqs_literal.(OAtom.to_int chr) <-
-              state.freqs_literal.(OAtom.to_int chr) + 1;
+            state.freqs_literal.(Char.code chr) <-
+              state.freqs_literal.(Char.code chr) + 1;
             Buffer.add_atom state.buffer chr;
           in
 
@@ -689,8 +666,8 @@ struct
       do
         (* we update frequencies with the last buffer. *)
         let e = OScalar.get s i in
-        state.freqs_literal.(OAtom.to_int e) <-
-          state.freqs_literal.(OAtom.to_int e) + 1;
+        state.freqs_literal.(Char.code e) <-
+          state.freqs_literal.(Char.code e) + 1;
 
         Buffer.add_atom state.buffer e
       done;

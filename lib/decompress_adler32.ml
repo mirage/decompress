@@ -2,7 +2,7 @@ module type ATOM =
 sig
   type t
 
-  val to_int : t -> int
+  val code : t -> int
 end
 
 module type SCALAR =
@@ -50,7 +50,7 @@ struct
   type buffer = Scalar.t
 
   let do1 buffer current t =
-    t.a1 <- t.a1 + (Scalar.get buffer current |> Atom.to_int);
+    t.a1 <- t.a1 + (Atom.code @@ Scalar.get buffer current);
     t.a2 <- t.a1 + t.a2
 
   let do2 buffer current adler =
@@ -74,7 +74,7 @@ struct
   let make a1 a2 = { a1; a2; }
 
   let atom atom t =
-    t.a1 <- t.a1 + (Atom.to_int atom);
+    t.a1 <- t.a1 + (Atom.code atom);
     t.a2 <- t.a1 + t.a2;
     if t.a1 >= base then t.a1 <- t.a1 - base;
     if t.a2 >= base then t.a2 <- t.a2 - base
@@ -85,7 +85,7 @@ struct
     | 1 -> atom (Scalar.get buff off) t
     | len when len < 16 ->
       for i = 0 to len - 1 do
-        let c = Scalar.get buff (off + i) |> Atom.to_int in
+        let c = Atom.code @@ Scalar.get buff (off + i) in
         (* XXX: we don't use [atom] to avoid if t.a1 || t.a2 >= base *)
         t.a1 <- t.a1 + c;
         t.a2 <- t.a1 + t.a2;
@@ -118,7 +118,7 @@ struct
         done;
 
       while !len <> 0 do
-        let c = Scalar.get buff (off + !cur) |> Atom.to_int in
+        let c = Atom.code @@ Scalar.get buff (off + !cur) in
         (* XXX: we don't use [atom] to avoid if t.a1 || t.a2 >= base *)
         t.a1 <- t.a1 + c;
         t.a2 <- t.a1 + t.a2;

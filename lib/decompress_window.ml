@@ -2,7 +2,7 @@ module type ATOM =
 sig
   type t
 
-  val to_int : t -> int
+  val code : t -> int
 end
 
 module type SCALAR =

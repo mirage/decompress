@@ -17,38 +17,22 @@ end
 
 module type INPUT =
 sig
-  module Atom :
-  sig
-    type t = char
-
-    val to_int : t -> int
-  end
-
-  type elt = Atom.t
   type t
 
   val length : t -> int
-  val get    : t -> int -> elt
+  val get    : t -> int -> char
 end
 
 module type OUTPUT =
 sig
-  module Atom :
-  sig
-    type t = char
-
-    val to_int : t -> int
-  end
-
-  type elt = Atom.t
   type t
   type i
 
   val create   : int -> t
   val length   : t -> int
   val blit     : t -> int -> t -> int -> int -> unit
-  val set      : t -> int -> elt -> unit
-  val get      : t -> int -> elt
+  val set      : t -> int -> char -> unit
+  val get      : t -> int -> char
   val get_u16  : t -> int -> int
   val get_u64  : t -> int -> int64
   val sub      : t -> int -> int -> t
@@ -74,8 +58,8 @@ struct
 
   exception Expected_data
 
-  module Adler32 = Decompress_adler32.Make(I.Atom)(I)
-  module Lz77    = Decompress_lz77.Make(I.Atom)(I)(O.Atom)(O)
+  module Adler32 = Decompress_adler32.Make(Char)(struct type elt = char include I end)
+  module Lz77    = Decompress_lz77.Make(O)
   module Tree    = Decompress_tree
   module Huffman = Decompress_huffman
 
@@ -835,7 +819,7 @@ struct
     let len = min (deflater.i_max - deflater.i) deflater.needed in
 
     for i = 0 to len - 1
-    do put_byte deflater (O.get buffer (deflater.i + i) |> O.Atom.to_int) done;
+    do put_byte deflater (Char.code @@ O.get buffer (deflater.i + i)) done;
 
     deflater.i <- deflater.i + len;
 
