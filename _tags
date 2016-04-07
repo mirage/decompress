@@ -1,4 +1,77 @@
 # OASIS_START
+# DO NOT EDIT (digest: b63672d8a4c0f92b7e7348b825cfe26c)
+# Ignore VCS directories, you can use the same kind of rule outside
+# OASIS_START/STOP if you want to exclude directories that contains
+# useless stuff for the build process
+true: annot, bin_annot
+<**/.svn>: -traverse
+<**/.svn>: not_hygienic
+".bzr": -traverse
+".bzr": not_hygienic
+".hg": -traverse
+".hg": not_hygienic
+".git": -traverse
+".git": not_hygienic
+"_darcs": -traverse
+"_darcs": not_hygienic
+# Library decompress
+"lib/decompress.cmxs": use_decompress
+<lib/decompress.{cma,cmxa}>: oasis_library_decompress_native
+<lib/*.ml{,i,y}>: oasis_library_decompress_native
+# Executable ppx_debug
+"ppx/ppx_debug.byte": package(compiler-libs.common)
+<ppx/*.ml{,i,y}>: package(compiler-libs.common)
+# Executable dpipe
+<bin/dpipe/dpipe.{native,byte}>: oasis_executable_dpipe_native
+<bin/dpipe/*.ml{,i,y}>: oasis_executable_dpipe_native
+<bin/dpipe/dpipe.{native,byte}>: package(unix)
+<bin/dpipe/dpipe.{native,byte}>: use_decompress
+<bin/dpipe/*.ml{,i,y}>: package(unix)
+<bin/dpipe/*.ml{,i,y}>: use_decompress
+# Executable dcpr
+<bin/dcpr/dcpr.{native,byte}>: oasis_executable_dcpr_native
+<bin/dcpr/*.ml{,i,y}>: oasis_executable_dcpr_native
+<bin/dcpr/dcpr.{native,byte}>: package(camlzip)
+<bin/dcpr/dcpr.{native,byte}>: package(cmdliner)
+<bin/dcpr/dcpr.{native,byte}>: package(unix)
+<bin/dcpr/dcpr.{native,byte}>: use_decompress
+<bin/dcpr/*.ml{,i,y}>: package(camlzip)
+<bin/dcpr/*.ml{,i,y}>: package(cmdliner)
+<bin/dcpr/*.ml{,i,y}>: package(unix)
+<bin/dcpr/*.ml{,i,y}>: use_decompress
+# Executable rev
+<bin/rev/rev.{native,byte}>: oasis_executable_rev_native
+<bin/rev/*.ml{,i,y}>: oasis_executable_rev_native
+<bin/rev/rev.{native,byte}>: package(ctypes.foreign)
+<bin/rev/rev.{native,byte}>: package(ctypes.stubs)
+<bin/rev/rev.{native,byte}>: package(unix)
+<bin/rev/*.ml{,i,y}>: package(ctypes.foreign)
+<bin/rev/*.ml{,i,y}>: package(ctypes.stubs)
+<bin/rev/*.ml{,i,y}>: package(unix)
+# Object bindings
+<bindings/*.ml{,i,y}>: package(ctypes.foreign)
+<bindings/*.ml{,i,y}>: package(ctypes.stubs)
+<bindings/*.ml{,i,y}>: use_decompress
+# Object abindings
+<bindings/apply/*.ml{,i,y}>: package(ctypes.foreign)
+<bindings/apply/*.ml{,i,y}>: package(ctypes.stubs)
+<bindings/apply/*.ml{,i,y}>: use_decompress
+# Executable generate
+<gen/generate.{native,byte}>: package(ctypes.foreign)
+<gen/generate.{native,byte}>: package(ctypes.stubs)
+<gen/generate.{native,byte}>: use_decompress
+<gen/*.ml{,i,y}>: package(ctypes.foreign)
+<gen/*.ml{,i,y}>: package(ctypes.stubs)
+<gen/*.ml{,i,y}>: use_decompress
+# Executable test_decompress
+<lib_test/decompress_test.{native,byte}>: package(alcotest)
+<lib_test/decompress_test.{native,byte}>: package(camlzip)
+<lib_test/decompress_test.{native,byte}>: package(re.str)
+<lib_test/decompress_test.{native,byte}>: use_decompress
+<lib_test/*.ml{,i,y}>: package(alcotest)
+<lib_test/*.ml{,i,y}>: package(camlzip)
+<lib_test/*.ml{,i,y}>: package(re.str)
+<lib_test/*.ml{,i,y}>: use_decompress
 # OASIS_STOP
 true: annot
 true: safe_string

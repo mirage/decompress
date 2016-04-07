@@ -1,0 +1,10 @@
+# OASIS_START
+# DO NOT EDIT (digest: 2eec6095fe5c80ee5ba81a50b8279683)
+version = "0.4"
+description = "Inflate and Deflate Zlib"
+requires = "decompress ctypes.stubs ctypes.foreign"
+archive(byte) = "bindings.cmo"
+archive(native) = "bindings.cmx"
+exists_if = "bindings.cmo"
+# OASIS_STOP
+

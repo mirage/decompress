@@ -1,0 +1,10 @@
+# OASIS_START
+# DO NOT EDIT (digest: e377a3ffc98e6e06b9a66ebd1dce837d)
+version = "0.4"
+description = "Inflate and Deflate Zlib"
+requires = "bindings"
+archive(byte) = "abindings.cmo"
+archive(native) = "abindings.cmx"
+exists_if = "abindings.cmo"
+# OASIS_STOP
+
