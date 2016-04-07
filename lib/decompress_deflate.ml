@@ -678,7 +678,7 @@ struct
         | Flat (buffer, real_size, window_bits) when real_size = 0xFFFF ->
           [%debug Logs.debug @@ fun m -> m "we stop the flat block and create a new"];
 
-         len read real_size buffer
+         sync_flush
         | _ -> read
     in
 
@@ -823,14 +823,22 @@ struct
 
     deflater.i <- deflater.i + len;
 
+    [%debug Logs.debug @@ fun m -> m "we write %02d in flat block and the rest is %02d" len (deflater.i_max - deflater.i)];
+
     deflater.k <-
       if deflater.i = deflater.i_max
-      then after_block
+      then clear_flat after_block
       else write_flat after_block buffer;
 
     if deflater.needed > 0
     then eval deflater
     else `Flush
+
+  and clear_flat after_block deflater =
+    deflater.mode <- flat ();
+    deflater.k <- after_block;
+
+    eval deflater
 
   and initialize_fixed after_block (lz77, _, _) deflater =
     [%debug Logs.debug @@ fun m -> m "state: initialize_fixed"];
