@@ -84,7 +84,7 @@ struct
 
   let dynamic ~level window_bits = Dynamic (Lz77.make ~window_bits ~level ())
   let static  ~level window_bits = Static (Lz77.make ~window_bits ~level ())
-  let flat    window_bits = Flat (O.create (1 lsl window_bits), 0, window_bits)
+  let flat                    () = Flat (O.create 0xFFFF, 0, 0xFFFF)
 
   type flush =
     | Sync_flush
@@ -506,7 +506,7 @@ struct
 
   let rec make ?(window_bits = 15) ?(level = 4) src dst =
     let mode = match level with
-      | 0 -> flat window_bits
+      | 0 -> flat ()
       | 1 -> static ~level window_bits
       | 2 -> static ~level window_bits
       | 3 -> static ~level window_bits
@@ -596,7 +596,7 @@ struct
     let rec aux deflater =
       let new_mode, read = match deflater.mode with
         | Flat (buffer, real_size, window_bits) ->
-          let len = min ((1 lsl window_bits - 1) - real_size) deflater.available in
+          let len = min (0xFFFF - real_size) deflater.available in
 
           [%debug Logs.debug @@ fun m -> m
             "read and write flat data (size: %d byte(s))" len];
@@ -675,7 +675,7 @@ struct
         [%debug Logs.debug @@ fun m -> m "we continue to read the block"];
 
         match deflater.mode with
-        | Flat (buffer, real_size, window_bits) when real_size = (window_bits lsl 1) ->
+        | Flat (buffer, real_size, window_bits) when real_size = 0xFFFF ->
           [%debug Logs.debug @@ fun m -> m "we stop the flat block and create a new"];
 
          len read real_size buffer
@@ -780,7 +780,7 @@ struct
       add_bits deflater (binary_of_mode deflater.mode) 2;
 
       deflater.k <- begin match deflater.mode with
-        | Flat (buffer, real_size, _) -> len after_block real_size buffer
+        | Flat (buffer, real_size, _) -> align_writing (len after_block real_size buffer)
         | Dynamic lz77                -> initialize_dynamic after_block (Lz77.finish lz77)
         | Static lz77                 -> initialize_fixed after_block (Lz77.finish lz77)
       end;

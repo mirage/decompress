@@ -192,7 +192,7 @@ let make_string_test ?(save = false) idx size =
       Alcotest.(check string) data
         (c2d size_input size_output level data) data);
   ]
-  in (List.map make_with_level [1; 2; 3; 4; 5; 6; 7; 8; 9] |> List.concat)
+  in (List.map make_with_level [0; 1; 2; 3; 4; 5; 6; 7; 8; 9] |> List.concat)
 
 let make_file_test filename =
   let data = load_file filename in
@@ -232,7 +232,7 @@ let make_file_test filename =
       Alcotest.(check string) data
         (c2d size_input size_output level data) data);
   ]
-  in (List.map make_with_level [1; 2; 3; 4; 5; 6; 7; 8; 9] |> List.concat)
+  in (List.map make_with_level [0; 1; 2; 3; 4; 5; 6; 7; 8; 9] |> List.concat)
 
 let test_files directory =
   files directory
