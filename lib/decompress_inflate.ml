@@ -1,3 +1,5 @@
+open Decompress_tables
+
 module type INPUT =
 sig
   type t
@@ -59,6 +61,7 @@ struct
 
   exception Expected_extended_code of Huffman.path list
 
+  (*
   let hclen_order =
     [| 16; 17; 18; 0; 8; 7; 9; 6; 10; 5; 11; 4; 12; 3; 13; 2; 14; 1; 15; |]
 
@@ -78,6 +81,7 @@ struct
     [|    0;    1;    2;     3;     4;     6;   8;  12;   16;   24;   32;   48;
          64;   96;  128;   192;   256;   384; 512; 768; 1024; 1536; 2048; 3072;
        4096; 6144; 8192; 12288; 16384; 24576; |]
+  *)
 
   type dst = O.t
   type src = I.t

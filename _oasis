@@ -39,11 +39,10 @@ Flag camlzip
 
 Library decompress
   Path:                 lib
-  Modules:              Decompress, Decompress_common, Decompress_inflate,
-                        Decompress_deflate
+  Modules:              Decompress, Decompress_common, Decompress_inflate, Decompress_deflate
   InternalModules:      Decompress_huffman, Decompress_tree, Decompress_heap,
                         Decompress_ringbuffer,
-                        Decompress_lz77, Decompress_window, Decompress_adler32
+                        Decompress_lz77, Decompress_window, Decompress_adler32, Decompress_tables
   NativeOpt:            -inline 100
 
 Executable ppx_debug
