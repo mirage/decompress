@@ -79,55 +79,43 @@ let ocaml_dir = run_and_read "ocamlopt -where" |> fun s -> String.sub s 0 (Strin
 
 let () = dispatch
   (function
-   | After_hygiene ->
-       if istub
-       then begin
-         (* we add new rule *)
-         istub_rule "gen/generate.native" "istub" "decompress";
+    | After_hygiene ->
+      if istub
+      then begin
+        (* we add new rule *)
+        istub_rule "gen/generate.native" "istub" "decompress";
 
-         (* we specify by the hand the dependency with [abindingis.ml] *)
-         dep ["file:bindings/apply/abindings.ml"] ["istub/decompress_bindings.cmx"];
-         (* we use the new tag [use_istub] *)
-         dep ["use_istub"] ["libdecompress.so"];
+        (* we specify by the hand the dependency with [abindingis.ml] *)
+        dep ["file:bindings/apply/abindings.ml"] ["istub/decompress_bindings.cmx"];
+        (* we use the new tag [use_istub] *)
+        dep ["use_istub"] ["libdecompress.so"];
 
-         (* we specify the compilation of [abindings.ml] *)
-         flag ["ocaml"; "compile"; "file:bindings/apply/abindings.ml"]
-           (S [ A "-g"
-              ; A "-I"; A "istub"
-              ; A "-I"; A "bindings" ]);
-         (* we specify the compilation of [*.so] *)
-         flag ["c"; "compile"; "file:istub/decompress.c"]
-           (S [ A "-ccopt"; A "-fPIC"
-              ; A "-ccopt"; A "-g"
-              ; A "-ccopt"; A ("-I"^ocaml_dir)
-              ; A "-I"; A (Findlib.query "ctypes").Findlib.location ]);
-       end;
+        (* we specify the compilation of [abindings.ml] *)
+        flag ["ocaml"; "compile"; "file:bindings/apply/abindings.ml"]
+          (S [ A "-g"
+             ; A "-I"; A "istub"
+             ; A "-I"; A "bindings" ]);
+        (* we specify the compilation of [*.so] *)
+        flag ["c"; "compile"; "file:istub/decompress.c"]
+          (S [ A "-ccopt"; A "-fPIC"
+             ; A "-ccopt"; A "-g"
+             ; A "-ccopt"; A ("-I" ^ ocaml_dir)
+             ; A "-I"; A (Findlib.query "ctypes").Findlib.location ]);
+      end;
 
-       dep ["ppx_debug"] [ppx_debug];
+      dep ["ppx_debug"] [ppx_debug];
 
-       if trace
-       then begin
-         flag_and_dep
-           [ "ocaml"; "ocamldep"; "ppx_debug" ]
-           logs;
-         flag_and_dep
-           [ "ocaml"; "compile"; "ppx_debug" ]
-           logs;
-         flag_and_dep
-           [ "ocaml"; "ocamldep"; "use_decompress" ]
-           logs;
-         flag_and_dep
-           [ "ocaml"; "compile"; "use_decompress" ]
-           logs;
-         flag_and_dep
-           [ "ocaml"; "link"; "use_decompress" ]
-           logs;
-       end;
+      if trace
+      then begin
+        flag_and_dep [ "ocaml"; "ocamldep"; "ppx_debug" ]      logs;
+        flag_and_dep [ "ocaml"; "compile"; "ppx_debug" ]       logs;
+        flag_and_dep [ "ocaml"; "ocamldep"; "use_decompress" ] logs;
+        flag_and_dep [ "ocaml"; "compile"; "use_decompress" ]  logs;
+        flag_and_dep [ "ocaml"; "link"; "use_decompress" ]     logs;
+      end;
 
-       flag [ "ocaml"; "ocamldep"; "ppx_debug" ]
-         (S [ A "-ppx"; A (cmd_debug trace) ]);
-       flag [ "ocaml"; "compile"; "ppx_debug" ]
-         (S [ A "-ppx"; A (cmd_debug trace) ]);
+      flag [ "ocaml"; "ocamldep"; "ppx_debug" ] (S [ A "-ppx"; A (cmd_debug trace) ]);
+      flag [ "ocaml"; "compile"; "ppx_debug" ]  (S [ A "-ppx"; A (cmd_debug trace) ]);
 
-       dispatch_default After_hygiene
-   | x -> dispatch_default x)
+      dispatch_default After_hygiene
+    | x -> dispatch_default x)
