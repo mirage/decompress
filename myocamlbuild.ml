@@ -5,10 +5,12 @@ let () = Printexc.record_backtrace true
 
 open Ocamlbuild_plugin
 
+(* PPX trace ******************************************************************)
+
 let env_filename = Pathname.basename BaseEnvLight.default_filename
 let env          = BaseEnvLight.load ~filename:env_filename ~allow_empty:true ()
 let trace        = bool_of_string (BaseEnvLight.var_get "trace" env)
-let istub        = bool_of_string (BaseEnvLight.var_get "istub" env)
+let stub         = bool_of_string (BaseEnvLight.var_get "stub" env)
 let ppx_debug debug =
   "./ppx/ppx_debug.byte " ^ (if debug then "-debug" else "-no-debug")
   (* XXX: OASIS de merde. *)
@@ -24,98 +26,174 @@ let logs = S [ A "-package"; A "logs";
                A "-package"; A "logs.cli";
                A "-package"; A "logs.fmt" ]
 
-(** Inverted stub *************************************************************)
+(* Inverted stub **************************************************************)
 
-let istub_rule generator dir library =
-  rule "generator"
-    ~prods:[ Pathname.concat dir (library ^ ".h")
-           ; Pathname.concat dir (library ^ ".c")
-           ; Pathname.concat dir (library ^ "_bindings.ml") ]
-    ~dep:generator
-    (fun env build ->
+module Inverted_stub =
+struct
+  module Pack = Ocamlbuild_pack
+
+  let fold f =
+    let l = ref [] in
+    (try while true do l @:= [f ()] done with _ -> ());
+    !l
+
+  let split_comma = Str.split_delim (Str.regexp ",")
+
+  let fold_pflag scan =
+    List.fold_left
+      (fun acc x -> try split_comma (scan x (fun x -> x)) @ acc with _ -> acc)
+      []
+
+  let ocamlfind cmd f =
+    let p = Printf.sprintf in
+    let cmd = List.map (p "\"%s\"") cmd in
+    let cmd = p "ocamlfind query %s" (String.concat " " cmd) in
+    Pack.My_unix.run_and_open cmd (fun ic -> fold (fun () -> f ic))
+
+  let link_opts prod =
+    let p = Printf.sprintf in
+    let all_pkgs =
+      let tags = Tags.elements (tags_of_pathname prod) in
+      fold_pflag (fun x -> Scanf.sscanf x "package(%[^)])") tags
+    in
+
+    Tags.of_list (List.map (fun x -> p "package(%s)" x) all_pkgs)
+
+  let init () =
+    let _dynamic = !Options.ext_dll in
+    let deps = ["%(path)lib%(libname).stub"; Pathname.add_extension "cmxa" "%(path)%(libname)" ] in
+    let prod = "%(path:<**/>)lib%(libname:<*> and not <*.*>)" -.- _dynamic in
+
+    let f env build =
+      let prod = env prod in
+      let tags = tags_of_pathname prod
+        ++ "inverted_stub"
+        ++ "ocaml"
+        ++ "output_obj"
+        ++ "native"
+        ++ "link" in
+
+      (* deps *)
+      let stub = env "%(path)lib%(libname).stub" in
+      let libname = env (Pathname.add_extension "cmxa" "%(path)%(libname)") in
+
+      let objs = string_list_of_file stub in
+      let tags = List.fold_left
+        (fun acc x -> Tags.union acc (link_opts x)) tags objs
+      in
+      let include_dirs = Pathname.include_dirs_of (Pathname.dirname prod) in
+      let obj_of_o x =
+        if Filename.check_suffix x ".o" && !Options.ext_obj <> "o"
+        then Pathname.update_extension !Options.ext_obj x
+        else x
+      in
+
+      let results = build (List.map (fun o -> List.map (fun dir -> dir / obj_of_o o) include_dirs) objs) in
+      let objs = List.map begin function
+        | Outcome.Good o -> o
+        | Outcome.Bad exn -> raise exn
+      end results in
+      Cmd (S [ !Options.ocamlopt
+             ; T tags
+             ; A "-runtime-variant"; A "_pic"
+             ; A "-o"; Px prod
+             ; P libname
+             ; Command.atomize objs ])
+    in
+
+    rule "stub & (o|obj)* -> (so|dll)"
+      ~deps ~prod f
+
+  let ocaml_where =
+    run_and_read "ocamlopt -where"
+    |> fun s -> String.sub s 0 (String.length s - 1)
+
+  let stub generator directory libname =
+    let prods = [ (Pathname.concat directory (Pathname.add_extension "h" libname))
+                ; (Pathname.concat directory (Pathname.add_extension "c" libname))
+                ; (Pathname.concat directory (Pathname.add_extension "ml" (libname ^ "_bindings"))) ] in
+    let dep = generator in
+    let f env build =
       Seq
-      [ Cmd (S [A "mkdir"; A "-p"; A dir])
-      ; Cmd (S [A generator; A library; A dir]) ]);
-  tag_file (Pathname.concat dir (library ^ "_bindings.ml"))
-    [ "package(ctypes.stubs)"; "package(ctypes.foreign)" ];
-  tag_file ("lib" ^ library ^ ".so")
-    [ "package(ctypes.stubs)"; "package(ctypes.foreign)"];
-  tag_file (Pathname.concat dir (library ^ ".c"))
-    [ "native" ]
+      [ Cmd (S [A "mkdir"; A "-p"; A directory])
+      ; Cmd (S [A generator; A libname; A directory]) ]
+    in
 
-let ext_lib = !Options.ext_lib
-let ext_dll = !Options.ext_dll
+    let _bindings_cmx =
+      Pathname.concat
+        directory (Pathname.add_extension "cmx" (libname ^ "_bindings")) in
+    let _bindings_ml =
+      Pathname.concat
+        directory (Pathname.add_extension "ml" (libname ^ "_bindings")) in
+    let _c =
+      Pathname.concat
+        directory (Pathname.add_extension "c" libname) in
+    tag_file _bindings_cmx [ "package(ctypes.stubs)"; "package(ctypes.foreign)" ];
+    tag_file _bindings_ml  [ "package(ctypes.stubs)"; "package(ctypes.foreign)" ];
+    flag ["file:" ^ _c]
+      (S [ A "-ccopt"; A "-fPIC"
+         ; A "-ccopt"; P ("-I" ^ ocaml_where)
+         ; A "-I"; P (Findlib.query "ctypes").Findlib.location ]);
+    rule generator ~prods ~dep f
 
-let link_c_library istub so libname env build =
-  let istub = env istub and so = env so and libname = env libname in
-  let objs = string_list_of_file istub in
-  let include_dirs = Pathname.include_dirs_of (Pathname.dirname so) in
-  let obj_of_o x =
-    if Filename.check_suffix x ".o" && !Options.ext_obj <> "o"
-    then Pathname.update_extension !Options.ext_obj x
-    else x
-  in
-  let results = build (List.map (fun o -> List.map (fun dir -> dir / obj_of_o o) include_dirs) objs) in
-  let objs = List.map begin function
-    | Outcome.Good o -> o
-    | Outcome.Bad exn -> raise exn
-  end results in
-  Cmd (S [ !Options.ocamlopt
-         ; A "-runtime-variant"; A "_pic"
-         ; A "-o"; Px so
-         ; T (tags_of_pathname so ++ "ocaml" ++ "output_obj" ++ "native" ++ "link" ++ ("use_" ^ libname))
-         ; Command.atomize objs ])
+  let oasis_support generator directory ~libraries =
+    let aux acc x =
+      if List.mem x libraries
+      then begin
+        let libname = Pathname.basename x in
+        let directory' = Pathname.dirname x in
+        stub generator directory (Pathname.remove_extension libname);
+        (Pathname.update_extension "so" (Pathname.concat directory' ("lib" ^ libname))) :: x :: acc
+      end else begin
+        x :: acc
+      end
+    in
+    Options.targets := List.fold_left aux [] !Options.targets
 
+  let dispatcher (generator, directory) ?(oasis_libraries = []) = function
+    | After_rules -> init ()
+    | After_options -> oasis_support generator directory ~libraries:oasis_libraries
+    | _ -> ()
+end
+
+(* Decompress *****************************************************************)
+
+(* XXX: this is a part about the inverted stub. We need to add by-the-hand the
+        dependency between the application of function and the result generator.
+*)
 let () =
-  rule "istub & (o|obj)* -> (so|dll)"
-    ~dep:"%(path)lib%(libname).istub"
-    ~prod:("%(path:<**/>)lib%(libname:<*> and not <*.*>)" -.- ext_dll)
-    (link_c_library
-      "%(path)lib%(libname).istub"
-      ("%(path)lib%(libname)" -.- ext_dll)
-    "%(path)%(libname)")
-
-let ocaml_dir = run_and_read "ocamlopt -where" |> fun s -> String.sub s 0 (String.length s - 1)
+  if stub then begin
+    dep ["file:bindings/apply_bindings.ml"] ["stub/decompress_bindings.cmx"];
+    flag ["ocaml"; "compile"; "file:bindings/apply_bindings.ml"]
+      (S [ A "-I"; P "stub"])
+  end
 
 let () = dispatch
   (function
     | After_hygiene ->
-      if istub
-      then begin
-        (* we add new rule *)
-        istub_rule "gen/generate.native" "istub" "decompress";
-
-        (* we specify by the hand the dependency with [abindingis.ml] *)
-        dep ["file:bindings/apply/abindings.ml"] ["istub/decompress_bindings.cmx"];
-        (* we use the new tag [use_istub] *)
-        dep ["use_istub"] ["libdecompress.so"];
-
-        (* we specify the compilation of [abindings.ml] *)
-        flag ["ocaml"; "compile"; "file:bindings/apply/abindings.ml"]
-          (S [ A "-g"
-             ; A "-I"; A "istub"
-             ; A "-I"; A "bindings" ]);
-        (* we specify the compilation of [*.so] *)
-        flag ["c"; "compile"; "file:istub/decompress.c"]
-          (S [ A "-ccopt"; A "-fPIC"
-             ; A "-ccopt"; A "-g"
-             ; A "-ccopt"; A ("-I" ^ ocaml_dir)
-             ; A "-I"; A (Findlib.query "ctypes").Findlib.location ]);
-      end;
+      if stub then
+        Inverted_stub.dispatcher
+          ("gen/generate.native", "stub")
+          ~oasis_libraries:[ "lib/decompress.cmxa" ] After_hygiene;
 
       dep ["ppx_debug"] [ppx_debug];
 
       if trace
       then begin
         flag_and_dep [ "ocaml"; "ocamldep"; "ppx_debug" ]      logs;
-        flag_and_dep [ "ocaml"; "compile"; "ppx_debug" ]       logs;
+        flag_and_dep [ "ocaml"; "compile";  "ppx_debug" ]      logs;
         flag_and_dep [ "ocaml"; "ocamldep"; "use_decompress" ] logs;
-        flag_and_dep [ "ocaml"; "compile"; "use_decompress" ]  logs;
-        flag_and_dep [ "ocaml"; "link"; "use_decompress" ]     logs;
+        flag_and_dep [ "ocaml"; "compile";  "use_decompress" ] logs;
+        flag_and_dep [ "ocaml"; "link";     "use_decompress" ] logs;
       end;
 
       flag [ "ocaml"; "ocamldep"; "ppx_debug" ] (S [ A "-ppx"; A (cmd_debug trace) ]);
-      flag [ "ocaml"; "compile"; "ppx_debug" ]  (S [ A "-ppx"; A (cmd_debug trace) ]);
+      flag [ "ocaml"; "compile";  "ppx_debug" ] (S [ A "-ppx"; A (cmd_debug trace) ]);
 
       dispatch_default After_hygiene
-    | x -> dispatch_default x)
+    | x ->
+      if stub then
+        Inverted_stub.dispatcher
+          ("gen/generate.native", "stub")
+          ~oasis_libraries:[ "lib/decompress.cmxa" ] x;
+      dispatch_default x)

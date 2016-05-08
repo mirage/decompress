@@ -53,6 +53,7 @@ setup.ml: _oasis
 
 # Make a tarball
 .PHONY: dist tar
+
 dist tar: $(DISTFILES)
 	mkdir $(PKG_NAME)-$(PKG_VERSION)
 	cp --parents -r $(DISTFILES) $(PKG_NAME)-$(PKG_VERSION)/
