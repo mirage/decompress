@@ -1,2 +1,2 @@
-sudo apt-get install -y pip
+sudo apt-get install -y python-pip
 sudo pip cram
