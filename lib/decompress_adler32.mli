@@ -22,8 +22,8 @@ sig
   val init : unit -> t
   val make : int -> int -> t
 
-  val update  : buffer -> int -> int -> t -> unit
-  val atom    : atom -> t -> unit
+  val update  : buffer -> int -> int -> t -> t
+  val atom    : atom -> t -> t
   val combine : t -> t -> int -> t
 
   val eq  : t -> t -> bool

@@ -472,7 +472,7 @@ struct
           done;
 
           (* update CRC *)
-          Adler32.update deflater.src deflater.inpos len deflater.crc;
+          deflater.crc <- Adler32.update deflater.src deflater.inpos len deflater.crc;
 
           [%debug Logs.debug @@ fun m -> m "the size of new buffer of flat is %d" (real_size + len)];
 
@@ -486,10 +486,11 @@ struct
             deflater.inpos deflater.available;
 
           (* update CRC *)
-          Adler32.update deflater.src
-            deflater.inpos
-            deflater.available
-            deflater.crc;
+          deflater.crc <-
+            Adler32.update deflater.src
+              deflater.inpos
+              deflater.available
+              deflater.crc;
 
           Dynamic lz77, deflater.available
 
@@ -501,10 +502,11 @@ struct
             deflater.inpos deflater.available;
 
           (* update CRC *)
-          Adler32.update deflater.src
-            deflater.inpos
-            deflater.available
-            deflater.crc;
+          deflater.crc <-
+            Adler32.update deflater.src
+              deflater.inpos
+              deflater.available
+              deflater.crc;
 
           Static lz77, deflater.available
       in

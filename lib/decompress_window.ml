@@ -60,13 +60,13 @@ struct
 
   let add_buffer buff off len t =
     RingBuffer.write t.window buff off len;
-    CRC.update buff off len t.crc
+    t.crc <- CRC.update buff off len t.crc
 
   let add_atom atom t =
     let buff = Scalar.create 1 in
     Scalar.set buff 0 atom;
     RingBuffer.write t.window buff 0 1;
-    CRC.update buff 0 1 t.crc
+    t.crc <- CRC.update buff 0 1 t.crc
 
   let checksum t = t.crc
 
