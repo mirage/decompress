@@ -117,7 +117,7 @@ Test test_decompress
   WorkingDirectory:     .
 
 Test test_stub
-  Run$:                 flag(tests) && flag(stub)
+  Run$:                 false
   TestTools:            make
   Command:
     $make \
