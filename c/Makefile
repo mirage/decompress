@@ -9,13 +9,21 @@ NAME=dpipe
 
 SRC=main.c
 
+TESTS=tests/diff.t
+
 OBJ=$(BUILDDIR)/main.o
 
 all: $(BUILDDIR)/$(NAME)
 	ln -f $(BUILDDIR)/$(NAME) $(NAME)
 
 $(BUILDDIR)/$(NAME): $(OBJ)
-	$(LD) -o $@ $^ -L$(BUILDDIR)/.. -ldecompress
+	$(LD) -o $@ $^ -L$(BUILDDIR)/../lib/ -ldecompress
 
 $(BUILDDIR)/%.o: %.c
-	$(CC) -c -o $@ -I $(BUILDDIR)/../istub $<
+	$(CC) -c -o $@ -I $(BUILDDIR)/../stub $<
+
+run: $(NAME)
+	LD_LIBRARY_PATH=$(BUILDDIR)/../lib/ ./$(NAME) $(ARGS)
+
+test:
+	BUILDDIR=$(shell pwd)/$(BUILDDIR)/../ DPIPE=$(shell pwd) cram $(TESTS)

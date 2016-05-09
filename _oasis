@@ -12,6 +12,7 @@ BuildTools:             ocamlbuild
 OCamlVersion:           >= 4.02
 AlphaFeatures:          ocamlbuild_more_args
 BetaFeatures:           section_object
+XOCamlbuildPluginTags:  package(str)
 
 Flag unix
   Description:          Unix environment
@@ -29,12 +30,12 @@ Flag trace
   Description:          Trace all compute of decompress
   Default:              false
 
-Flag istub
-  Description:          Produce a shared library of decompress
-  Default:              false
-
 Flag camlzip
   Description:          camlzip package
+  Default:              false
+
+Flag stub
+  Description:          Generate shared C library of Decompress
   Default:              false
 
 Library decompress
@@ -43,7 +44,6 @@ Library decompress
   InternalModules:      Decompress_huffman, Decompress_tree, Decompress_heap,
                         Decompress_ringbuffer,
                         Decompress_lz77, Decompress_window, Decompress_adler32, Decompress_tables
-  NativeOpt:            -inline 100
 
 Executable ppx_debug
   Path:                 ppx
@@ -80,28 +80,12 @@ Executable dcpr
   NativeOpt:            -inline 100
   Build$:               flag(example) && flag(unix) && flag(cmdliner) && flag(camlzip)
 
-Executable rev
-  Install:              false
-  Path:                 bin/rev
-  MainIs:               rev.ml
-  CompiledObject:       best
-  BuildDepends:         unix, ctypes.stubs, ctypes.foreign
-  NativeOpt:            -inline 100
-  Build$:               flag(unix) && flag(istub)
-
 Object bindings
   Install:              false
   Path:                 bindings
   Modules:              Bindings
   BuildDepends:         decompress, ctypes.stubs, ctypes.foreign
-  Build$:               flag(istub)
-
-Object abindings
-  Install:              false
-  Path:                 bindings/apply
-  Modules:              Abindings
-  BuildDepends:         bindings
-  Build$:               flag(istub)
+  Build$:               flag(stub)
 
 Executable generate
   Install:              false
@@ -109,7 +93,7 @@ Executable generate
   MainIs:               generate.ml
   CompiledObject:       best
   BuildDepends:         bindings
-  Build$:               flag(istub)
+  Build$:               flag(stub)
 
 SourceRepository master
   Type:                 git
@@ -131,3 +115,11 @@ Test test_decompress
     cp ./lib/*.ml ./lib_test/files/ \
     && $test_decompress
   WorkingDirectory:     .
+
+Test test_stub
+  Run$:                 false
+  TestTools:            make
+  Command:
+    $make \
+    && $make test
+  WorkingDirectory:     c
