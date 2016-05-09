@@ -159,7 +159,7 @@ end
 (* Decompress *****************************************************************)
 
 (* XXX: this is a part about the inverted stub. We need to add by-the-hand the
-        dependency between the application of function and the result generator.
+        dependency between the application of functor and the result generator.
 *)
 let () =
   if stub then begin
