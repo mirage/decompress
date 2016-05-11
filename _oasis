@@ -44,6 +44,7 @@ Library decompress
   InternalModules:      Decompress_huffman, Decompress_tree, Decompress_heap,
                         Decompress_ringbuffer,
                         Decompress_lz77, Decompress_window, Decompress_adler32, Decompress_tables
+  NativeOpt:            -inline 1000
 
 Executable ppx_debug
   Path:                 ppx
