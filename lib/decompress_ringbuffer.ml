@@ -133,8 +133,10 @@ struct
 
   let wpos t = t.wpos
   let rpos t = t.rpos
+
   let rec sanitize t i =
-    if i >= 0 then i mod t.size
+    if i >= 0 && i < t.size then i
+    else if i > t.size then sanitize t (i - t.size)
     else sanitize t (t.size - i)
 
   let rget t idx =
@@ -142,16 +144,12 @@ struct
      * it's not good assertion, so we need to found another assertion with
      * [rget]. *)
     let pre = t.wpos - idx in
-    [%debug Logs.debug @@ fun m -> m "we have reverse get with pre = %d - %d = %d" t.wpos idx pre];
     let pos = t.size - (abs pre) in
-    [%debug Logs.debug @@ fun m -> m "we have reverse get with pos = %d - %d = %d" t.size (abs pre) pos];
     if pre < 0
     then Scalar.get t.buffer pos
     else Scalar.get t.buffer pre
 
   let rsub t off len =
-    [%debug Logs.debug @@ fun m -> m "rsub [off: %d] and [len: %d]" off len];
-
     assert (off < available_to_read t);
 
     let buff = Scalar.create len in

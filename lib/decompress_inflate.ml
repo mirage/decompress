@@ -4,17 +4,20 @@ module type INPUT =
 sig
   type t
 
-  val get : t -> int -> char
-  val sub : t -> int -> int -> t
+  val get  : t -> int -> char
+  val sub  : t -> int -> int -> t
+  val make : int -> char -> t
 end
 
 module type OUTPUT =
 sig
   type t
+  type i
 
   val create : int -> t
   val length : t -> int
   val blit   : t -> int -> t -> int -> int -> unit
+  val iblit  : i -> int -> t -> int -> int -> unit
   val get    : t -> int -> char
   val set    : t -> int -> char -> unit
 end
@@ -28,116 +31,115 @@ sig
   val make : src -> dst -> t
   val eval : t -> [`Ok | `Flush | `Error | `Wait ]
 
-  val contents : t -> int
-  val flush    : t -> int -> unit
-  val refill   : t -> int -> unit
+  val flush    : int -> int -> t -> unit
+  val refill   : int -> int -> t -> unit
   val used_in  : t -> int
   val used_out : t -> int
 
   val decompress : src -> dst -> (src -> int) -> (dst -> int -> int) -> unit
 end
 
-module Make (I : INPUT) (O : OUTPUT) : S
+module Make (I : INPUT) (O : OUTPUT with type i = I.t) : S
   with type src = I.t
    and type dst = O.t =
 struct
-  let () = [%debug Logs.set_level (Some Logs.Debug)]
+  let () = [%debug Logs.set_level ~all:true (Some Logs.Debug)]
   let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
 
   exception Invalid_huffman
-  exception Invalid_dictionnary
+  exception Invalid_dictionary
   exception Invalid_header
   exception Invalid_complement_of_length
-  exception Invalid_type_of_data
+  exception Invalid_type_of_block
   exception Invalid_extrabits
   exception Invalid_distance
   exception Invalid_crc
-  exception Expected_data
 
-  module O = struct type elt = char include O end
+  module O = struct type elt = char [@@immmediate] include O end
   module Adler32 = Decompress_adler32.Make(Char)(O)
   module Window  = Decompress_window.Make(Char)(O)
   module Huffman = Decompress_huffman
-
-  exception Expected_extended_code of Huffman.path list
 
   type dst = O.t
   type src = I.t
 
   type t =
-    {
-      src                   : src;
-      dst                   : dst;
-      position              : int ref;
-
-      mutable last          : bool;
+    { src                   : src
+    ; dst                   : dst
+    ; mutable last          : bool
       (** true if processing last block *)
-      mutable hold          : int;
+    ; mutable hold          : int
       (** input bit accumulator *)
-      mutable bits          : int;
+    ; mutable bits          : int
       (** number of bits in "hold" *)
-
-      mutable outpos        : int;
+    ; mutable outpos        : int
       (** position output buffer *)
-      mutable needed        : int;
-
-      mutable inpos         : int;
+    ; mutable needed        : int
+    ; mutable inpos         : int
       (** position input buffer *)
-      mutable available     : int;
+    ; mutable available     : int
+    ; mutable k             : t -> [ `Ok | `Flush | `Wait | `Error ] }
 
-      mutable k             : t -> [ `Ok | `Flush | `Wait | `Error ];
-    }
+  exception Expected_data
 
-  let src_byte inflater =
+  let eval inflater =
+    inflater.k inflater
+
+  let get_bytes n blit k inflater =
+    let rec loop rest inflater =
+      let can = min (inflater.available - inflater.inpos) rest in
+
+      [%debug Logs.debug @@ fun m -> m "state: get_bytes [can: %d, rest: %d]" can rest];
+
+      match can, rest with
+      | 0, r when r > 0 -> (inflater.k <- loop rest; `Wait)
+      | n, r when r > 0 ->
+        blit inflater.src inflater.inpos can
+          (fun inflater ->
+           [%debug Logs.debug @@ fun m -> m "state: get_bytes [blit]"];
+
+           inflater.inpos <- inflater.inpos + can;
+           loop (rest - can) inflater)
+          inflater
+      | _ -> k inflater
+    in
+
+    loop n inflater
+
+  let rec get_byte' k inflater =
     if inflater.available - inflater.inpos > 0
     then begin
       let code = Char.code @@ I.get inflater.src inflater.inpos in
-      [%debug Logs.debug @@ fun m -> m "read one byte: 0x%02x" code];
       inflater.inpos <- inflater.inpos + 1;
-      code
-    end else raise Expected_data
 
-  let src_bytes inflater n =
-    if inflater.available - inflater.inpos > n
-    then begin
-      let buff = I.sub inflater.src inflater.inpos n in
-      [%debug Logs.debug @@ fun m -> m "read %d byte(s)" n];
-      inflater.inpos <- inflater.inpos + n;
-      `Ok (n, buff)
-    end else if inflater.available - inflater.inpos > 0
-    then begin
-      let n' = inflater.available - inflater.inpos in
-      let buff = I.sub inflater.src inflater.inpos n' in
-      [%debug Logs.warn @@ fun m -> m "read %d byte(s) but it's partial" n];
-      inflater.inpos <- inflater.inpos + n';
-      `Partial (n', buff)
-    end
-    else begin
-      [%debug Logs.err @@ fun m -> m "try to read %d byte(s) but it's empty" n];
-      `Empty
+      k code inflater
+    end else begin
+      inflater.k <- get_byte' k;
+
+      `Wait
     end
 
   let reset_bits inflater =
     inflater.hold <- 0;
     inflater.bits <- 0
 
-  let get_bit inflater =
+  let get_bit k inflater =
+    let rec aux infalter =
+      let result = inflater.hold land 1 = 1 in
+      inflater.bits <- inflater.bits - 1;
+      inflater.hold <- inflater.hold lsr 1;
+
+      k result inflater
+    in
+
     if inflater.bits = 0
-    then begin
-      [%debug Logs.debug @@ fun m -> m "need one byte to get %02d bit(s) \
-                                        (we have %02d bit(s))" 1 inflater.bits];
-      [%debug if 1 > inflater.bits + 8
-              then begin
-                Logs.warn @@ fun m -> m "we try to read %02d bits and \
-                                         possibly lost data" 1;
-              end];
-      inflater.hold <- src_byte inflater;
-      inflater.bits <- 8;
-    end;
-    let result = inflater.hold land 1 = 1 in
-    inflater.bits <- inflater.bits - 1;
-    inflater.hold <- inflater.hold lsr 1;
-    result
+    then get_byte' (fun byte inflater ->
+                    inflater.hold <- byte;
+                    inflater.bits <- 8;
+
+                    aux inflater)
+           inflater
+    else aux inflater
 
   let reverse_bits =
     let t =
@@ -164,67 +166,35 @@ struct
          0x0F; 0x8F; 0x4F; 0xCF; 0x2F; 0xAF; 0x6F; 0xEF; 0x1F; 0x9F; 0x5F; 0xDF;
          0x3F; 0xBF; 0x7F; 0xFF |]
     in
-    fun bits ->
-      [%debug Logs.debug @@ fun m -> m "try to reversing the bits: %d" bits];
-      t.(bits)
+    fun bits -> t.(bits)
 
-  let get_bits inflater n =
-    [%debug Logs.debug @@ fun m -> m "get_bits with hold %a and bits %02d and n = %02d"
-                                     Huffman.pp_code (Huffman.code_of_int
-                                     ~size:inflater.bits inflater.hold)
-                                     inflater.bits n];
+  let get_bits n k inflater =
+    let aux inflater =
+      let result = inflater.hold land (1 lsl n - 1) in
+      inflater.bits <- inflater.bits - n;
+      inflater.hold <- inflater.hold lsr n;
 
-    while inflater.bits < n do
-      let byte = src_byte inflater in
-      (* XXX: if src_byte fails, we raise an exception and the state of inflater
-              is unchanged only if n <= inflater.bits + 8. we can recompute
-              without lost any data. In other case, we lost
-              (n / inflater.bits + 8) - 1 bytes. *)
-      [%debug Logs.debug @@ fun m -> m "need one byte to get %02d bit(s) \
-                                        (we have %02d bit(s))" n inflater.bits];
-      [%debug if n > inflater.bits + 8
-              then begin
-                Logs.warn @@ fun m -> m "we try to read %02d bits and \
-                                         possibly lost data" n;
-              end];
-      inflater.hold <-
-        inflater.hold lor (byte lsl inflater.bits);
-      inflater.bits <- inflater.bits + 8;
+      k result inflater
+    in
 
-      [%debug Logs.debug @@ fun m -> m "the hold byte is: %a"
-                                     Huffman.pp_code (Huffman.code_of_int
-                                     ~size:inflater.bits inflater.hold)];
-    done;
+    let rec loop inflater =
+      if inflater.bits < n
+      then get_byte' (fun byte inflater ->
+                      inflater.hold <- inflater.hold lor (byte lsl inflater.bits);
+                      inflater.bits <- inflater.bits + 8;
 
-    let result = inflater.hold land (1 lsl n - 1) in
-    inflater.bits <- inflater.bits - n;
-    inflater.hold <- inflater.hold lsr n;
+                      loop inflater) inflater
+      else aux inflater
+    in
 
-    [%debug Logs.debug @@ fun m -> m "get_bits returns %d" result];
-    result
+    loop inflater
 
-  let get_ui16 inflater =
-    try let a = src_byte inflater in
-      try let b = src_byte inflater in
-        `Ok (a lor (b lsl 8))
-      with Expected_data -> `Partial a
-    with Expected_data -> `Empty
+  let get_ui16 k inflater =
+    get_byte' (fun a -> get_byte' (fun b -> k (a lor (b lsl 8)))) inflater
 
-  let rec get_revbits inflater n =
-    [%debug Logs.debug @@ fun m -> m "we try to get %d bits in reverse and we have %d" n inflater.bits];
-
-    if n < 8
-    then reverse_bits ((get_bits inflater n) lsl (8 - n))
-    else assert false
-
-  let fixed_huffman_length_tree =
-    Array.init 288
-      (fun n ->
-         if n < 144 then 8
-         else if n < 256 then 9
-         else if n < 280 then 7
-         else 8)
-    |> fun lengths -> Huffman.make lengths 0 288 9
+  let get_revbits n k inflater =
+    (* XXX: this function accepts only [n <= 8] *)
+    get_bits n (fun o -> k @@ reverse_bits (o lsl (8 - n))) inflater
 
   module Dictionary =
   struct
@@ -240,104 +210,315 @@ struct
       ; max
       ; dictionary = Array.make max 0 }
 
-    let inflate inflater lengths ?(previous_path = []) t =
+    let inflate (tree, max) k inflater =
+      let get next inflater =
+        Huffman.read_and_find
+          get_bit get_bits tree next inflater
+      in
 
-      let with_previous () =
-        Huffman.read_and_find_with_path
-          ~get_bit:(fun () -> get_bit inflater)
-          ~get_bits:(get_bits inflater) lengths
-          ~path:previous_path in
-      let reader () =
-        Huffman.read_and_find_with_path
-          ~get_bit:(fun () -> get_bit inflater)
-          ~get_bits:(get_bits inflater) lengths in
+      let state = make max in
 
-      let rec aux = function
-        | _, n when n <= 15 ->
-          [%debug Logs.debug @@ fun m -> m "inflate dictionary (code = %02d)"
-                                           n];
-          t.previous <- n;
-          Array.set t.dictionary t.iterator n;
-          t.iterator <- t.iterator + 1;
+      let rec loop result inflater = match result with
+        | n when n <= 15 ->
+          [%debug Logs.debug @@ fun m -> m "state: inflate_dict [%d]" n];
+          state.previous <- n;
+          Array.set state.dictionary state.iterator n;
+          state.iterator <- state.iterator + 1;
 
-          next reader
-        | p, 16 ->
-          [%debug Logs.debug @@ fun m -> m "inflate dictionary (code = 16)"];
+          if state.iterator < state.max
+          then get loop inflater
+          else k state.dictionary inflater
+        | 16 ->
+          [%debug Logs.debug @@ fun m -> m "state: inflate_dict [%d]" 16];
+          let aux n inflater =
+            if state.iterator + n + 3 > state.max
+            then raise Invalid_dictionary;
 
-          let n = try 3 + get_bits inflater 2
-                  with Expected_data -> raise (Expected_extended_code p) in
+            for j = 0 to n + 3 - 1 do
+              Array.set state.dictionary state.iterator state.previous;
+              state.iterator <- state.iterator + 1;
+            done;
 
-          if t.iterator + n > t.max then raise Invalid_dictionnary;
+            if state.iterator < state.max
+            then get loop inflater
+            else k state.dictionary inflater
+          in
 
-          for j = 0 to n - 1 do
-            Array.set t.dictionary t.iterator t.previous;
-            t.iterator <- t.iterator + 1;
-          done;
+          get_bits 2 aux inflater
+        | 17 ->
+          [%debug Logs.debug @@ fun m -> m "state: inflate_dict [%d]" 17];
+          let aux n inflater =
+            if state.iterator + n + 3 > state.max
+            then raise Invalid_dictionary;
 
-          next reader
-        | p, 17 ->
-          [%debug Logs.debug @@ fun m -> m "inflate dictionary (code = 17)"];
+            state.iterator <- state.iterator + n + 3;
 
-          let n = try 3 + get_bits inflater 3
-                  with Expected_data -> raise (Expected_extended_code p) in
+            if state.iterator < state.max
+            then get loop inflater
+            else k state.dictionary inflater
+          in
 
-          if t.iterator + n > t.max then raise Invalid_dictionnary;
+          get_bits 3 aux inflater
+        | 18 ->
+          [%debug Logs.debug @@ fun m -> m "state: inflate_dict [%d]" 18];
+          let aux n inflater =
+            if state.iterator + n + 11 > state.max
+            then raise Invalid_dictionary;
 
-          t.iterator <- t.iterator + n;
+            state.iterator <- state.iterator + n + 11;
 
-          next reader
-        | p, 18 ->
-          [%debug Logs.debug @@ fun m -> m "inflate dictionary (code = 18)"];
+            if state.iterator < state.max
+            then get loop inflater
+            else k state.dictionary inflater
+          in
 
-          let n = try 11 + get_bits inflater 7
-                  with Expected_data -> raise (Expected_extended_code p) in
+          get_bits 7 aux inflater
+        | _ -> raise Invalid_dictionary
+      in
 
-          if t.iterator + n > t.max then raise Invalid_dictionnary;
-
-          t.iterator <- t.iterator + n;
-
-          next reader
-        | _ -> raise Invalid_dictionnary
-
-      and next reader =
-        if t.iterator < t.max
-        then
-          try aux (reader ())
-          with Huffman.Expected_data (bytes, path) ->
-              [%debug Logs.warn @@ fun m -> m "wait another byte to finding \
-                                               code"];
-
-              `Wait_for_finding (bytes, path, t)
-            | Expected_extended_code path ->
-              [%debug Logs.warn @@ fun m -> m "wait another byte to finding an \
-                                               extended code"];
-
-              `Wait_for_extended_code (path, t)
-            | exn -> raise exn
-        else `Ok t.dictionary
-
-      in next with_previous
+      get loop inflater
   end
 
-  let add_char inflater window atom =
-    Window.add_atom atom window;
-    O.set inflater.dst inflater.outpos atom;
-    inflater.needed <- inflater.needed - 1;
-    inflater.outpos <- inflater.outpos + 1
+  let fixed_huffman =
+    Array.init 288
+      (fun n ->
+         if n < 144 then 8
+         else if n < 256 then 9
+         else if n < 280 then 7
+         else 8)
+    |> fun lengths -> Huffman.make lengths 0 288 9
 
-  let add_bytes inflater window buff off len =
-    Window.add_buffer buff 0 len window;
-    O.blit buff off inflater.dst inflater.outpos len;
-    inflater.needed <- inflater.needed - len;
-    inflater.outpos <- inflater.outpos + len
+  let rec put_chr window chr next inflater =
+    [%debug Logs.debug @@ fun m -> m "state: put_chr [%S]" (String.make 1 chr)];
 
-  exception No_more_input
+    if inflater.outpos < inflater.needed
+    then begin
+      O.set inflater.dst inflater.outpos chr;
+      Window.add_atom chr window;
+      inflater.outpos <- inflater.outpos + 1;
 
-  let rec make src dst =
-    let position = ref 0 in
+      next inflater
+    end else (inflater.k <- put_chr window chr next; `Flush)
+
+  let rec put_bytes window bytes off len next inflater =
+    [%debug Logs.debug @@ fun m -> m "state: put_bytes [%S]" (I.sub bytes off len |> Obj.magic)];
+
+    if inflater.outpos < inflater.needed
+    then begin
+      let n = min (inflater.needed - inflater.outpos) len in
+      O.iblit bytes off inflater.dst inflater.outpos n;
+      Window.add_buffer inflater.dst inflater.outpos n window;
+      inflater.outpos <- inflater.outpos + n;
+
+      if len - n > 0
+      then put_bytes window bytes (off + n) (len - n) next inflater
+      else next inflater
+    end else (inflater.k <- put_bytes window bytes off len next; `Flush)
+
+  let rec ok inflater = `Ok
+
+  and switch window inflater =
+    if inflater.last = true
+    then crc window inflater
+    else last window inflater
+
+  and crc window inflater =
+    let check b a inflater =
+      [%debug Logs.debug @@ fun m -> m "state: crc [%d:%d]" a b];
+
+      if Adler32.neq (Adler32.make a b) (Window.checksum window)
+      then raise Invalid_crc;
+
+      ok inflater
+    in
+
+    let read_a2b a1a a1b a2a a2b = check ((a1a lsl 8) lor a1b) ((a2a lsl 8) lor a2b) in
+    let read_a2a a1a a1b a2a     = get_byte' (read_a2b a1a a1b a2a) in
+    let read_a1b a1a a1b         = get_byte' (read_a2a a1a a1b) in
+    let read_a1a a1a             = get_byte' (read_a1b a1a) in
+
+    get_byte' read_a1a inflater
+
+  and flat window inflater =
+    let rec loop len inflater =
+      let available_to_read = min (inflater.available - inflater.inpos) len in
+      let available_to_write = min (inflater.needed - inflater.outpos) available_to_read in
+
+      if len = 0 then switch window inflater
+      else match available_to_read, available_to_write with
+           | 0, n ->
+             inflater.k <- loop len;
+             `Wait
+           | n, 0 ->
+             inflater.k <- loop len;
+             `Flush
+           | _, n ->
+             get_bytes n
+               (put_bytes window)
+               (loop (len - n))
+               inflater
+    in
+    let header len nlen inflater =
+      if nlen <> 0xFFFF - len
+      then raise Invalid_complement_of_length
+      else begin
+        reset_bits inflater;
+        loop len inflater
+      end
+
+    in
+
+    get_ui16 (fun len -> get_ui16 (fun nlen -> header len nlen)) inflater
+
+  and inflate window get_chr get_dst inflater =
+    [%debug Logs.debug @@ fun m -> m "state: inflate"];
+
+    let rec loop length inflater =
+      [%debug Logs.debug @@ fun m -> m "state: inflate [%d]" length];
+
+      match length with
+      | n when n < 256 ->
+        put_chr window (Char.chr n) (get_chr loop) inflater
+      | 256 ->
+        switch window inflater
+      | n ->
+        let write length dist inflater =
+          [%debug Logs.debug @@ fun m -> m "state: write [%d:%d]" length dist];
+
+          match dist with
+          | 1 ->
+            (* XXX: allocation! *)
+            let tmp = I.make length (Window.last window) in
+            put_bytes window tmp 0 length (get_chr loop) inflater
+          | n ->
+            (* TODO: optimize! use [put_bytes] *)
+            let rec loop' rem inflater =
+              [%debug Logs.debug @@ fun m -> m "state: dist [%d]" rem];
+
+              if rem = 0
+              then get_chr loop inflater
+              else put_chr window (Window.get window dist) (loop' (rem - 1)) inflater
+            in
+
+            loop' length inflater
+        in
+
+        let read_extra_dist length dist inflater =
+          let n = Array.get _extra_dbits dist in
+          get_bits n (fun extra -> write length @@ (Array.get _base_dist dist) + 1 + extra) inflater
+        in
+
+        let read_extra_length length inflater =
+          let n = Array.get _extra_lbits length in
+          get_bits n (fun extra -> get_dst @@ read_extra_dist ((Array.get _base_length length) + 3 + extra)) inflater
+        in
+
+        read_extra_length (n - 257) inflater
+    in
+
+    get_chr loop inflater
+
+  and fixed window inflater =
+    let get_chr next inflater =
+      Huffman.read_and_find
+        get_bit get_bits fixed_huffman next inflater
+    in
+
+    let get_dst next =
+      get_revbits 5 next
+    in
+
+    inflate window get_chr get_dst inflater
+
+  and dynamic window inflater =
+    [%debug Logs.debug @@ fun m -> m "state: dynamic"];
+
+    let print_arr ~sep print_data fmt arr =
+      let rec aux = function
+        | [] -> ()
+        | [ x ] -> print_data fmt x
+        | x :: r -> Format.fprintf fmt "%a%s" print_data x sep; aux r
+      in
+
+      aux (Array.to_list arr)
+    in
+    let print_int = Format.pp_print_int in
+
+    let make_table hlit hdist hclen buf inflater =
+      [%debug Logs.debug @@ fun m -> m "state: make_table [%d:%d:%d]" hlit hdist hclen];
+      [%debug Logs.debug @@ fun m -> m "state: make_table [%a]" (print_arr ~sep:"; " print_int) buf];
+
+      Dictionary.inflate
+        (Huffman.make buf 0 19 7, hlit + hdist)
+        (fun dict inflater ->
+         let huffman_chr = Huffman.make dict 0 hlit 15 in
+         let huffman_dst = Huffman.make dict hlit hdist 15 in
+
+         let get_chr next inflater =
+           Huffman.read_and_find get_bit get_bits huffman_chr next inflater
+         in
+
+         let get_dst next inflater =
+           Huffman.read_and_find get_bit get_bits huffman_dst next inflater
+         in
+
+         inflate window get_chr get_dst inflater)
+        inflater
+    in
+    let read_table hlit hdist hclen inflater =
+      let buf = Array.make 19 0 in
+
+      let rec loop iterator code inflater =
+        Array.set buf (Array.get hclen_order iterator) code;
+
+        if iterator + 1 = hclen
+        then begin
+          for i = hclen to 18 do Array.set buf (Array.get hclen_order i) 0 done;
+          make_table hlit hdist hclen buf inflater
+        end else get_bits 3 (loop (iterator + 1)) inflater
+      in
+
+      get_bits 3 (loop 0) inflater
+    in
+    let read_hclen hlit hdist = get_bits 4 (fun hclen -> read_table hlit hdist @@ hclen + 4) in
+    let read_hdist hlit       = get_bits 5 (fun hdist -> read_hclen hlit @@ hdist + 1) in
+    let read_hlit             = get_bits 5 (fun hlit  -> read_hdist @@ hlit + 257) in
+
+    read_hlit inflater
+
+  and block window inflater =
+    get_bits 2
+      (fun n inflater ->
+       [%debug Logs.debug @@ fun m -> m "state: block [%d]" n];
+
+       match n with
+       | 0 -> flat window inflater
+       | 1 -> fixed window inflater
+       | 2 -> dynamic window inflater
+       | _ -> raise Invalid_type_of_block)
+      inflater
+
+  and last window inflater =
+    get_bit (fun last inflater ->
+             [%debug Logs.debug @@ fun m -> m "state: last [%b]" last];
+
+             inflater.last <- last;
+             block window inflater)
+       inflater
+
+  and header inflater =
+    let aux byte0 byte1 inflater =
+      [%debug Logs.debug @@ fun m -> m "state: header [%d:%d]" byte0 byte1];
+
+      let window = Window.init ~bits:(byte0 lsr 4 + 8) () in
+      last window inflater
+    in
+
+    get_byte' (fun byte0 -> get_byte' (fun byte1 -> aux byte0 byte1)) inflater
+
+  let make src dst =
     { src
     ; dst
-    ; position
 
     ; last      = false
     ; hold      = 0
@@ -351,613 +532,34 @@ struct
 
     ; k         = header }
 
-  and eval inflater =
-    if inflater.needed > 0
-    then inflater.k inflater
-    else begin `Flush
-    end
-
-  and header inflater =
-
-    (*  ________________________
-       |  |  |  |  |  |  |  |  |  BYTE 0
-       |__|__|__|__|__|__|__|__|
-       |           |
-       |           | Compression
-       |           | info
-       |
-       | Compression
-       | method
-
-        _______________________
-       |  |  |  |  |  |  |  |  |  BYTE 1
-       |__|__|__|__|__|__|__|__|
-       |              |  |
-       | Check value  |  | Level compression
-                      |
-                      | next state is DICTID (1) or TYPE (0)
-    *)
-
-    let rec read_byte0 inflater =
-      [%debug Logs.debug @@ fun m -> m "state: read_byte0"];
-
-      try let byte0 = src_byte inflater in
-        inflater.k <- read_byte1 byte0;
-
-        eval inflater
-      with Expected_data -> `Wait
-
-    and read_byte1 byte0 inflater =
-      [%debug Logs.debug @@ fun m -> m "state: read_byte1"];
-
-      try let byte1 = src_byte inflater in
-        inflater.k <- verify_header byte0 byte1;
-
-        eval inflater
-      with Expected_data -> `Wait
-
-    and verify_header byte0 byte1 inflater =
-      [%debug Logs.debug @@ fun m -> m "state: verify_header %02d %02d"
-                                       byte0 byte1];
-
-      (* Check value must be such that [byte0] and [byte1], when viewed as a
-       * 16-bit unsigned integer stored in MSB order ([byte0 * 256 + byte1]), is
-       * a multiple of 31. *)
-
-      (* TODO: FIX BUG
-      if (byte0 lsl 8 + byte1) mod 31 <> 0 then
-        raise Invalid_header;
-
-         if byte0 land 0xF <> 8 || byte0 lsr 4 < 7 (* see RFC 1950 § 2.2 *)
-         then raise Invalid_header;
-      *)
-
-      (* [byte0 lsr 4] is the base-2 logarithm of the LZ77 window size, minus
-       * eight ([byte0 lsr 4 + 8 = 7] indicates a 32K window size). See RFC 1950
-       * § 2.2. *)
-      let window = Window.init ~bits:(byte0 lsr 4 + 8) () in
-
-      (* If [byte1 land 0x20] is set, a dictionary identifier is present
-       * immediately after the [byte1]. The dictionary is a sequence of bytes
-       * which are initially fed to the compressor without producing any
-       * compressed output. The dictionary identifier is the Adler-32 checksum
-       * of this sequence of bytes. The decompressor can use this identifier to
-       * determine which dictionary has been used by the compressor. *)
-      inflater.k <-
-        if byte1 land 0x20 <> 0
-        then error
-        else last window;
-
-      eval inflater
-
-    in
-
-    inflater.k <- read_byte0;
-
-    eval inflater
-
-  and last window inflater =
-    [%debug Logs.debug @@ fun m -> m "state: last"];
-
-    try let last = get_bit inflater in
-      inflater.last <- last;
-      inflater.k <- ty window;
-
-      [%debug if last then Logs.debug @@ fun m -> m "we will compute the last \
-                                                     block"];
-
-      eval inflater
-    with Expected_data -> `Wait
-
-  and ty window inflater =
-    [%debug Logs.debug @@ fun m -> m "state: ty"];
-
-    try let ty = get_bits inflater 2 in
-        inflater.k <- block window ty;
-
-        eval inflater
-    with Expected_data -> `Wait
-
-  and block window ty inflater =
-    [%debug Logs.debug @@ fun m -> m "state: block with type = %d" ty];
-
-    (*  ________
-       |  |  |  |. . .
-       |__|__|__|
-       |  |     |
-       |  | Type of block
-       |
-       | If processing last block
-
-       Type of code specifies how the data are compressed, as follows:
-
-       * 00 - no compression
-       * 01 - compressed with fixed Huffman codes
-       * 10 - compressed with dynamic Huffman codes
-       * 11 - reserved (error)
-
-       The only difference between the two compressed cases is how the Huffman
-       code s for the literal/length and distance alphabets are defined. *)
-    begin match ty with
-    | 0 ->
-
-      (* Any bites of input up to the next byte boundary are ignored. The
-         rest of the block consists of the following information:
-
-          ___________
-         |  |  |  |  |. . .
-         |__|__|__|__|
-         |     |
-         |     | NLEN the one's complement of LEN
-         |
-         | LEN is the number of data bytes in the block *)
-
-      let rec read_len0 window inflater =
-        [%debug Logs.debug @@ fun m -> m "state: read_len0"];
-
-        try let len0 = src_byte inflater in
-          inflater.k <- read_len1 window len0;
-
-          eval inflater
-        with Expected_data -> `Wait
-
-      and read_len1 window len0 inflater =
-        [%debug Logs.debug @@ fun m -> m "state: read_len1"];
-
-        try let len1 = src_byte inflater in
-          inflater.k <- read_nlen0 window (len0 lor (len1 lsl 8));
-
-          eval inflater
-        with Expected_data -> `Wait
-
-      and read_nlen0 window len inflater =
-        [%debug Logs.debug @@ fun m -> m "state: read_nlen0"];
-
-        try let nlen0 = src_byte inflater in
-          inflater.k <- read_nlen1 window len nlen0;
-
-          eval inflater
-        with Expected_data -> `Wait
-
-      and read_nlen1 window len nlen0 inflater =
-        [%debug Logs.debug @@ fun m -> m "state: read_nlen1"];
-        try let nlen1 = src_byte inflater in
-          inflater.k <- verify_len window len (nlen0 lor (nlen1 lsl 8));
-
-          eval inflater
-        with Expected_data -> `Wait
-
-      and verify_len window len nlen inflater =
-        [%debug Logs.debug @@ fun m -> m "state: verify_len %04x %04x"
-                                         len nlen];
-        if nlen <> 0xFFFF - len
-        then raise Invalid_complement_of_length
-        else begin
-          inflater.k <- flat window len;
-          reset_bits inflater
-        end;
-
-        eval inflater
-      in
-
-      inflater.k <- read_len0 window
-    | 1 ->
-      (* the huffman codes for the two alphabets are fixed, and are not
-         represented explicitly in the data. *)
-      let get_chr ?(previous_path = []) () =
-        Huffman.read_and_find_with_path
-          ~get_bit:(fun () -> get_bit inflater)
-          ~get_bits:(get_bits inflater)
-          ~path:previous_path
-          fixed_huffman_length_tree
-      in
-
-      (* distance codes 0-31 are represented by (fixed-length) 5-bit
-         codes, with possible additional bits as shown in the table
-         [base_distance].
-
-         XXX: the size to read is 5, so if [get_revbits] fails, we don't
-         lost data (5 < 8) and previous_path in this case is every time an
-         empty list because we don't need to save any data for this compute. *)
-      let get_dst ?(previous_path = []) () =
-        let n = get_revbits inflater 5 in
-
-        [%debug Logs.debug @@ fun m -> m "(dist code) get_revbits 5 = %d" n];
-        [], n in
-
-      inflater.k <- decompress ~get_chr ~get_dst window
-    | 2 ->
-      inflater.k <- read_hlit window
-    | _ ->
-      raise Invalid_type_of_data
-    end;
-
-    eval inflater
-
-  and flat window len inflater =
-    match src_bytes inflater (min len inflater.needed) with
-    | `Partial (len', buff) ->
-      for i = 0 to len' - 1
-      do add_char inflater window (I.get buff i) done;
-
-      inflater.k <- flat window (len - len');
-
-      `Wait
-    | `Ok (len', buff) ->
-      for i = 0 to len' - 1
-      do add_char inflater window (I.get buff i) done;
-
-      inflater.k <-
-        if len' = len
-        then (if inflater.last then crc window else last window)
-        else (flat window (len - len'));
-
-      if inflater.needed > 0 then eval inflater
-      else `Flush
-    | `Empty -> `Wait
-
-  and read_hlit window inflater =
-    [%debug Logs.debug @@ fun m -> m "state: read_hlit"];
-
-    (* HLIT + 257: code lengths for the literal/length alphabet,
-                   encoded using the code length Huffman code. *)
-
-    try let hlit = get_bits inflater 5 + 257 in
-      inflater.k <- read_hdist window hlit;
-      eval inflater
-    with Expected_data -> `Wait
-
-  and read_hdist window hlit inflater =
-    [%debug Logs.debug @@ fun m -> m "state: read_hdist"];
-
-    (* HDIST + 1: code lengths for the distance alphabet,
-                  encoded using the code length Huffman code. *)
-
-    try let hdist = get_bits inflater 5 + 1 in
-      inflater.k <- read_hclen window hlit hdist;
-      eval inflater
-    with Expected_data -> `Wait
-
-  and read_hclen window hlit hdist inflater =
-    [%debug Logs.debug @@ fun m -> m "state: read_hclen"];
-
-    (* (HCLEN + 4) * 3 bits: code lengths for the code length alphabet given
-                             just above, in the order:
-
-       16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
-       (see [lengths_position]) *)
-
-    try let hclen = get_bits inflater 4 + 4 in
-      inflater.k <- read_table window hlit hdist hclen (Array.make 19 0) 0;
-      eval inflater
-    with Expected_data -> `Wait
-
-  and read_table window hlit hdist hclen buffer i inflater =
-    [%debug Logs.debug @@ fun m -> m "state: read_table %d %d %d"
-                                   hlit hdist hclen];
-
-    (* TODO: we use a loop or a recursion to compute the table?
-       we will observe the performance between loop with [try .. catch] and
-       [ref] and the recursion without [ref].
-
-       On the fly, I expect the loop with [try .. catch] and [ref] is probably
-       more faster, but the tail-call aspect of CPS should become faster. *)
-
-    if i < hclen
-    then
-      try let code = get_bits inflater 3 in
-        Array.set buffer (Array.get hclen_order i) code;
-        inflater.k <- read_table window hlit hdist hclen buffer (i + 1);
-
-        eval inflater
-      with Expected_data ->
-        inflater.k <- read_table window hlit hdist hclen buffer i;
-
-        `Wait
-    else begin
-      for i = hclen to 18 do Array.set buffer (Array.get hclen_order i) 0 done;
-
-      inflater.k <- make_table window hlit hdist hclen buffer;
-
-      eval inflater
-    end
-
-  and make_table window hlit hdist hclen buffer
-      ?(saved_path = [])
-      ?(dictionary = Dictionary.make (hlit + hdist)) inflater
-    =
-
-    match Dictionary.inflate inflater
-            (Huffman.make buffer 0 19 7)
-            ~previous_path:saved_path
-            dictionary with
-    | `Wait_for_finding (n, saved_path, dictionary) ->
-      inflater.k <- make_table window hlit hdist hclen buffer
-          ~saved_path ~dictionary;
-      `Wait
-
-    | `Wait_for_extended_code (saved_path, dictionary) ->
-      inflater.k <- make_table window hlit hdist hclen buffer
-          ~saved_path ~dictionary;
-      `Wait
-
-    | `Ok dictionary ->
-      let huffman_chr = Huffman.make dictionary 0 hlit 15 in
-      let huffman_dst = Huffman.make dictionary hlit hdist 15 in
-
-      let get_chr ?(previous_path = []) () =
-        Huffman.read_and_find_with_path
-          ~get_bit:(fun () -> get_bit inflater)
-          ~get_bits:(get_bits inflater)
-          ~path:previous_path
-          huffman_chr
-      in
-
-      let get_dst ?(previous_path = []) () =
-        Huffman.read_and_find_with_path
-          ~get_bit:(fun () -> get_bit inflater)
-          ~get_bits:(get_bits inflater)
-          ~path:previous_path
-          huffman_dst
-      in
-
-      inflater.k <- decompress ~get_chr ~get_dst window;
-
-      eval inflater
-
-  and decompress ~get_chr ~get_dst window inflater =
-
-    let rec read_length window ?(saved_length_path = []) inflater =
-      [%debug Logs.debug @@ fun m -> m "state: read_length"];
-
-      try let length = get_chr ~previous_path:saved_length_path () in
-          inflater.k <- compute_length window length;
-
-          eval inflater
-      with Huffman.Expected_data (n, saved_length_path) ->
-           inflater.k <- read_length window ~saved_length_path;
-
-           `Wait
-
-    and compute_length window (path, length) inflater =
-      [%debug Logs.debug @@ fun m -> m "state: compute_length %02d"
-                                     length];
-
-      match length with
-      | n when n < 256 ->
-        [%debug Logs.debug @@ fun m -> m "length is literal [%c]"
-                                       (Char.unsafe_chr n)];
-
-        add_char inflater window (Char.chr n);
-        inflater.k <- decompress ~get_chr ~get_dst window;
-
-        if inflater.needed > 0
-        then eval inflater
-        else `Flush
-      | 256 ->
-        [%debug Logs.debug @@ fun m -> m "length is end of block"];
-
-        inflater.k <-
-          if inflater.last
-          then crc window
-          else last window;
-
-        eval inflater
-      | n ->
-        [%debug Logs.debug @@ fun m -> m "we have a distance %d" n];
-
-        let rec distone (distance, length) window inflater =
-          [%debug Logs.debug @@ fun m -> m "state: distone %02d %02d"
-                                         distance length];
-
-          let len = min length inflater.needed in
-          let atom = Window.last window in
-          let buff = O.create len in
-
-          for j = 0 to len - 1 do O.set buff j atom done;
-
-          [%debug Logs.debug @@ fun m -> m "write [%02x] at %d in output"
-                                         (Char.code atom) inflater.outpos];
-
-          add_bytes inflater window buff 0 len;
-          [%debug Logs.debug @@ fun m -> m "we put the byte [%c] %d time(s)" atom len];
-
-          inflater.k <-
-            if length - len = 0
-            then decompress ~get_chr ~get_dst window
-            else distone (distance, length - len) window;
-
-          if inflater.needed > 0
-          then eval inflater
-          else `Flush
-
-        and dist (distance, length) window inflater =
-          [%debug Logs.debug @@ fun m -> m "state: dist %02d %02d"
-                                         distance length];
-
-          let l = ref length in
-
-          while !l > 0 && inflater.needed > 0 do
-            [%debug Logs.debug @@ fun m -> m "we get the atom at distance = %d"
-              distance];
-
-            let byte = Window.get window distance in
-            [%debug Logs.debug @@ fun m -> m "we put the byte [%c]" byte];
-
-            add_char inflater window byte;
-            decr l;
-          done;
-
-          inflater.k <-
-            if !l = 0
-            then decompress ~get_chr ~get_dst window
-            else dist (distance, !l) window;
-
-          if inflater.needed > 0
-          then eval inflater
-          else `Flush
-
-        and read_extralength window length inflater =
-          [%debug Logs.debug @@ fun m -> m "state: read_extralength"];
-
-          try let size = Array.get _extra_lbits length in
-
-            if size = -1
-            then raise Invalid_extrabits;
-
-            let extra_length = get_bits inflater size in
-
-            [%debug Logs.debug @@ fun m -> m "extra_length: %02d" extra_length];
-
-            inflater.k <- read_distance window
-              length ((Array.get _base_length length) + 3 + extra_length);
-
-            eval inflater
-          with Expected_data -> `Wait
-
-        and read_distance window
-            length extra_length
-            ?(saved_dst_path = []) inflater =
-          [%debug Logs.debug @@ fun m -> m "state: read_distance"];
-
-          try let path, distance = get_dst ~previous_path:saved_dst_path () in
-            inflater.k <- read_extradistance window
-              length extra_length distance;
-
-            eval inflater
-          with Huffman.Expected_data (n, saved_dst_path) ->
-            inflater.k <- read_distance window
-              length extra_length ~saved_dst_path;
-            `Wait
-
-        and read_extradistance window length extra_length distance inflater =
-          [%debug Logs.debug @@ fun m -> m "state: read_extradistance (with length: %d, extra_length: %d, distance: %d)" length extra_length distance];
-
-          try let size = Array.get _extra_dbits distance in
-
-            (* TODO: size maybe > 8, so we can lost data if
-               [inflater.bits] + 8 < size. so we need a input buffer larger
-               than 2. *)
-
-            [%debug Logs.debug @@ fun m -> m "size of extra_distance is %02d"
-                                           size];
-            [%debug Logs.debug @@ fun m -> m "we have %02d bits" inflater.bits];
-
-            if size = -1
-            then raise Invalid_extrabits;
-
-            let extra_distance = get_bits inflater size in
-
-            [%debug Logs.debug @@ fun m -> m "extra_distance: %02d"
-                                           extra_distance];
-
-            let extra_distance =
-              ((Array.get _base_dist distance) + 1) + extra_distance in
-
-            if extra_distance > Window.available window
-            then raise Invalid_distance;
-
-            [%debug Logs.debug @@ fun m -> m "we have the length %d and the \
-              distance %d" extra_length extra_distance];
-
-            inflater.k <-
-              if extra_distance = 1
-              then distone (extra_distance, extra_length) window
-              else dist (extra_distance, extra_length) window;
-
-            eval inflater
-          with Expected_data -> `Wait
-        in
-
-        inflater.k <- read_extralength window (n - 257);
-
-        eval inflater
-    in
-
-    inflater.k <- read_length window;
-
-    eval inflater
-
-  and crc window inflater =
-    let rec read_a2a window inflater =
-      try let a2a = src_byte inflater in
-        inflater.k <- read_a2b window a2a;
-
-        eval inflater
-      with Expected_data -> `Wait
-
-    and read_a2b window a2a inflater =
-      try let a2b = src_byte inflater in
-        inflater.k <- read_a1a window (a2a, a2b);
-
-        eval inflater
-      with Expected_data -> `Wait
-
-    and read_a1a window (a2a, a2b) inflater =
-      try let a1a = src_byte inflater in
-        inflater.k <- read_a1b window (a2a, a2b, a1a);
-
-        eval inflater
-      with Expected_data -> `Wait
-
-    and read_a1b window (a2a, a2b, a1a) inflater =
-      try let a1b = src_byte inflater in
-
-        if Adler32.neq
-            (Adler32.make ((a1a lsl 8) lor a1b) ((a2a lsl 8) lor a2b))
-            (Window.checksum window)
-        then raise Invalid_crc;
-
-        inflater.k <- ok;
-
-        eval inflater
-      with Expected_data -> `Wait
-    in
-
-    inflater.k <- read_a2a window;
-
-    eval inflater
-
-  and ok inflater = `Ok
-
-  and error inflater = `Error
-
-  let contents { outpos; _ } =
-    outpos
-
-  let flush inflater drop =
-    inflater.needed <- drop;
-    inflater.outpos <- 0
-
-  let refill inflater refill =
-    inflater.available <- refill;
-    inflater.inpos <- 0
-
-  let used_in { inpos; _ } = inpos
+  let refill off len inflater =
+    inflater.inpos <- off;
+    inflater.available <- off + len
+
+  let flush off len inflater =
+    inflater.outpos <- off;
+    inflater.needed <- off + len
+
+  let used_in  { inpos; _ } = inpos
   let used_out { outpos; _ } = outpos
 
-  let decompress input output refill' flush' =
-    let inflater = make input output in
+  let decompress src dst refill' flush' =
+    let inflater = make src dst in
 
-    let size = refill' input in
-    refill inflater size;
-    flush inflater (O.length output);
+    flush 0 (O.length dst) inflater;
 
     let rec aux () = match eval inflater with
       | `Ok ->
-        let drop = flush' output (contents inflater) in
-        flush inflater drop
+        let drop = flush' dst (used_out inflater) in
+        flush 0 drop inflater
       | `Flush ->
-        [%debug Logs.warn @@ fun m -> m "we need to flush"];
-        let drop = flush' output (contents inflater) in
-        flush inflater drop;
-        aux ()
+        let drop = flush' dst (used_out inflater) in
+        flush 0 drop inflater; aux ()
       | `Wait ->
-        [%debug Logs.warn @@ fun m -> m "we wait data to compute"];
-
-        let size = refill' input in
-        refill inflater size;
-        aux ()
+        let fill = refill' src in
+        refill 0 fill inflater; aux ()
       | `Error -> failwith "Inflate.decompress"
-    in aux ()
+    in
+
+    aux ()
 end
