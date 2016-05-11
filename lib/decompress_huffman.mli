@@ -14,15 +14,10 @@ val leaf: 'a -> 'a t
 val depth : 'a t -> int
 val compress : default:'a -> 'a t -> 'a t
 
-type path =
-  | Bit of bool
-  | Nth of int
-
-exception Expected_data of int * path list
-exception Invalid_path
-
-val read_and_find : ?acc:path list -> get_bit:(unit -> bool) -> get_bits:(int -> int) -> 'a t -> 'a
-val read_and_find_with_path : ?acc:path list -> get_bit:(unit -> bool) -> get_bits:(int -> int) -> ?path:path list -> 'a t -> path list * 'a
+val read_and_find :
+  ((bool -> 'a -> 'b) -> 'a -> 'b) ->
+  (int -> (int -> 'a -> 'b) -> 'a -> 'b) ->
+  int t -> (int -> 'a -> 'b) -> 'a -> 'b
 
 val make : int array -> int -> int -> int -> int t
 val from_distribution : ?canonical:bool -> (float * 'a) list -> 'a t

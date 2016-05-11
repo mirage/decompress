@@ -14,19 +14,14 @@ let int_of_code code =
   aux 0 1 (List.rev code)
 
 let code_of_int ~size n =
-  let rec zero = function
-    | 0 -> []
-    | n -> false :: zero (n - 1)
+  let rec aux acc size = function
+    | n when size > 0 ->
+      if n land 1 = 0
+      then aux (false :: acc) (size - 1) (n lsr 1)
+      else aux (true  :: acc) (size - 1) (n lsr 1)
+    | _ -> List.rev acc
   in
-  let rec aux size = function
-    | 0 -> zero size
-    | 1 -> true :: zero (size - 1)
-    | n ->
-      if n mod 2 = 0
-      then false :: aux (size - 1) (n / 2)
-      else true :: aux (size - 1) ((n - 1) / 2)
-  in
-  List.rev (aux size n)
+  aux [] size n
 
 type 'a t =
   | Node of 'a t * 'a t
@@ -99,28 +94,6 @@ and walk ~default table index level depth = function
     walk ~default table (index lor (1 lsl level)) (level + 1) (depth - 1) b;
   | t -> Array.set table index (compress ~default t)
 
-type path =
-  | Bit of bool
-  | Nth of int
-
-exception Expected_data of int * path list
-exception Invalid_path
-
-let rec read_and_find ?(acc = []) ~get_bit ~get_bits = function
-  | Leaf i -> i
-  | Node (a, b) ->
-    (try let bit = get_bit () in
-        read_and_find ~acc:(Bit bit :: acc) ~get_bit ~get_bits (if bit then b else a)
-     with exn ->
-       let n = (1 + min (depth a) (depth b)) / 8 in
-       raise (Expected_data (n, List.rev acc)))
-  | Flat (depth, a) ->
-    (try let nth = get_bits depth in
-        read_and_find ~acc:(Nth nth :: acc) ~get_bit ~get_bits (Array.get a nth)
-     with exn ->
-       let n = depth / 8 in
-       raise (Expected_data (n, List.rev acc)))
-
 module List =
 struct
   include List
@@ -138,45 +111,15 @@ let rec depth = function
   | Flat (d, a) ->
     List.map (fun x -> d + depth x) (Array.to_list a) |> List.min ~default:d
 
-let rec read_and_find_with_path ?(acc = []) ~get_bit ~get_bits ?(path = []) node =
-  match path, node with
-  | [], Leaf i -> (List.rev acc, i)
-  | [], Node (a, b) ->
-    begin try let bit = get_bit () in
-              read_and_find_with_path
-                ~acc:(Bit bit :: acc)
-                ~get_bit
-                ~get_bits
-                (if bit then b else a)
-          with Expected_data _ as exn -> raise exn
-             | _ -> raise (Expected_data (depth node / 8, List.rev acc))
-    end
-  | [], Flat (d, a) ->
-    begin try let nth = get_bits d in
-              read_and_find_with_path
-                ~acc:(Nth nth :: acc)
-                ~get_bit
-                ~get_bits
-                (Array.get a nth) (* XXX: handle [Index_of_bound] *)
-          with Expected_data _ as exn -> raise exn
-             | _ ->
-               raise (Expected_data (depth node / 8, List.rev acc))
-    end
-  | Bit bit :: path, Node (a, b) ->
-    read_and_find_with_path
-      ~acc:(Bit bit :: acc)
-      ~get_bit
-      ~get_bits
-      ~path
-      (if bit then b else a)
-  | Nth nth :: path, Flat (d, a) ->
-    read_and_find_with_path
-      ~acc:(Nth nth :: acc)
-      ~get_bit
-      ~get_bits
-      ~path
-      (Array.get a nth)
-  | _ -> raise Invalid_path
+let rec read_and_find get_bit get_bits node k state =
+  let rec aux tree state = match tree with
+    | Leaf i -> k i state
+    | Node (a, b) ->
+      get_bit (fun bit -> aux (if bit then b else a)) state
+    | Flat (n, a) ->
+      get_bits n (fun nth -> aux (Array.get a nth)) state
+  in
+  aux node state
 
 (* This algorithm is describe at RFC 1951 § 3.2.2.
  *
