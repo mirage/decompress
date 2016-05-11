@@ -95,6 +95,8 @@ Executable generate
   CompiledObject:       best
   BuildDepends:         bindings
   Build$:               flag(stub)
+  CSources:             bigstring.c
+  CCOpt:                -O2 -Wall -Wextra -Wno-unused-parameter
 
 SourceRepository master
   Type:                 git
