@@ -9,15 +9,47 @@ struct
   type t = (char, int8_unsigned_elt, c_layout) Array1.t
   type i = t
 
-  external get : t -> int -> char    = "%caml_ba_ref_1"
-  external set : t -> int -> char -> unit = "%caml_ba_set_1"
-  let sub : t -> int -> int -> t     = Array1.sub
-  let length : t -> int              = Array1.dim
-  let make : int -> char -> t        =
-    fun l c -> let a = Array1.create Bigarray.Char c_layout l in Array1.fill a c; a
-  let create : int -> t              = Array1.create Bigarray.Char c_layout
-  external blit : t -> int -> t -> int -> int -> unit             = "decompress_bigstring_blit"
-  external blit_string : string -> int -> t -> int -> int -> unit = "decompress_bigstring_blit_string"
+  let length
+  : t -> int
+  = Array1.dim
+
+  let make
+  : int -> char -> t
+  = fun l c -> let a = Array1.create Bigarray.Char c_layout l in Array1.fill a c; a
+
+  let create
+  : int -> t
+  = Array1.create Bigarray.Char c_layout
+
+  external blit
+  : t -> int -> t -> int -> int -> unit
+  = "decompress_bigstring_blit"
+  external blit_string
+  : string -> int -> t -> int -> int -> unit
+  = "decompress_bigstring_blit_string"
+  external get
+  : t -> int -> char
+  = "%caml_ba_ref_1"
+  external set
+  : t -> int -> char -> unit
+  = "%caml_ba_set_1"
+  external get_u16
+  : t -> int -> int
+  = "%caml_bigstring_get16u"
+  external get_u64
+  : t -> int -> int64
+  = "%caml_bigstring_get64u"
+  external of_input
+  : i -> t
+  = "%identity"
+
+  let sub
+  : t -> int -> int -> t
+  = fun t a b ->
+    let s = Array1.sub t a b in
+    let r = Array1.create Bigarray.Char c_layout b in
+    blit s 0 r 0 b; r
+
   let to_string arr =
     let b = Bytes.create (Array1.dim arr) in
 
@@ -27,11 +59,6 @@ struct
     Bytes.unsafe_to_string b
 
   let iblit = blit
-
-  external get_u16 : t -> int -> int   = "%caml_bigstring_get16u"
-  external get_u64 : t -> int -> int64 = "%caml_bigstring_get64u"
-
-  external of_input : i -> t = "%identity"
 end
 
 module Inflate = Inflate.Make(Bigstring)(Bigstring)
