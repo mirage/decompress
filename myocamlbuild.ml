@@ -185,6 +185,9 @@ let () = dispatch
         flag_and_dep [ "ocaml"; "ocamldep"; "use_decompress" ] logs;
         flag_and_dep [ "ocaml"; "compile";  "use_decompress" ] logs;
         flag_and_dep [ "ocaml"; "link";     "use_decompress" ] logs;
+        flag_and_dep [ "ocaml"; "ocamldep"; "inverted_stub" ] logs;
+        flag_and_dep [ "ocaml"; "compile";  "inverted_stub" ] logs;
+        flag_and_dep [ "ocaml"; "link";     "inverted_stub" ] logs;
       end;
 
       flag [ "ocaml"; "ocamldep"; "ppx_debug" ] (S [ A "-ppx"; A (cmd_debug trace) ]);
