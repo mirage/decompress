@@ -141,6 +141,56 @@ struct
            inflater
     else aux inflater
 
+  let rec huffman_read_and_find_get_bit_get_bits tree k state = match tree with
+    | Huffman.Leaf i -> k i state
+    | Huffman.Node (a, b) ->
+      get_bit_specialized k a b state
+    | Huffman.Flat (n, a) ->
+      get_bits_specialized k a n state
+  and get_bit_specialized kk a b inflater =
+    if inflater.bits = 0
+    then get_byte'_specialized a b kk inflater
+    else get_bit_specialized_aux a b kk inflater
+  and get_bit_specialized_aux a b kk inflater =
+    let result = inflater.hold land 1 = 1 in
+    inflater.bits <- inflater.bits - 1;
+    inflater.hold <- inflater.hold lsr 1;
+    if result
+    then huffman_read_and_find_get_bit_get_bits b kk inflater
+    else huffman_read_and_find_get_bit_get_bits a kk inflater
+  and get_byte'_specialized a b kk  inflater =
+    if inflater.available - inflater.inpos > 0
+    then begin
+      let code = Char.code @@ I.get inflater.src inflater.inpos in
+      inflater.inpos <- inflater.inpos + 1;
+      inflater.hold <- code;
+      inflater.bits <- 8;
+      get_bit_specialized_aux a b kk inflater
+    end else begin
+      inflater.k <- get_byte'_specialized a b kk;
+      `Wait
+    end
+  and get_bits_specialized kk a n inflater =
+    if inflater.bits < n
+    then get_byte'_loop kk a n inflater
+    else
+      let result = inflater.hold land (1 lsl n - 1) in
+      inflater.bits <- inflater.bits - n;
+      inflater.hold <- inflater.hold lsr n;
+      huffman_read_and_find_get_bit_get_bits (Array.get a result) kk inflater
+  and get_byte'_loop kk a n inflater =
+    if inflater.available - inflater.inpos > 0
+    then begin
+      let code = Char.code @@ I.get inflater.src inflater.inpos in
+      inflater.inpos <- inflater.inpos + 1;
+      inflater.hold <- inflater.hold lor (code lsl inflater.bits);
+      inflater.bits <- inflater.bits + 8;
+      get_bits_specialized kk a n inflater
+    end else begin
+      inflater.k <- (get_byte'_loop kk a n);
+      `Wait
+    end
+
   let reverse_bits =
     let t =
       [| 0x00; 0x80; 0x40; 0xC0; 0x20; 0xA0; 0x60; 0xE0; 0x10; 0x90; 0x50; 0xD0;
@@ -196,6 +246,8 @@ struct
     (* XXX: this function accepts only [n <= 8] *)
     get_bits n (fun o -> k @@ reverse_bits (o lsl (8 - n))) inflater
 
+
+
   module Dictionary =
   struct
     type t =
@@ -212,8 +264,8 @@ struct
 
     let inflate (tree, max) k inflater =
       let get next inflater =
-        Huffman.read_and_find
-          get_bit get_bits tree next inflater
+        huffman_read_and_find_get_bit_get_bits
+          tree next inflater
       in
 
       let state = make max in
@@ -420,8 +472,8 @@ struct
 
   and fixed window inflater =
     let get_chr next inflater =
-      Huffman.read_and_find
-        get_bit get_bits fixed_huffman next inflater
+      huffman_read_and_find_get_bit_get_bits
+        fixed_huffman next inflater
     in
 
     let get_dst next =
@@ -455,11 +507,13 @@ struct
          let huffman_dst = Huffman.make dict hlit hdist 15 in
 
          let get_chr next inflater =
-           Huffman.read_and_find get_bit get_bits huffman_chr next inflater
+           huffman_read_and_find_get_bit_get_bits
+             huffman_chr next inflater
          in
 
          let get_dst next inflater =
-           Huffman.read_and_find get_bit get_bits huffman_dst next inflater
+           huffman_read_and_find_get_bit_get_bits
+             huffman_dst next inflater
          in
 
          inflate window get_chr get_dst inflater)

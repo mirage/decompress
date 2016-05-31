@@ -5,7 +5,10 @@ val pp_code : Format.formatter -> code -> unit
 val int_of_code : code -> int
 val code_of_int : size:int -> int -> code
 
-type 'a t
+type 'a t =
+  | Node of 'a t * 'a t
+  | Flat of int * 'a t array
+  | Leaf of 'a
 
 val pp : (Format.formatter -> 'a -> unit) -> Format.formatter -> 'a t -> unit
 
