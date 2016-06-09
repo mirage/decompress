@@ -4,3 +4,4 @@ stub/decompress_bindings.cmx
 bindings/apply_bindings.cmx
 stub/decompress.o
 stub/init.o
+gen/bigstring.o
