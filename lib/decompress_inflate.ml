@@ -246,8 +246,6 @@ struct
     (* XXX: this function accepts only [n <= 8] *)
     get_bits n (fun o -> k @@ reverse_bits (o lsl (8 - n))) inflater
 
-
-
   module Dictionary =
   struct
     type t =
@@ -485,20 +483,21 @@ struct
   and dynamic window inflater =
     [%debug Logs.debug @@ fun m -> m "state: dynamic"];
 
-    let print_arr ~sep print_data fmt arr =
-      let rec aux = function
-        | [] -> ()
-        | [ x ] -> print_data fmt x
-        | x :: r -> Format.fprintf fmt "%a%s" print_data x sep; aux r
-      in
-
-      aux (Array.to_list arr)
-    in
-    let print_int = Format.pp_print_int in
-
     let make_table hlit hdist hclen buf inflater =
       [%debug Logs.debug @@ fun m -> m "state: make_table [%d:%d:%d]" hlit hdist hclen];
-      [%debug Logs.debug @@ fun m -> m "state: make_table [%a]" (print_arr ~sep:"; " print_int) buf];
+      [%debug
+       let print_arr ~sep print_data fmt arr =
+         let rec aux = function
+           | [] -> ()
+           | [ x ] -> print_data fmt x
+           | x :: r -> Format.fprintf fmt "%a%s" print_data x sep; aux r
+         in
+
+         aux (Array.to_list arr)
+       in
+       let print_int = Format.pp_print_int in
+
+       Logs.debug @@ fun m -> m "state: make_table [%a]" (print_arr ~sep:"; " print_int) buf];
 
       Dictionary.inflate
         (Huffman.make buf 0 19 7, hlit + hdist)
@@ -616,4 +615,421 @@ struct
     in
 
     aux ()
+end
+
+module Inffast =
+struct
+  module ExtBytes =
+  struct
+    type elt = char
+
+    include Bytes
+  end
+
+  module RingBuffer = Decompress_window.Make(Char)(ExtBytes)
+
+  type t =
+    { mutable hold      : int
+    ; mutable bits      : int
+    ; mutable outpos    : int
+    ; mutable needed    : int
+    ; mutable inpos     : int
+    ; mutable available : int
+    ; len_bits          : int
+    ; dst_bits          : int
+    ; lcode             : (int * int * int) array
+    (* XXX: we can store (int * int * int) in a int32 *)
+    ; dcode             : (int * int * int) array
+    (* XXX: we can store (int * int * int) in a int32 *)
+    ; src               : String.t
+    ; dst               : Bytes.t
+    ; window            : RingBuffer.t }
+
+  exception Dolen
+  exception Dodist
+  exception Break
+
+  let inffast state =
+    let lmask = (1 lsl state.len_bits) - 1 in
+    let dmask = (1 lsl state.dst_bits) - 1 in
+
+    let fst (a, b, c) = a in
+    let snd (a, b, c) = b in
+    let thd (a, b, c) = c in
+
+    (* avoid the barrier of caml_modify *)
+    let hold  = ref state.hold in
+    let bits  = ref state.bits in
+    let inpos = ref state.inpos in
+    let outpos = ref state.outpos in
+    let here  = ref (0, 0, 0) in
+    let op    = ref 0 in
+    let len   = ref 0 in
+    let dist  = ref 0 in
+
+    let dolen () =
+      here := Array.get state.lcode (!hold land lmask);
+      op   := fst !here;
+      hold := !hold lsr (snd !here);
+      bits := !bits - (snd !here);
+
+      if !op = 0 (* is literal *)
+      then begin
+        Bytes.set state.dst !outpos (Char.chr (thd !here));
+        outpos := !outpos + 1;
+      end else if (!op land 16) <> 0 then begin (* length base *)
+        len := (thd !here);
+        op  := !op land 15; (* number of extra bits *)
+
+        if !op <> 0
+        then begin
+          if !bits < !op (* read the needed data to have the extra-bits *)
+          then begin
+            hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+            bits  := !bits + 8;
+            inpos := !inpos + 1;
+          end;
+
+          len  := !len + (!hold land ((1 lsl !op) - 1));
+          hold := !hold lsr !op;
+          bits := !bits - !op;
+        end;
+
+        if !bits < 15
+        then begin
+          hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+          bits  := !bits + 8;
+          inpos := !inpos + 1;
+          hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+          bits  := !bits + 8;
+          inpos := !inpos + 1;
+        end;
+
+        here := Array.get state.dcode (!hold land dmask);
+
+        raise Dodist
+      end else if (!op land 64) = 0 then begin (* 2nd level length code *)
+        raise Dolen
+      end else if (!op land 32) <> 0 then begin (* end of block *)
+        raise Break
+      end else begin
+        raise Break
+      end
+    in
+
+    let dodist () =
+        op   := fst !here;
+        hold := !hold lsr (snd !here);
+        bits := !bits - (snd !here);
+
+        if !op land 16 <> 0 (* distance base *)
+        then begin
+          dist := (thd !here);
+          op   := !op land 15; (* number of extra bits *)
+
+          if !bits < !op
+          then begin
+            hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+            bits  := !bits + 8;
+            inpos := !inpos + 1;
+
+            if !bits < !op
+            then begin
+              hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+              bits  := !bits + 8;
+              inpos := !inpos + 1;
+            end
+          end;
+
+          dist := !dist + (!hold land ((1 lsl !op) - 1));
+          hold := !hold lsr !op;
+          bits := !bits - !op;
+
+          op := !out - beg; (* max distance in output *)
+
+          if !dist > !op (* see if copy from window *)
+          then begin
+            op := !dist - !op; (* distance back in window *)
+
+            if !op > whave
+            then begin
+              raise (Invalid_argument "Distance too far back")
+            end;
+
+            let from = ref 0 in
+
+            if wnext = 0
+            then begin
+              from := !from + (wsize - !op);
+
+              if !op < !len
+              then begin
+                len := !len - !op;
+
+                while !op > 0
+                do
+                  String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                  incr from;
+                  descr op;
+                done;
+
+                from := !out - !dist;
+            end else if wnext < !op
+            then begin
+              from := !from + (wisze + wnext - !op);
+              op := !op - wnext;
+
+              if !op < !len
+              then begin
+                len := !len - !op;
+
+                while !op > 0
+                do
+                  String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                  incr from;
+                  decr op;
+                done;
+
+                from := 0;
+
+                if !wnext < !len
+                then begin
+                  op := !wnext;
+                  len := !len - !op;
+
+                  while !op > 0
+                  do
+                    String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                    incr from;
+                    decr op;
+                  done;
+
+                  from := !out - !dist;
+                end;
+            end else begin
+              from := !wnext + !op;
+
+              if !op < !len
+              then begin
+                len := !len - !op;
+
+                while !op > 0 do
+                  String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                  incr from;
+                  decr op;
+                done;
+
+                from := !out - !dist;
+              end;
+            end;
+
+            while !len > 2 do
+              String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+              incr from;
+              decr len;
+              String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+              incr from;
+              decr len;
+              String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+              incr from;
+              decr len;
+            done;
+
+            if !len <> 0
+            then begin
+              if !len > 1
+              then begin
+
+              end
+            end
+          end else begin
+
+          end
+        end else if !op land 64 = 0
+        then begin
+
+        end else begin
+          raise (Invalid_argument "Invalid distance code")
+        end
+      end else if !op land 64 = 0
+      then begin
+
+      end else if !op land 32 = 0
+      then begin
+
+      end else begin
+        raise (Invalid_argument "Invalid literal/length")
+      end;
+
+      if not (state.inpos < state.available - 5 && state.outpos < state.needed)
+      then raise Break;
+    in
+
+    try
+      if !bits < 15
+      then begin
+        hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+        bits  := !bits + 8;
+        inpos := !inpos + 1;
+        hold  := !hold + ((Char.code @@ String.get state.src state.inpos) lsl state.bits);
+        bits  := !bits + 8;
+        inpos := !inpos + 1;
+      end;
+
+      raise Dolen
+    with
+      | Do_len ->
+        (* get the information about the currant opcode *)
+      | Do_dist ->
+
+          let (op', bits, value) = Array.get state.dcode (state.hold land dmask) in
+          op := op';
+          state.hold <- state.hold lsr bits;
+          state.bits <- state.bits - bits;
+
+          if !op land 16 <> 0 (* distance base *)
+          then begin
+            let dist = ref value in
+            op := !op land 15;
+
+            if state.bits < !op
+            then begin
+              state.hold  <- state.hold + ((Char.code @@ String.get state.src state.inpos) lsl state.bits);
+              state.bits  <- state.bits + 8;
+              state.inpos <- state.inpos + 1;
+
+              if state.bits < !op
+              then begin
+                state.hold  <- state.hold + ((Char.code @@ String.get state.src state.inpos) lsl state.bits);
+                state.bits  <- state.bits + 8;
+                state.inpos <- state.inpos + 1;
+              end
+            end;
+
+            dist := !dist + (state.hold & ((1 lsl !op) - 1));
+            state.hold <- state.hold lsr !op;
+            state.bits <- state.bits - !op;
+
+            op := !out - beg; (* max distance in output *)
+
+            if !dist > !op (* see if copy from window *)
+            then begin
+              op := !dist - !op; (* distance back in window *)
+
+              if !op > whave
+              then begin
+                raise (Invalid_argument "Distance too far back")
+              end;
+
+              let from = ref 0 in
+
+              if wnext = 0
+              then begin
+                from := !from + (wsize - !op);
+
+                if !op < !len
+                then begin
+                  len := !len - !op;
+
+                  while !op > 0
+                  do
+                    String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                    incr from;
+                    descr op;
+                  done;
+
+                  from := !out - !dist;
+              end else if wnext < !op
+              then begin
+                from := !from + (wisze + wnext - !op);
+                op := !op - wnext;
+
+                if !op < !len
+                then begin
+                  len := !len - !op;
+
+                  while !op > 0
+                  do
+                    String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                    incr from;
+                    decr op;
+                  done;
+
+                  from := 0;
+
+                  if !wnext < !len
+                  then begin
+                    op := !wnext;
+                    len := !len - !op;
+
+                    while !op > 0
+                    do
+                      String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                      incr from;
+                      decr op;
+                    done;
+
+                    from := !out - !dist;
+                  end;
+              end else begin
+                from := !wnext + !op;
+
+                if !op < !len
+                then begin
+                  len := !len - !op;
+
+                  while !op > 0 do
+                    String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                    incr from;
+                    decr op;
+                  done;
+
+                  from := !out - !dist;
+                end;
+              end;
+
+              while !len > 2 do
+                String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                incr from;
+                decr len;
+                String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                incr from;
+                decr len;
+                String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                incr from;
+                decr len;
+              done;
+
+              if !len <> 0
+              then begin
+                if !len > 1
+                then begin
+
+                end
+              end
+            end else begin
+
+            end
+          end else if !op land 64 = 0
+          then begin
+
+          end else begin
+            raise (Invalid_argument "Invalid distance code")
+          end
+        end else if !op land 64 = 0
+        then begin
+
+        end else if !op land 32 = 0
+        then begin
+
+        end else begin
+          raise (Invalid_argument "Invalid literal/length")
+        end;
+
+        if not (state.inpos < state.available - 5 && state.outpos < state.needed)
+        then raise Break;
+      done;
+    with Break -> ();
+
+    ()
 end
