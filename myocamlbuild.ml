@@ -91,7 +91,6 @@ struct
 
       (* deps *)
       let stub = env "%(path)lib%(libname).stub" in
-      let libname = env (Pathname.add_extension "cmxa" "%(path)%(libname)") in
 
       let objs = string_list_of_file stub in
       let tags = List.fold_left
