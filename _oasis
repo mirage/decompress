@@ -84,7 +84,7 @@ Executable dcpr
   Path:                 bin/dcpr
   MainIs:               dcpr.ml
   CompiledObject:       best
-  BuildDepends:         decompress, unix, cmdliner, camlzip, core, core_extended, patience_diff, fmt, pcre, threads
+  BuildDepends:         decompress, unix, cmdliner, camlzip
   NativeOpt:            -inline 100
   Build$:               flag(example) && flag(unix) && flag(cmdliner) && flag(camlzip)
 
