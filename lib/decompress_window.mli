@@ -1,42 +1,20 @@
-module type ATOM =
-sig
-  type t
+open Decompress_common
 
-  val code : t -> int
-end
+module Adler32    : module type of Decompress_adler32 with type t = Decompress_adler32.t
+module RingBuffer : module type of Decompress_ringbuffer with type 'a t = 'a Decompress_ringbuffer.t
 
-module type SCALAR =
-sig
-  type elt
-  type t
+type 'a t =
+  { bits         : int
+  ; window       : 'a RingBuffer.t
+  ; mutable crc  : Adler32.t }
 
-  val create : int -> t
-  val blit   : t -> int -> t -> int -> int -> unit
-  val get    : t -> int -> elt
-  val set    : t -> int -> elt -> unit
-end
+val create     : int -> 'a RW.t -> 'a t
 
-module type S =
-sig
-  type t
-  type crc
-  type atom
-  type buffer
+val add_ro     : 'a RO.t -> int -> int -> 'a t -> unit
+val add_rw     : 'a RW.t -> int -> int -> 'a t -> unit
+val add_string : string -> int -> int -> 'a t -> unit
+val add_char   : char -> 'a t -> unit
+val fill       : char -> int -> 'a t -> unit
 
-  val init : ?bits:int -> unit -> t
-
-  val add_buffer : buffer -> int -> int -> t -> unit
-  val add_atom   : atom -> t -> unit
-
-  val last   : t -> atom
-  val get    : t -> int -> atom
-  val buffer : t -> int -> int -> buffer
-
-  val checksum  : t -> crc
-  val available : t -> int
-end
-
-module Make (Atom : ATOM) (Scalar : SCALAR with type elt = Atom.t) : S
-  with type crc = Decompress_adler32.Make(Atom)(Scalar).t
-   and type atom = Atom.t
-   and type buffer = Scalar.t
+val checksum  : 'a t -> Adler32.t
+val available : 'a t -> int

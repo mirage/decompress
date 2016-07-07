@@ -58,9 +58,6 @@ open Decompress
 
 module Inflate =
 struct
-  include
-  Inflate.Make(ExtString)(ExtBytes)
-
   let string ?(input_size = 2) ?(output_size = 2) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
@@ -70,8 +67,8 @@ struct
     let output   = Bytes.create output_size in
 
     let refill' input =
-      let n = min (size - !position) (String.length input) in
-      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
+      let n = min (size - !position) (Bytes.length input) in
+      Bytes.blit_string document !position input 0 n;
       position := !position + n;
       n
     in
@@ -81,14 +78,12 @@ struct
       size
     in
 
-    decompress (Bytes.unsafe_to_string input) output refill' flush';
+    Inflate.string input output refill' flush';
     Buffer.contents buffer
 end
 
 module Deflate =
 struct
-  include Deflate.Make(ExtString)(ExtBytes)
-
   let string ?(input_size = 2) ?(output_size = 2) ?(level = 4) ?(window_bits = 15) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
@@ -98,8 +93,8 @@ struct
     let output   = Bytes.create output_size in
 
     let refill' input =
-      let n = min (size - !position) (String.length input) in
-      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
+      let n = min (size - !position) (Bytes.length input) in
+      Bytes.blit_string document !position input 0 n;
       position := !position + n;
       if !position >= size then true, n else false, n
     in
@@ -109,7 +104,7 @@ struct
       size
     in
 
-    compress ~window_bits ~level (Bytes.unsafe_to_string input) output refill' flush';
+    Deflate.string ~window_bits ~level input output refill' flush';
     Buffer.contents buffer
 end
 
@@ -156,7 +151,8 @@ let do_cmd inf seed input_size output_size level window_bits use_camlzip =
     | _ -> Inflate.string ~input_size ~output_size
   in
   deflater contents |> inflater
-  |> fun o -> Printf.printf "%b\n%!" (o = contents)
+  |> fun o ->
+    Printf.printf "%b\n%!" (contents = o)
 
 let file =
   let doc = "The input file. Reads from stdin if unspecified." in

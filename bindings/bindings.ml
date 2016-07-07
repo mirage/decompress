@@ -2,9 +2,6 @@ open Ctypes
 open Foreign
 open Decompress
 
-module Inflate = Inflate.Make(ExtString)(ExtBytes)
-module Deflate = Deflate.Make(ExtString)(ExtBytes)
-
 let sp = Printf.sprintf
 
 let inflate buff len chunk acc print =
@@ -30,7 +27,7 @@ let inflate buff len chunk acc print =
     len
   in
 
-  Inflate.decompress (Bytes.unsafe_to_string input) output refill' flush';
+  Inflate.string input output refill' flush';
   !output_size
 
 let deflate buff len level chunk acc print =
@@ -56,7 +53,7 @@ let deflate buff len level chunk acc print =
     len
   in
 
-  Deflate.compress ~level (Bytes.unsafe_to_string input) output refill' flush';
+  Deflate.string ~level input output refill' flush';
   !output_size
 
 let print = funptr (ptr char @-> int @-> int @-> ptr void @-> returning void)

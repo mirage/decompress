@@ -33,8 +33,7 @@ exception Invalid_huffman
 let rec pp pp_a fmt t =
   let pp_table pp_a fmt table =
     Array.iter (fun a ->
-        Format.pp_print_tab fmt ();
-        Format.fprintf fmt "%a" pp_a a)
+        Format.fprintf fmt "\t%a" pp_a a)
       table
   in
   let pp = pp pp_a in

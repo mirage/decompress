@@ -13,5 +13,6 @@ FLG -safe-string
 
 PKG alcotest re camlzip
 PKG oasis ocamlbuild compiler-libs
-PKG ppx_debug logs logs.cli
+PKG logs logs.cli
 PKG ctypes
+PKG core core_extended patience_diff pcre
