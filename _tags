@@ -2,4 +2,5 @@
 # OASIS_STOP
 true: annot
 true: safe_string
+true: color(always)
 <lib/*.ml{,i}>: ppx_debug

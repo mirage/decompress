@@ -1,49 +1,21 @@
-module type OSCALAR =
-sig
-  type t
-  type i
+open Decompress_common
 
-  val create   : int -> t
-  val set      : t -> int -> char -> unit
-  val blit     : t -> int -> t -> int -> int -> unit
-  val length   : t -> int
-  val get      : t -> int -> char
-  val get_u16  : t -> int -> int
-  val get_u64  : t -> int -> int64
-  val sub      : t -> int -> int -> t
+type 'a elt =
+  | Buffer of 'a RO.t
+  | Insert of int * int
 
-  val of_input : i -> t
-end
+type 'a t = 'a elt list
 
-module type S =
-sig
-  type buffer
-  type output
+type 'a state
 
-  type elt =
-    | Buffer of output
-    | Insert of int * int
+val make            : ?window_bits:int -> ?level:int -> 'a RW.t -> 'a state
+val is_empty        : 'a state -> bool
+val window_bits     : 'a state -> int
 
-  type t = elt list
+val atomic_compress : 'a state -> 'a RO.t -> int -> int -> unit
+val finish          : 'a state -> ('a t * int array * int array)
 
-  val pp_elt          : Format.formatter -> elt -> unit
-  val pp              : Format.formatter -> t -> unit
-
-  type state
-
-  val make            : ?window_bits:int -> ?level:int -> unit -> state
-  val is_empty        : state -> bool
-  val window_bits     : state -> int
-
-  val atomic_compress : state -> buffer -> int -> int -> unit
-  val finish          : state -> (t * int array * int array)
-
-  val compress        : ?window_bits:int -> ?level:int -> ?chunk:int ->
-                        buffer -> int -> int ->
-                        (t * int array * int array)
-end
-
-module Make
-  (OScalar : OSCALAR): S
-  with type buffer = OScalar.i
-   and type output = OScalar.t
+val compress        : ?window_bits:int -> ?level:int -> ?chunk:int ->
+                      'a RW.t ->
+                      'a RO.t -> int -> int ->
+                      ('a t * int array * int array)

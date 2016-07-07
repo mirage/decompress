@@ -58,9 +58,6 @@ open Decompress
 
 module Inflate =
 struct
-  include
-  Inflate.Make(ExtString)(ExtBytes)
-
   let string ?(input_size = 2) ?(output_size = 2) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
@@ -70,8 +67,8 @@ struct
     let output   = Bytes.create output_size in
 
     let refill' input =
-      let n = min (size - !position) (String.length input) in
-      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
+      let n = min (size - !position) (Bytes.length input) in
+      Bytes.blit_string document !position input 0 n;
       position := !position + n;
       n
     in
@@ -81,14 +78,12 @@ struct
       size
     in
 
-    decompress (Bytes.unsafe_to_string input) output refill' flush';
+    Inflate.string input output refill' flush';
     Buffer.contents buffer
 end
 
 module Deflate =
 struct
-  include Deflate.Make(ExtString)(ExtBytes)
-
   let string ?(input_size = 2) ?(output_size = 2) ?(level = 4) ?(window_bits = 15) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
@@ -98,8 +93,8 @@ struct
     let output   = Bytes.create output_size in
 
     let refill' input =
-      let n = min (size - !position) (String.length input) in
-      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
+      let n = min (size - !position) (Bytes.length input) in
+      Bytes.blit_string document !position input 0 n;
       position := !position + n;
       if !position >= size then true, n else false, n
     in
@@ -109,7 +104,7 @@ struct
       size
     in
 
-    compress ~window_bits ~level (Bytes.unsafe_to_string input) output refill' flush';
+    Deflate.string ~window_bits ~level input output refill' flush';
     Buffer.contents buffer
 end
 
@@ -139,6 +134,69 @@ let string_of_channel ?(use_unix = true) ic =
   in
   loop b input s
 
+module Diff =
+struct
+  open Core.Std
+  open Core_extended.Std
+  open Patience_diff_lib
+
+  let ws_rex = Pcre.regexp "[\\s]+"
+  let ws_sub = Pcre.subst " "
+  let remove_ws s = String.strip (Pcre.replace ~rex:ws_rex ~itempl:ws_sub s)
+
+  let diff ~compare ~keep_ws o n =
+    if keep_ws then
+      let transform x = x in
+      Patience_diff.get_hunks ~context:0 ~mine:o ~other:n ~transform ~compare
+    else
+      let compare = fun x y -> compare (remove_ws x) (remove_ws y) in
+      let transform = remove_ws in
+      Patience_diff.get_hunks ~context:0 ~mine:o ~other:n ~transform ~compare
+
+  let compare_lines ?(keep_ws = true) o n =
+    let compare = String.compare in
+    let hunks = diff ~compare ~keep_ws o n in
+    Patience_diff.unified hunks
+
+  let string o n =
+    let lines text = String.split_lines text |> Array.of_list in
+    let hunks = compare_lines (lines o) (lines n) in
+    if Patience_diff.all_same hunks
+    then `Same
+    else `Different hunks
+end
+
+let hunks fmt =
+  let open Patience_diff_lib.Patience_diff in
+  let one' fmt = function
+    | Range.Same arr ->
+      Array.iter
+        (fun (a, b) -> Fmt.pf fmt " %a\n%!" (fun fmt -> Fmt.(styled `White string) fmt) a)
+        arr
+    | Range.New arr ->
+      Array.iter
+        (fun a -> Fmt.pf fmt "+%a\n%!" (fun fmt -> Fmt.(styled `Green string) fmt) a)
+        arr
+    | Range.Old arr ->
+      Array.iter
+        (fun a -> Fmt.pf fmt "-%a\n%!" (fun fmt -> Fmt.(styled `Red string) fmt) a)
+        arr
+    | Range.Unified arr ->
+      Array.iter
+        (fun a -> Fmt.pf fmt "!%a\n%!" (fun fmt -> Fmt.(styled `Yellow string) fmt) a)
+        arr
+    | Range.Replace (a, b) ->
+      Array.iter
+        (fun a -> Fmt.pf fmt "!%a\n%!" (fun fmt -> Fmt.(styled `Yellow string) fmt) a)
+        a
+  in
+  let one fmt { Hunk.mine_size; mine_start; other_size; other_start; ranges; } =
+    Fmt.pf fmt "-%d,%d +%d,%d\n%!" mine_start mine_size other_start other_size;
+    List.iter (fun r -> Fmt.pf fmt "%a" one' r) ranges
+  in List.iter (fun x -> Fmt.pf fmt "%a" one x)
+
+let () = Fmt.set_style_renderer Fmt.stdout `Ansi_tty
+
 open Cmdliner
 
 let do_cmd inf seed input_size output_size level window_bits use_camlzip =
@@ -156,7 +214,11 @@ let do_cmd inf seed input_size output_size level window_bits use_camlzip =
     | _ -> Inflate.string ~input_size ~output_size
   in
   deflater contents |> inflater
-  |> fun o -> Printf.printf "%b\n%!" (o = contents)
+  |> fun o ->
+
+    match Diff.string contents o with
+    | `Different diff -> Fmt.pf Fmt.stdout "%a" hunks diff
+    | `Same -> ()
 
 let file =
   let doc = "The input file. Reads from stdin if unspecified." in

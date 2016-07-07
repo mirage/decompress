@@ -59,6 +59,22 @@ struct
 
     Tags.of_list (List.map (fun x -> p "package(%s)" x) all_pkgs)
 
+  let link_opts' prod =
+      let (all_pkgs, predicates) =
+        let tags = Tags.elements (tags_of_pathname prod) in
+        let pkgs = fold_pflag (fun x -> Scanf.sscanf x "package(%[^)])") tags in
+        let predicates = fold_pflag (fun x -> Scanf.sscanf x "predicates(%[^)])") tags in
+        ("ctypes.stubs" :: "ctypes.foreign" :: pkgs), predicates
+      in
+
+      let cmd = "-format" :: "pkg_%p" :: "-r" :: all_pkgs in
+      let predicates_pkgs = ocamlfind cmd (fun ic -> input_line ic) in
+
+      let all_predicates = String.concat "," (predicates @ predicates_pkgs) in
+
+      let cmd = "-o-format" :: "-r" :: "-predicates" :: all_predicates :: all_pkgs in
+      ocamlfind cmd (fun ic -> A (input_line ic))
+
   let init () =
     let _dynamic = !Options.ext_dll in
     let deps = ["%(path)lib%(libname).stub"; Pathname.add_extension "cmxa" "%(path)%(libname)" ] in
@@ -97,7 +113,6 @@ struct
              ; T tags
              ; A "-runtime-variant"; A "_pic"
              ; A "-o"; Px prod
-             ; P libname
              ; Command.atomize objs ])
     in
 
