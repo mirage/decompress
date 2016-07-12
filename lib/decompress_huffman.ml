@@ -1,3 +1,35 @@
+module Heap =
+struct
+  type priority = int
+  type 'a queue = Empty | Node of priority * 'a * 'a queue * 'a queue
+
+  let empty = Empty
+
+  let rec push queue priority elt =
+    match queue with
+    | Empty -> Node (priority, elt, Empty, Empty)
+    | Node (p, e, left, right) ->
+      if priority <= p
+      then Node (priority, elt, push right p e, left)
+      else Node (p, e, push right priority elt, left)
+
+  exception Empty_heap
+
+  let rec remove = function
+    | Empty -> raise Empty_heap
+    | Node (p, e, left, Empty)  -> left
+    | Node (p, e, Empty, right) -> right
+    | Node (p, e, (Node (lp, le, _, _) as left),
+                  (Node (rp, re, _, _) as right)) ->
+      if lp <= rp
+      then Node (lp, le, remove left, right)
+      else Node (rp, re, left, remove right)
+
+  let take = function
+    | Empty -> raise Empty_heap
+    | Node (p, e, _, _) as queue -> (p, e, remove queue)
+end
+
 type code = bool list
 
 let pp_code fmt code =
@@ -23,18 +55,17 @@ let code_of_int ~size n =
   in
   aux [] size n
 
-type 'a t =
-  | Node of 'a t * 'a t
-  | Flat of int * 'a t array
-  | Leaf of 'a
+type t =
+  | Node of t * t
+  | Flat of int * t array
+  | Leaf of int
 
 exception Invalid_huffman
 
 let rec pp pp_a fmt t =
   let pp_table pp_a fmt table =
     Array.iter (fun a ->
-        Format.pp_print_tab fmt ();
-        Format.fprintf fmt "%a" pp_a a)
+        Format.fprintf fmt "\t%a" pp_a a)
       table
   in
   let pp = pp pp_a in
@@ -78,11 +109,6 @@ let rec compress ~default t =
       | _ -> assert false
     end
   | depth ->
-    (* TODO: assert (depth <= 8)
-       because, in read_and_find*, we use [get_bits] with [depth] argument.
-       if depth > 8, we possibly lost a byte in compute. In other case,
-       we can recompute read_and_find* with saved path to catch the result. *)
-
     let size = 1 lsl depth in (* 2 ** depth *)
     let table = Array.make size (Leaf default) in
     walk ~default table 0 0 depth t;
@@ -160,6 +186,8 @@ let make table position size max_bits =
    * value.
   *)
   let bits = Hashtbl.create 16 in
+  let ordered = ref Heap.Empty in
+  let max  = ref 0 in
 
   for i = 0 to size - 1 do
     let l = Array.get table (i + position) in
@@ -168,6 +196,8 @@ let make table position size max_bits =
       let n = Array.get next_code (l - 1) in
       Array.set next_code (l - 1) (n + 1);
       Hashtbl.add bits (n, l) i;
+      ordered := Heap.push !ordered n (l, i);
+      max     := if l > !max then l else !max;
     end;
   done;
 
@@ -181,7 +211,7 @@ let make table position size max_bits =
         (make (v lsl 1) (l + 1)) (make (v lsl 1 lor 1) (l + 1))
   in
   let tree = node ~canonical:false (make 0 1) (make 1 1) in
-  compress ~default:(-1) tree
+  compress ~default:(-1) tree, !ordered, !max
 
 let codes_of_t t =
   let rec aux acc = function

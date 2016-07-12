@@ -22,7 +22,6 @@ build-test: [
     "--%{base-unix:enable}%-unix"
     "--%{cmdliner:enable}%-cmdliner"
     "--%{camlzip:enable}%-camlzip"
-    "--enable-stub"
     "--prefix=%{prefix}%"]
   [make "test"]
 ]
