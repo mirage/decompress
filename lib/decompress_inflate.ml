@@ -4,14 +4,9 @@ open Decompress_common
 let () = [%debug Logs.set_level ~all:true (Some Logs.Debug)]
 let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
 
-exception Invalid_huffman
 exception Invalid_dictionary
-exception Invalid_header
 exception Invalid_complement_of_length
 exception Invalid_type_of_block
-exception Invalid_extrabits
-exception Invalid_distance
-exception Invalid_crc
 
 module Adler32 = Decompress_adler32
 module Window  = Decompress_window
@@ -35,8 +30,6 @@ type ('i, 'o) t =
   ; mutable k             : ('i, 'o) t -> state }
 and state =
   | Ok | Flush | Wait | Error
-
-exception Expected_data
 
 let eval inflater =
   inflater.k inflater
@@ -80,7 +73,7 @@ let reset_bits inflater =
   inflater.bits <- 0
 
 let get_bit k inflater =
-  let rec aux infalter =
+  let aux infalter =
     let result = inflater.hold land 1 = 1 in
     inflater.bits <- inflater.bits - 1;
     inflater.hold <- inflater.hold lsr 1;
