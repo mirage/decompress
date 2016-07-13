@@ -68,7 +68,7 @@ struct
     | Buffer scalar     -> Format.fprintf fmt "Buffer %a" pp_scalar scalar
     | Insert (off, len) -> Format.fprintf fmt "Insert (%d, %d)" off len
 
-  let rec pp fmt l =
+  let pp fmt l =
     Format.fprintf fmt "[@[<hov 2> ";
     List.iter (Format.fprintf fmt "%a;@ " pp_elt) l;
     Format.fprintf fmt "@]]@;"

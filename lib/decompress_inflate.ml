@@ -124,7 +124,7 @@ struct
     inflater.bits <- 0
 
   let get_bit k inflater =
-    let rec aux infalter =
+    let aux infalter =
       let result = inflater.hold land 1 = 1 in
       inflater.bits <- inflater.bits - 1;
       inflater.hold <- inflater.hold lsr 1;
