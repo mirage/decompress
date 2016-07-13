@@ -6,7 +6,6 @@ sig
   type t
   type src
   type dst
-  type mode
 
   val make : ?window_bits:int -> ?level:int -> src -> dst -> t
   val eval : t -> [ `Ok | `Flush | `Error | `Wait ]
@@ -98,12 +97,6 @@ type ('i, 'o) t =
   }
 and state =
   | Ok | Flush | Wait | Error
-
-type writing =
-  [ `Length
-  | `Extra_length
-  | `Dist
-  | `Extra_dist ]
 
 let put_byte deflater byte =
   [%debug Logs.debug @@ fun m -> m "put one byte: 0x%02x" byte];
