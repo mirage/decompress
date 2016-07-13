@@ -61,11 +61,6 @@ let dynamic ~level window_bits proof = Dynamic (Lz77.make ~window_bits ~level pr
 let static  ~level window_bits proof = Static (Lz77.make ~window_bits ~level proof)
 let flat                       proof = Flat (RW.create_by proof 0xFFFF, 0, 0xFFFF)
 
-type flush =
-  | Sync_flush
-  | Partial_flush
-  | Full_flush
-
 let fixed_huffman_length_table =
   Array.init 288
     (fun n ->
@@ -97,7 +92,6 @@ type ('i, 'o) t =
     mutable crc       : Adler32.t;
     mutable mode      : 'i mode;
 
-    mutable flush     : flush option;
     mutable lock      : bool;
 
     mutable k         : ('i, 'o) t -> state;
@@ -314,7 +308,6 @@ let rec make ?(window_bits = 15) ?(level = 4) src dst =
   ; crc             = Adler32.default
   ; mode
 
-  ; flush           = None
   ; lock            = false
 
   ; k               = header }
@@ -429,16 +422,13 @@ and read deflater =
   end else Wait
 
 and flushing_method deflater =
-  let new_k = match deflater.flush, deflater.last with
+  let new_k = match deflater.last with
     (* if we have [Some x], user expect a new compute, otherwise we can
        continue *)
-    | Some Sync_flush, false    -> sync_flush
-    | Some Partial_flush, false -> sync_flush
-    | Some Full_flush, false    -> sync_flush
-    | _, true                   ->
+    | true                   ->
       [%debug Logs.debug @@ fun m -> m "we stop compute, the last flag is send"];
       end_flush
-    | None, false           ->
+    | false           ->
       [%debug Logs.debug @@ fun m -> m "we continue to read the block"];
 
       match deflater.mode with
