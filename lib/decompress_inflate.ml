@@ -38,41 +38,6 @@ and state =
 
 exception Expected_data
 
-let bin_of_int d =
-  if d < 0 then raise (Invalid_argument "bin_of_int")
-  else if d = 0 then "0"
-  else let rec aux acc d =
-         if d = 0 then acc
-         else aux (string_of_int (d land 1) :: acc) (d lsr 1)
-       in String.concat "" (aux [] d)
-
-let prefix heap max =
-  let tbl = Array.make (1 lsl max) (0, 0) in
-
-  let rec backward huff incr =
-    if huff land incr <> 0
-    then backward huff (incr lsr 1)
-    else incr
-  in
-
-  let rec aux huff heap = match Huffman.Heap.take heap with
-    | bits, (len, value), heap ->
-      let rec loop decr fill =
-        Array.set tbl (huff + fill) (len, value);
-        if fill <> 0 then loop decr (fill - decr)
-      in
-
-      let decr = 1 lsl len in
-      loop decr ((1 lsl max) - decr);
-
-      let incr = backward huff (1 lsl (len - 1)) in
-
-      aux (if incr <> 0 then (huff land (incr - 1)) + incr else 0) heap
-    | exception Huffman.Heap.Empty_heap -> ()
-  in
-
-  aux 0 heap; tbl
-
 let eval inflater =
   inflater.k inflater
 
@@ -132,56 +97,6 @@ let get_bit k inflater =
          inflater
   else aux inflater
 
-let rec huffman_read_and_find_get_bit_get_bits tree k state = match tree with
-  | Huffman.Leaf i -> k i state
-  | Huffman.Node (a, b) ->
-    get_bit_specialized k a b state
-  | Huffman.Flat (n, a) ->
-    get_bits_specialized k a n state
-and get_bit_specialized kk a b inflater =
-  if inflater.bits = 0
-  then get_byte'_specialized a b kk inflater
-  else get_bit_specialized_aux a b kk inflater
-and get_bit_specialized_aux a b kk inflater =
-  let result = inflater.hold land 1 = 1 in
-  inflater.bits <- inflater.bits - 1;
-  inflater.hold <- inflater.hold lsr 1;
-  if result
-  then huffman_read_and_find_get_bit_get_bits b kk inflater
-  else huffman_read_and_find_get_bit_get_bits a kk inflater
-and get_byte'_specialized a b kk  inflater =
-  if inflater.available - inflater.inpos > 0
-  then begin
-    let code = Char.code @@ RO.get inflater.src inflater.inpos in
-    inflater.inpos <- inflater.inpos + 1;
-    inflater.hold <- code;
-    inflater.bits <- 8;
-    get_bit_specialized_aux a b kk inflater
-  end else begin
-    inflater.k <- get_byte'_specialized a b kk;
-    Wait
-  end
-and get_bits_specialized kk a n inflater =
-  if inflater.bits < n
-  then get_byte'_loop kk a n inflater
-  else
-    let result = inflater.hold land (1 lsl n - 1) in
-    inflater.bits <- inflater.bits - n;
-    inflater.hold <- inflater.hold lsr n;
-    huffman_read_and_find_get_bit_get_bits (Array.get a result) kk inflater
-and get_byte'_loop kk a n inflater =
-  if inflater.available - inflater.inpos > 0
-  then begin
-    let code = Char.code @@ RO.get inflater.src inflater.inpos in
-    inflater.inpos <- inflater.inpos + 1;
-    inflater.hold <- inflater.hold lor (code lsl inflater.bits);
-    inflater.bits <- inflater.bits + 8;
-    get_bits_specialized kk a n inflater
-  end else begin
-    inflater.k <- (get_byte'_loop kk a n);
-    Wait
-  end
-
 let reverse_bits =
   let t =
     [| 0x00; 0x80; 0x40; 0xC0; 0x20; 0xA0; 0x60; 0xE0; 0x10; 0x90; 0x50; 0xD0;
@@ -210,15 +125,15 @@ let reverse_bits =
   fun bits -> t.(bits)
 
 let peek_bits n k inflater =
-  let rec loop inflater =
+  let rec loop n k inflater =
     if inflater.bits < n
     then get_byte' (fun byte inflater ->
                     inflater.hold <- inflater.hold lor (byte lsl inflater.bits);
                     inflater.bits <- inflater.bits + 8;
 
-                    loop inflater) inflater
+                    (loop[@tailcall]) n k inflater) inflater
     else k inflater
-  in loop inflater
+  in (loop[@tailcall]) n k inflater
 
 let rec safe_get_byte k inflater =
   if inflater.bits >= 8
@@ -280,10 +195,14 @@ struct
     ; max
     ; dictionary = Array.make max 0 }
 
-  let inflate (tree, max) k inflater =
-    let get next inflater =
-      huffman_read_and_find_get_bit_get_bits
-        tree next inflater
+  let inflate (tbl, max_bits, max) k inflater =
+    let mask_bits = (1 lsl max_bits) - 1 in
+
+    let rec get next inflater =
+      if inflater.bits < max_bits
+      then peek_bits max_bits (get next) inflater
+      else let (len, v) = Array.get tbl (inflater.hold land mask_bits) in
+           drop_bits len (next v) inflater
     in
 
     let state = make max in
@@ -356,8 +275,7 @@ let fixed_huffman =
        else if n < 256 then 9
        else if n < 280 then 7
        else 8)
-  |> fun lengths ->
-     Huffman.make lengths 0 288 9
+  |> fun lengths -> Huffman.make lengths 0 288 9
 
 let rec put_chr window chr next inflater =
   [%debug Logs.debug @@ fun m -> m "state: put_chr [%S]" (String.make 1 chr)];
@@ -550,8 +468,7 @@ and inflate window get_chr get_dst inflater =
   get_chr loop inflater
 
 and fixed window inflater =
-  let (_, heap, max) = fixed_huffman in
-  let tbl  = prefix heap max in
+  let tbl, max = fixed_huffman in
   let mask = (1 lsl max) - 1 in
 
   let rec get_chr next inflater =
@@ -586,18 +503,16 @@ and dynamic window inflater =
 
      Logs.debug @@ fun m -> m "state: make_table [%a]" (print_arr ~sep:"; " print_int) buf];
 
-    let tree, _, _ = Huffman.make buf 0 19 7 in
+    let tbl, max = Huffman.make buf 0 19 7 in
 
     Dictionary.inflate
-      (tree, hlit + hdist)
+      (tbl, max, hlit + hdist)
       (fun dict inflater ->
-       let tree_chr, heap_chr, max_chr = Huffman.make dict 0 hlit 15 in
-       let tree_dst, heap_dst, max_dst = Huffman.make dict hlit hdist 15 in
+       let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
+       let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
 
        let mask_chr = (1 lsl max_chr) - 1 in
        let mask_dst = (1 lsl max_dst) - 1 in
-       let tbl_chr  = prefix heap_chr max_chr in
-       let tbl_dst  = prefix heap_dst max_dst in
 
        let rec get_chr next inflater =
          if inflater.bits < max_chr
