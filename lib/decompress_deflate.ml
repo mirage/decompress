@@ -40,24 +40,12 @@ sig
   val of_input : i -> t
 end
 
-let binary_of_byte ?(size = 8) byte =
-  if byte < 0 then invalid_arg "binary_of_byte" else
-  if byte = 0 then String.make size '0' else
-    let rec aux acc byte =
-      if byte = 0 then acc else
-        aux (string_of_int (byte land 1) :: acc) (byte lsr 1)
-    in
-    let l = aux [] byte in
-    String.make (size - List.length l) '0' ^ String.concat "" (aux [] byte)
-
 module Make (I : INPUT) (O : OUTPUT with type i = I.t) : S
   with type src = I.t
    and type dst = O.t =
 struct
   let () = [%debug Logs.set_level (Some Logs.Debug)]
   let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
-
-  exception Expected_data
 
   module Adler32 = Decompress_adler32.Make(Char)(struct type elt = char include I end)
   module Lz77    = Decompress_lz77.Make(O)
@@ -79,21 +67,9 @@ struct
     | Flat (_, size, _) -> size = 0
     | Static lz77 | Dynamic lz77 -> Lz77.is_empty lz77
 
-  let window_bits_of_mode = function
-    | Static lz77 | Dynamic lz77 -> Lz77.window_bits lz77
-    | Flat (buffer, _, window_bits) -> window_bits
-
   let dynamic ~level window_bits = Dynamic (Lz77.make ~window_bits ~level ())
   let static  ~level window_bits = Static (Lz77.make ~window_bits ~level ())
   let flat                    () = Flat (O.create 0xFFFF, 0, 0xFFFF)
-
-  let fixed_huffman_length_table =
-    Array.init 288
-      (fun n ->
-         if n < 144 then (n + 0x030, 8)
-         else if n < 256 then (n - 144 + 0x190, 9)
-         else if n < 280 then (n - 256 + 0x000, 7)
-         else (n - 280 + 0x0C0, 8))
 
   type src = I.t
   type dst = O.t
@@ -140,15 +116,6 @@ struct
     put_byte deflater (short land 0xFF);
     put_byte deflater (short lsr 8 land 0xFF)
 
-  let read_byte deflater =
-    if deflater.available - deflater.inpos > 0
-    then begin
-      let code = I.get deflater.src deflater.inpos |> Char.code in
-      [%debug Logs.debug @@ fun m -> m "read one byte: 0x%02x" code];
-      deflater.inpos <- deflater.inpos + 1;
-      code
-    end else raise Expected_data
-
   let put_short_msb deflater short =
     put_byte deflater (short lsr 8 land 0xFF);
     put_byte deflater (short land 0xFF)
@@ -168,18 +135,6 @@ struct
   let add_bit deflater value =
     add_bits deflater (if value then 1 else 0) 1
 
-  let flush deflater =
-    if deflater.bits = 16
-    then begin
-      put_short deflater deflater.hold;
-      deflater.hold <- 0;
-      deflater.bits <- 0
-    end else if deflater.bits >= 8 then begin
-      put_byte deflater (deflater.hold land 0xFF);
-      deflater.hold <- deflater.hold lsr 8;
-      deflater.bits <- deflater.bits - 8
-    end else ()
-
   let align deflater =
     if deflater.bits > 8
     then begin
@@ -193,15 +148,6 @@ struct
 
     deflater.hold <- 0;
     deflater.bits <- 0
-
-  let put_bytes deflater ?(size = deflater.needed) bytes =
-    if deflater.bits <> 0 then flush deflater;
-    O.blit
-      bytes deflater.i
-      deflater.dst deflater.outpos
-      (O.length bytes);
-    deflater.needed <- deflater.needed - (O.length bytes);
-    deflater.outpos <- deflater.outpos + (O.length bytes)
 
   let get_tree_symbols hlit lit_len_lengths hdist dist_lengths =
     let src = Array.make (hlit + hdist) 0 in
@@ -969,8 +915,6 @@ struct
 
       eval deflater
     end else `Flush
-
-  and error deflater = `Error
 
   and ok deflater = `Ok
 
