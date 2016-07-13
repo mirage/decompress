@@ -373,7 +373,7 @@ and header deflater =
 and read deflater =
   [%debug Logs.debug @@ fun m -> m "state: read (last = %b)" deflater.last];
 
-  let rec aux deflater =
+  let aux deflater =
     let new_mode, read = match deflater.mode with
       | Flat (buffer, real_size, window_bits) ->
         let len = min (0xFFFF - real_size) deflater.available in
