@@ -4,9 +4,6 @@
 #require "ppx_deriving.show";;
 #require "cmdliner";;
 
-let binary_pipe =
-  [ "zpipe"; "dpipe.native" ];;
-
 type e =
   { process_status : Unix.process_status [@printer fun fmt _ -> fprintf fmt "#process_status"]
   ; stdout         : string [@printer fun fmt _ -> fprintf fmt "#stdout"]
@@ -76,19 +73,40 @@ let with_process ?timeout ?env ?stdin ?stdout ?stderr cmd =
   with Unix.Unix_error (Unix.EINTR, _, _) -> `Timeout
      | exn -> `Error exn
 
-let binaries = [ "zpipe"; "dpipe.native" ]
+let binaries = [ "dpipe.native"; "zpipe" ]
 
-let do_cmd input_filename =
-  let run_once binary =
-    let stdin = Unix.openfile input_filename [Unix.O_RDONLY] 0o600 in
-    let res   = with_process ~stdin [binary] in
-    Unix.close stdin; res
+type mode =
+  | Inflate
+  | Deflate [@@deriving show]
+
+let do_cmd input_filename mode =
+  let run_once binary = match mode with
+    | Inflate ->
+      let stdin = Unix.openfile input_filename [Unix.O_RDONLY] 0o600 in
+      let res   = with_process ~stdin [binary; "-d"] in
+      Unix.close stdin; res
+    | Deflate ->
+      let stdin = Unix.openfile input_filename [Unix.O_RDONLY] 0o600 in
+      let res   = with_process ~stdin [binary] in
+      Unix.close stdin; res
   in
 
   let res = List.map (fun binary -> let e = run_once (Filename.concat (Unix.getcwd ()) binary) in binary, e) binaries in
   Format.printf "%s\n%!" ([%derive.show: (string * r) list] res)
 
 open Cmdliner
+
+let mode =
+  let parse s =
+    match String.lowercase_ascii s with
+    | "inflate" -> `Ok Inflate
+    | "deflate" -> `Ok Deflate
+    | _ -> `Error "Invalid mode."
+  in parse, pp_mode
+
+let mode =
+  let doc = "Inflate or Deflate." in
+  Arg.(value & opt mode Deflate & info ["m"; "mode"] ~doc)
 
 let input_filename =
   let doc = "Input filename." in
@@ -99,7 +117,7 @@ let cmd =
   let man =
     [ `S "Description"
     ; `P "$(tname) is benchmark tool." ] in
-  Term.(pure do_cmd $ input_filename),
+  Term.(pure do_cmd $ input_filename $ mode),
   Term.info "bench" ~doc ~man
 
 let () = match Term.eval cmd with
