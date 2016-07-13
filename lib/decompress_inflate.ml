@@ -46,13 +46,9 @@ struct
   let () = [%debug Logs.set_level ~all:true (Some Logs.Debug)]
   let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
 
-  exception Invalid_huffman
   exception Invalid_dictionary
-  exception Invalid_header
   exception Invalid_complement_of_length
   exception Invalid_type_of_block
-  exception Invalid_extrabits
-  exception Invalid_distance
   exception Invalid_crc
 
   module O = struct type elt = char [@@immmediate] include O end
@@ -79,8 +75,6 @@ struct
       (** position input buffer *)
     ; mutable available     : int
     ; mutable k             : t -> [ `Ok | `Flush | `Wait | `Error ] }
-
-  exception Expected_data
 
   let eval inflater =
     inflater.k inflater

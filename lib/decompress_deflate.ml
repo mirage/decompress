@@ -268,9 +268,6 @@ struct
     deflater.needed <- deflater.needed - (O.length bytes);
     deflater.outpos <- deflater.outpos + (O.length bytes)
 
-  exception OK
-  exception Avoid
-
   let get_tree_symbols hlit lit_len_lengths hdist dist_lengths =
     let src = Array.make (hlit + hdist) 0 in
     let result = Array.make (286 + 30) 0 in
@@ -361,8 +358,6 @@ struct
     done;
 
     Array.sub result 0 !n_result, freqs
-
-  exception No_more_input
 
   let rec make ?(window_bits = 15) ?(level = 4) src dst =
     let mode = match level with
