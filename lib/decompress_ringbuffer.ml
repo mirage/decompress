@@ -27,18 +27,6 @@ let drop t n =
   if t.rpos + n < t.size then t.rpos <- t.rpos + n
   else t.rpos <- t.rpos + n - t.size
 
-let transmit t f =
-  if t.wpos = t.rpos then 0
-  else
-    let len0 =
-      if t.wpos >= t.rpos then t.wpos - t.rpos
-      else t.size - t.rpos
-    in
-    let len = f t.buffer t.rpos len0 in
-    assert (len <= len0);
-    drop t len;
-    len
-
 let move t n =
   assert (n <= available_to_write t);
 

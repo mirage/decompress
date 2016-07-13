@@ -28,8 +28,6 @@ struct
 
   let clear buffer = buffer.position <- 0
 
-  let length { position; _ } = position
-
   let resize buffer more =
     let len  = buffer.length in
     let len' = ref len in

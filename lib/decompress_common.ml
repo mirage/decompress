@@ -54,7 +54,6 @@ struct
     | Bigstring : bigstring -> fast t
 
   let from_string v    = String v
-  let from_bytes v     = String (Bytes.to_string v)
   let from_bigstring v = Bigstring v
 
   let length (type a) (v : a t) = match v with
@@ -90,7 +89,6 @@ struct
     | Bigstring : bigstring -> fast t
 
   let from_bytes v     = Bytes v
-  let from_string v    = Bytes (Bytes.of_string v)
   let from_bigstring v = Bigstring v
 
   let create_fast size =
