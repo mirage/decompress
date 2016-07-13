@@ -27,7 +27,7 @@ build-test: [
 ]
 
 install: [make "install"]
-remove: ["ocamlfind" "remove" "decompress"]
+remove: [make "uninstall"]
 
 depends: [
   "oasis"          {build}
