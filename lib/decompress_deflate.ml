@@ -88,63 +88,6 @@ struct
   let static  ~level window_bits = Static (Lz77.make ~window_bits ~level ())
   let flat                    () = Flat (O.create 0xFFFF, 0, 0xFFFF)
 
-  type flush =
-    | Sync_flush
-    (** It performs the following tasks:
-     *  * If there is some buffered but not yet compressed data, then this data
-     *    is compressed into one or several blocks (the type for each block will
-     *    depend on the amount and nature of data).
-     *  * A new type 0 block with empty contents is appended.
-     *
-     *  A type 0 block with empty contents consists of:
-     *  * the three-bit block header;
-     *  * 0 to 7 bits equal to zero, to achieve byte alignment;
-     *  * the four-byte sequence 00 00 FF FF.
-     *)
-    | Partial_flush
-    (** After. *)
-    | Full_flush
-    (** The "full flush" (with Z_FULL_FLUSH) is a variant of the sync flush. The
-     *  difference lies in the LZ77 step. Recall that the LZ77 algorithm
-     *  replaces some sequences of characters by references to an identical
-     *  sequence occurring somewhere in the previous uncompressed data (the
-     *  backward distance is up to 32 kB in DEFLATE). This can be viewed in the
-     *  following way: the previous data bytes collectively represent a
-     *  dictionary of sequences, which the LZ77 unit can use by including
-     *  symbolic references, when such a sequence is encountered.
-     *
-     *  At the very beginning of the stream, the dictionary is empty (it can be
-     *  set to arbitrary data, but the deflater and the inflater must use the
-     *  same preset dictionary, which is a convention outside the scope of this
-     *  document). It is then filled with the first 32 kB of data. As more data
-     *  is processed, the dictionary is constantly updated, and entries which
-     *  become too old are dropped. The full flush is a sync flush where the
-     *  dictionary is emptied: after a full flush, the deflater will refrain
-     *  from using copy symbols which reference sequences appearing before the
-     *  flush point.
-     *
-     *  From the inflater point of view, no special treatment of full flushes is
-     *  needed. The difference between a sync flush and a full flush alters only
-     *  the way the deflater selects symbols. A full flush degrades the
-     *  compression efficiency since it removes sequence sharing opportunities
-     *  for the next 32 kB of data; however, this degradation is very slight if
-     *  full flushes are applied only rarely with regards to the 32 kB window
-     *  size, e.g. every 1 MB or so. Full flushes are handy for damage recovery:
-     *
-     *  * a full flush is also a sync flush, which includes the very specific
-     *    and highly recognizable 00 00 FF FF pattern;
-     *  * byte alignment is restored by a full flush;
-     *  * inflation can take over from a full flush point without any knowledge
-     *    of the previous bytes.
-     *
-     *  It is therefore recommended to include occasional full flushes in long
-     *  streams of data, except if the outer protocol makes it useless (e.g. TLS
-     *  and SSH are security protocols which apply cryptographic integrity
-     *  checks which detect alterations with a very high probability, and it is
-     *  specified that they MUST NOT try to recover from damage, since such
-     *  damage could be malicious).)
-     *)
-
   let fixed_huffman_length_table =
     Array.init 288
       (fun n ->
@@ -179,7 +122,6 @@ struct
       mutable crc       : Adler32.t;
       mutable mode      : mode;
 
-      mutable flush     : flush option;
       mutable lock      : bool;
 
       mutable k         : t -> [ `Ok | `Flush | `Error | `Wait ];
@@ -394,7 +336,6 @@ struct
     ; crc             = Adler32.init ()
     ; mode
 
-    ; flush           = None
     ; lock            = false
 
     ; k               = header }
@@ -519,16 +460,11 @@ struct
     end else `Wait
 
   and flushing_method deflater =
-    let new_k = match deflater.flush, deflater.last with
-      (* if we have [Some x], user expect a new compute, otherwise we can
-         continue *)
-      | Some Sync_flush, false    -> sync_flush
-      | Some Partial_flush, false -> sync_flush
-      | Some Full_flush, false    -> sync_flush
-      | _, true                   ->
+    let new_k = match deflater.last with
+      | true ->
         [%debug Logs.debug @@ fun m -> m "we stop compute, the last flag is send"];
         end_flush
-      | None, false           ->
+      | false ->
         [%debug Logs.debug @@ fun m -> m "we continue to read the block"];
 
         match deflater.mode with

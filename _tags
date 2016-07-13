@@ -3,4 +3,4 @@
 true: annot
 true: safe_string
 <lib/*.ml{,i}>: ppx_debug
-<*/*>: warn(@38@39)
+<*/*>: warn(@37@38@39)
