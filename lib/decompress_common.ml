@@ -13,12 +13,6 @@ type bigstring = (char, int8_unsigned_elt, c_layout) Array1.t
 type normal = [ `Normal ]
 type fast   = [ `Fast ]
 
-let memcpy_bytes src dst len src_idx dst_idx =
-  if len < 0 || src_idx < 0 || src_idx > Bytes.length src - len
-             || dst_idx < 0 || dst_idx > Bytes.length dst - len
-  then raise (Invalid_argument "memcpy_bytes")
-  else Memcpy.memcpy_bytes src dst len src_idx dst_idx
-
 module Bigstring =
 struct
   open Bigarray
@@ -141,7 +135,7 @@ struct
   let blit (type a) (src : a t) src_idx (dst : a t) dst_idx len =
     match src, dst with
     | Bytes src, Bytes dst ->
-      memcpy_bytes src dst len src_idx dst_idx
+      Memcpy.memcpy_bytes src dst len src_idx dst_idx
     | Bigstring src, Bigstring dst ->
       Blit.blit src src_idx dst dst_idx len
 
@@ -149,14 +143,14 @@ struct
     match src, dst with
     | RO.String src, Bytes dst ->
       (* XXX: not safe! *)
-      memcpy_bytes (Bytes.unsafe_of_string src) dst len src_idx dst_idx
+      Memcpy.memcpy_bytes (Bytes.unsafe_of_string src) dst len src_idx dst_idx
     | RO.Bigstring src, Bigstring dst ->
       Blit.blit src src_idx dst dst_idx len
 
   let blit_string (type a) src src_idx (dst : a t) dst_idx len =
     match dst with
     | Bytes dst ->
-      memcpy_bytes (Bytes.unsafe_of_string src) dst len src_idx dst_idx
+      Memcpy.memcpy_bytes (Bytes.unsafe_of_string src) dst len src_idx dst_idx
     | Bigstring dst ->
       Blit.blit_string src src_idx dst dst_idx len
 end
