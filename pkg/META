@@ -1,0 +1,7 @@
+description = "Pure implementation of zlib"
+version = "%%VERSION%%"
+requires = "bigarray"
+archive(byte) = "decompress.cma"
+archive(native) = "decompress.cmxa"
+plugin(byte) = "decompress.cma"
+plugin(native) = "decompress.cmxs"

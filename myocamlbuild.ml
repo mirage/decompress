@@ -1,19 +1,7 @@
-(* OASIS_START *)
-(* OASIS_STOP *)
-
-let () = Printexc.record_backtrace true
-
 open Ocamlbuild_plugin
 
-(* PPX trace ******************************************************************)
-
-let env_filename = Pathname.basename BaseEnvLight.default_filename
-let env          = BaseEnvLight.load ~filename:env_filename ~allow_empty:true ()
-let trace        = bool_of_string (BaseEnvLight.var_get "trace" env)
-let stub         = bool_of_string (BaseEnvLight.var_get "stub" env)
 let ppx_debug debug =
   "./ppx/ppx_debug.byte " ^ (if debug then "-debug" else "-no-debug")
-  (* XXX: OASIS de merde. *)
 
 let use s = Printf.sprintf "use_%s" s
 let pkg s = Printf.sprintf "package(%s)" s
@@ -21,12 +9,6 @@ let pkg s = Printf.sprintf "package(%s)" s
 let ppx_debug = "ppx/ppx_debug.byte"
 let opt_debug = function true -> "-debug" | false -> "-no-debug"
 let cmd_debug x = ppx_debug ^ " " ^ (opt_debug x)
-
-let logs = S [ A "-package"; A "logs";
-               A "-package"; A "logs.cli";
-               A "-package"; A "logs.fmt" ]
-
-(* Inverted stub **************************************************************)
 
 module Inverted_stub =
 struct
@@ -60,20 +42,20 @@ struct
     Tags.of_list (List.map (fun x -> p "package(%s)" x) all_pkgs)
 
   let link_opts' prod =
-      let (all_pkgs, predicates) =
-        let tags = Tags.elements (tags_of_pathname prod) in
-        let pkgs = fold_pflag (fun x -> Scanf.sscanf x "package(%[^)])") tags in
-        let predicates = fold_pflag (fun x -> Scanf.sscanf x "predicates(%[^)])") tags in
-        ("ctypes.stubs" :: "ctypes.foreign" :: pkgs), predicates
-      in
+    let (all_pkgs, predicates) =
+      let tags = Tags.elements (tags_of_pathname prod) in
+      let pkgs = fold_pflag (fun x -> Scanf.sscanf x "package(%[^)])") tags in
+      let predicates = fold_pflag (fun x -> Scanf.sscanf x "predicates(%[^)])") tags in
+      ("ctypes.stubs" :: "ctypes.foreign" :: pkgs), predicates
+    in
 
-      let cmd = "-format" :: "pkg_%p" :: "-r" :: all_pkgs in
-      let predicates_pkgs = ocamlfind cmd (fun ic -> input_line ic) in
+    let cmd = "-format" :: "pkg_%p" :: "-r" :: all_pkgs in
+    let predicates_pkgs = ocamlfind cmd (fun ic -> input_line ic) in
 
-      let all_predicates = String.concat "," (predicates @ predicates_pkgs) in
+    let all_predicates = String.concat "," ("inverted_stub" :: predicates @ predicates_pkgs) in
 
-      let cmd = "-o-format" :: "-r" :: "-predicates" :: all_predicates :: all_pkgs in
-      ocamlfind cmd (fun ic -> A (input_line ic))
+    let cmd = "-o-format" :: "-r" :: "-predicates" :: all_predicates :: all_pkgs in
+    ocamlfind cmd (fun ic -> A (input_line ic))
 
   let init () =
     let _dynamic = !Options.ext_dll in
@@ -89,7 +71,6 @@ struct
         ++ "native"
         ++ "link" in
 
-      (* deps *)
       let stub = env "%(path)lib%(libname).stub" in
 
       let objs = string_list_of_file stub in
@@ -112,7 +93,7 @@ struct
              ; T tags
              ; A "-runtime-variant"; A "_pic"
              ; A "-o"; Px prod
-             ; A "memcpy/memcpy.cmx"
+             ; A "-package"; A "landmarks"
              ; Command.atomize objs ])
     in
 
@@ -166,49 +147,41 @@ struct
     Options.targets := List.fold_left aux [] !Options.targets
 
   let dispatcher (generator, directory) ?(oasis_libraries = []) = function
-    | After_rules -> init ()
-    | After_options -> oasis_support generator directory ~libraries:oasis_libraries
+    | After_hygiene ->
+      init ();
+      oasis_support generator directory ~libraries:oasis_libraries
     | _ -> ()
 end
 
-(* Decompress *****************************************************************)
+(* Hack! *)
 
-(* XXX: this is a part about the inverted stub. We need to add by-the-hand the
-        dependency between the application of functor and the result generator.
-*)
 let () =
-  if stub then begin
-    dep ["file:bindings/apply_bindings.ml"] ["stub/decompress_bindings.cmx"];
-    flag ["ocaml"; "compile"; "file:bindings/apply_bindings.ml"]
-      (S [ A "-I"; P "stub"])
-  end
+  dep ["file:bindings/apply_bindings.ml"] ["stub/decompress_bindings.cmx"];
+  flag ["ocaml"; "compile"; "file:bindings/apply_bindings.ml"]
+    (S [ A "-I"; P "stub" ])
 
-let () = dispatch
-  (function
-    | After_hygiene ->
-      if stub then
-        Inverted_stub.dispatcher
-          ("gen/generate.native", "stub")
-          ~oasis_libraries:[ "lib/decompress.cmxa" ] After_hygiene;
+let () = dispatch @@ function
+  | After_rules ->
+    (* initialization *)
+    Inverted_stub.dispatcher ("gen/generate.native", "stub")
+      ~oasis_libraries:[] After_hygiene;
+    (* inverted stub *)
+    Inverted_stub.stub "gen/generate.native" "stub" "decompress";
 
-      dep ["ppx_debug"] [ppx_debug];
+    (* unsafe *)
+    flag ["unsafe"; "compile"] (S [ A "-unsafe" ]);
 
-      if trace
-      then begin
-        flag_and_dep [ "ocaml"; "ocamldep"; "ppx_debug" ]      logs;
-        flag_and_dep [ "ocaml"; "compile";  "ppx_debug" ]      logs;
-        flag_and_dep [ "ocaml"; "ocamldep"; "use_decompress" ] logs;
-        flag_and_dep [ "ocaml"; "compile";  "use_decompress" ] logs;
-        flag_and_dep [ "ocaml"; "link";     "use_decompress" ] logs;
-      end;
+    (* ppx *)
+    pflag_and_dep [ "ocaml"; "compile" ] "use_ppx_debug"
+    @@ (function
+        | "true" ->  S [ A "-ppx"; A (cmd_debug true);
+                         A "-package"; A "logs";
+                         A "-package"; A "logs.cli";
+                         A "-package"; A "logs.fmt" ]
+        | "false" -> S [ A "-ppx"; A (cmd_debug false) ]
+        | s ->
+          let e = Printf.sprintf "Invalid parameter for \"use_ppx_debug\" tag: %s (can be true or false)" s in
+          raise (Invalid_argument e));
 
-      flag [ "ocaml"; "ocamldep"; "ppx_debug" ] (S [ A "-ppx"; A (cmd_debug trace) ]);
-      flag [ "ocaml"; "compile";  "ppx_debug" ] (S [ A "-ppx"; A (cmd_debug trace) ]);
-
-      dispatch_default After_hygiene
-    | x ->
-      if stub then
-        Inverted_stub.dispatcher
-          ("gen/generate.native", "stub")
-          ~oasis_libraries:[ "lib/decompress.cmxa" ] x;
-      dispatch_default x)
+    pdep [ "ocaml"; "compile" ] "use_ppx_debug" (fun _ -> [ppx_debug])
+  | _ -> ()
