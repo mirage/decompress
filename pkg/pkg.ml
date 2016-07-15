@@ -15,7 +15,6 @@ let () =
   let build = Pkg.build ~cmd:builder () in
   Pkg.describe "decompress" ~build @@ fun c ->
   let unix = Conf.value c unix in
-  Printf.eprintf "UNIX: %b\n%!" unix;
 
   Ok [ Pkg.lib ~exts:Exts.library "lib/decompress"
      ; Pkg.lib ~exts:Exts.c_dll_library "lib/libdecompress"
