@@ -93,7 +93,6 @@ struct
              ; T tags
              ; A "-runtime-variant"; A "_pic"
              ; A "-o"; Px prod
-             ; A "-package"; A "landmarks"
              ; Command.atomize objs ])
     in
 
