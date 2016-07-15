@@ -18,5 +18,5 @@ let () =
 
   Ok [ Pkg.lib ~exts:Exts.library "lib/decompress"
      ; Pkg.lib ~exts:Exts.c_dll_library "lib/libdecompress"
-     ; Pkg.bin ~built:unix "bin/dpipe"
+     ; Pkg.bin ~cond:false ~built:unix "bin/dpipe"
      ; Pkg.test "lib_test/decompress_test" ]
