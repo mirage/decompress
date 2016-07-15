@@ -5,19 +5,17 @@ exception Deflate_error
 
 module Inflate =
 struct
-  include Inflate.Make(ExtString)(ExtBytes)
-
-  let string ?(window_bits = 15) document =
+  let string ?(input_size = 2) ?(output_size = 2) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
     let size     = String.length document in
 
-    let input    = Bytes.create 2 in
-    let output   = Bytes.create 2 in
+    let input    = Bytes.create input_size in
+    let output   = Bytes.create output_size in
 
     let refill' input =
-      let n = min (size - !position) (String.length input) in
-      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
+      let n = min (size - !position) (Bytes.length input) in
+      Bytes.blit_string document !position input 0 n;
       position := !position + n;
       n
     in
@@ -27,25 +25,23 @@ struct
       size
     in
 
-    decompress (Bytes.unsafe_to_string input) output refill' flush';
+    Inflate.string input output refill' flush';
     Buffer.contents buffer
 end
 
 module Deflate =
 struct
-  include Deflate.Make(ExtString)(ExtBytes)
-
-  let string ?(window_bits = 15) document =
+  let string ?(input_size = 2) ?(output_size = 2) ?(level = 4) ?(window_bits = 15) document =
     let buffer   = Buffer.create 16 in
     let position = ref 0 in
     let size     = String.length document in
 
-    let input    = Bytes.create 16 in
-    let output   = Bytes.create 16 in
+    let input    = Bytes.create input_size in
+    let output   = Bytes.create output_size in
 
     let refill' input =
-      let n = min (size - !position) (String.length input) in
-      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
+      let n = min (size - !position) (Bytes.length input) in
+      Bytes.blit_string document !position input 0 n;
       position := !position + n;
       if !position >= size then true, n else false, n
     in
@@ -55,7 +51,7 @@ struct
       size
     in
 
-    compress ~window_bits (Bytes.unsafe_to_string input) output refill' flush';
+    Deflate.string ~window_bits ~level input output refill' flush';
     Buffer.contents buffer
 end
 
@@ -83,6 +79,6 @@ let write_output str =
 let () =
   if Sys.argv |> Array.length >= 1
   then if Sys.argv |> Array.length >= 2 && Sys.argv.(1) = "-d"
-    then Inflate.string (load_input ()) |> write_output
-    else Deflate.string (load_input ()) |> write_output
+    then Inflate.string ~input_size:1024 ~output_size:1024 (load_input ()) |> write_output
+    else Deflate.string ~input_size:1024 ~output_size:1024 ~level:1 (load_input ()) |> write_output
   else ()

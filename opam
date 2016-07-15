@@ -8,38 +8,20 @@ bug-reports:  "https://github.com/oklm-wsh/Decompress/issues"
 dev-repo:     "https://github.com/oklm-wsh/Decompress.git"
 license:      "MIT"
 
-build: [
-  ["./configure"
-    "--%{base-unix:enable}%-unix"
-    "--prefix=%{prefix}%"
-    "--%{cmdliner:enable}%-cmdliner"]
-  [make]
-]
-
-build-test: [
-  ["./configure"
-    "--enable-tests"
-    "--%{base-unix:enable}%-unix"
-    "--%{cmdliner:enable}%-cmdliner"
-    "--%{camlzip:enable}%-camlzip"
-    "--enable-stub"
-    "--prefix=%{prefix}%"]
-  [make "test"]
-]
-
-install: [make "install"]
-remove: ["ocamlfind" "remove" "decompress"]
-
+build: [ "ocaml" "pkg/pkg.ml" "build" "--pinned" pinned "--with-unix" base-unix:installed ]
+build-test: [ [ "ocaml" "pkg/pkg.ml" "build" "--pinned" pinned "--tests" "true" ]
+              [ "ocaml" "pkg/pkg.ml" "test" ] ]
 depends: [
-  "oasis"          {build}
+  "ocamlbuild"     {build}
   "ocamlfind"      {build}
+  "topkg"          {build}
   "base-bytes"
   "alcotest"       {test}
   "re"             {test}
   "camlzip"        {test}
   "cmdliner"       {test}
-  "ctypes"         {test}
-  "ctypes-foreign" {test}
+  "ctypes"         {build}
+  "ctypes-foreign" {build}
 ]
 
 depopts: [

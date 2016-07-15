@@ -1,42 +1,17 @@
-module type INPUT =
-sig
-  type t
+open Decompress_common
 
-  val get  : t -> int -> char
-  val sub  : t -> int -> int -> t
-  val make : int -> char -> t
-end
+type ('i, 'o) t
+and state =
+  | Ok | Flush |  Wait | Error
 
-module type OUTPUT =
-sig
-  type t
-  type i
+val make : 'a RO.t -> 'a RW.t -> ('a, 'a) t
+val eval : ('i, 'o) t -> state
 
-  val create : int -> t
-  val length : t -> int
-  val blit   : t -> int -> t -> int -> int -> unit
-  val iblit  : i -> int -> t -> int -> int -> unit
-  val get    : t -> int -> char
-  val set    : t -> int -> char -> unit
-end
+val flush    : int -> int -> ('i, 'o) t -> unit
+val refill   : int -> int -> ('i, 'o) t -> unit
+val used_in  : ('i, 'o) t -> int
+val used_out : ('i, 'o) t -> int
 
-module type S =
-sig
-  type t
-  type src
-  type dst
-
-  val make : src -> dst -> t
-  val eval : t -> [`Ok | `Flush | `Error | `Wait ]
-
-  val flush    : int -> int -> t -> unit
-  val refill   : int -> int -> t -> unit
-  val used_in  : t -> int
-  val used_out : t -> int
-
-  val decompress : src -> dst -> (src -> int) -> (dst -> int -> int) -> unit
-end
-
-module Make (I : INPUT) (O : OUTPUT with type i = I.t) : S
-  with type dst = O.t
-   and type src = I.t
+val decompress : 'a RO.t -> 'a RW.t -> ('a RO.t -> int) -> ('a RW.t -> int -> int) -> unit
+val string    : bytes -> bytes -> (bytes -> int) -> (bytes -> int -> int) -> unit
+val bigstring : bigstring -> bigstring -> (bigstring -> int) -> (bigstring -> int -> int) -> unit
