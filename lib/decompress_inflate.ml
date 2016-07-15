@@ -409,16 +409,18 @@ and flat window inflater =
 and inflate window get_chr get_dst inflater =
   [%debug Logs.debug @@ fun m -> m "state: inflate"];
 
-  let rec loop length inflater =
+  let rec loop hold bits length inflater =
     [%debug Logs.debug @@ fun m -> m "state: inflate [%d]" length];
 
     match length with
     | n when n < 256 ->
-      put_chr window (Char.chr n) (get_chr loop) inflater
+      put_chr window (Char.chr n) (get_chr hold bits loop) inflater
     | 256 ->
+      inflater.hold <- hold;
+      inflater.bits <- bits;
       switch window inflater
     | n ->
-      let write length dist inflater =
+      let write hold bits length dist inflater =
         [%debug Logs.debug @@ fun m -> m "state: write [%d:%d]" length dist];
 
         match dist with
@@ -429,7 +431,7 @@ and inflate window get_chr get_dst inflater =
           let chr = RW.get window.window.buffer (window.window % (window.window.wpos - 1)) in
 
           [%debug Logs.debug @@ fun m -> m "we will fill the char [%S]" (String.make length chr)];
-          fill_byte window chr length (get_chr loop) inflater;
+          fill_byte window chr length (get_chr hold bits loop) inflater;
         | n ->
           let open Window in
           let open RingBuffer in
@@ -441,38 +443,56 @@ and inflate window get_chr get_dst inflater =
             window (to_ro window.window.buffer)
             (window.window % (window.window.wpos - dist))
             length
-            (get_chr loop)
+            (get_chr hold bits loop)
             inflater
       in
 
-      let read_extra_dist length dist inflater =
-        let n = Array.get _extra_dbits dist in
-        get_bits n (fun extra -> write length @@ (Array.get _base_dist dist) + 1 + extra) inflater
+      let rec read_extra_dist hold bits length dist inflater =
+        let l = Array.get _extra_dbits dist in
+
+        if bits < l
+        then get_byte' (fun byte inflater -> read_extra_dist (hold lor (byte lsl bits)) (bits + 8) length dist inflater) inflater
+        else let extra = hold land ((1 lsl l) - 1) in
+             write (hold lsr l) (bits - l) length ((Array.get _base_dist dist) + 1 + extra) inflater
       in
 
-      let read_extra_length length inflater =
-        let n = Array.get _extra_lbits length in
-        get_bits n (fun extra -> get_dst @@ read_extra_dist ((Array.get _base_length length) + 3 + extra)) inflater
+      let rec read_extra_length hold bits length inflater =
+        let l = Array.get _extra_lbits length in
+
+        if bits < l
+        then get_byte' (fun byte inflater -> read_extra_length (hold lor (byte lsl bits)) (bits + 8) length inflater) inflater
+        else begin
+          let extra = hold land ((1 lsl l) - 1) in
+           get_dst (hold lsr l) (bits - l)
+             (fun hold bits dst inflater ->
+              read_extra_dist hold bits ((Array.get _base_length length) + 3 + extra) dst inflater)
+             inflater
+        end
       in
 
-      read_extra_length (n - 257) inflater
+      read_extra_length hold bits (n - 257) inflater
   in
 
-  get_chr loop inflater
+  get_chr inflater.hold inflater.bits loop inflater
 
 and fixed window inflater =
   let tbl, max = fixed_huffman in
   let mask = (1 lsl max) - 1 in
 
-  let rec get_chr next inflater =
-    if inflater.bits < max
-    then peek_bits max (get_chr next) inflater
-    else let (len, v) = Array.get tbl (inflater.hold land mask) in
-         drop_bits len (next v) inflater
+  let rec get_chr hold bits next inflater =
+    if bits < max
+    then get_byte' (fun byte inflater -> get_chr (hold lor (byte lsl bits)) (bits + 8) next inflater) inflater
+    else let (len, v) = Array.get tbl (hold land mask) in
+         next (hold lsr len) (bits - len) v inflater
   in
 
-  let get_dst next =
-    get_revbits 5 next
+  let rec get_dst hold bits next inflater =
+    if bits < 5
+    then get_byte' (fun byte inflater -> get_dst (hold lor (byte lsl bits)) (bits + 8) next inflater) inflater
+    else begin
+         let v = reverse_bits ((hold land 0x1F) lsl 3) in
+         next (hold lsr 5) (bits - 5) v inflater
+    end
   in
 
   inflate window get_chr get_dst inflater
@@ -507,18 +527,18 @@ and dynamic window inflater =
        let mask_chr = (1 lsl max_chr) - 1 in
        let mask_dst = (1 lsl max_dst) - 1 in
 
-       let rec get_chr next inflater =
-         if inflater.bits < max_chr
-         then peek_bits max_chr (get_chr next) inflater
-         else let (len, v) = Array.get tbl_chr (inflater.hold land mask_chr) in
-              drop_bits len (next v) inflater
+       let rec get_chr hold bits next inflater =
+         if bits < max_chr
+         then get_byte' (fun byte inflater -> get_chr (hold lor (byte lsl bits)) (bits + 8) next inflater) inflater
+         else let (len, v) = Array.get tbl_chr (hold land mask_chr) in
+              next (hold lsr len) (bits - len) v inflater
        in
 
-       let rec get_dst next inflater =
-         if inflater.bits < max_dst
-         then peek_bits max_dst (get_dst next) inflater
-         else let (len, v) = Array.get tbl_dst (inflater.hold land mask_dst) in
-              drop_bits len (next v) inflater
+       let rec get_dst hold bits next inflater =
+         if bits < max_dst
+         then get_byte' (fun byte inflater -> get_dst (hold lor (byte lsl bits)) (bits + 8) next inflater) inflater
+         else let (len, v) = Array.get tbl_dst (hold land mask_dst) in
+              next (hold lsr len) (bits - len) v inflater
        in
 
        inflate window get_chr get_dst inflater)
