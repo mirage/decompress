@@ -1,4 +1,5 @@
-true: safe_string, bin_annot, debug
+true: safe_string, bin_annot, debug, optimize(3)
+<*/*>: warn(@20@25@26@32@34@33@37@38@39)
 
 <lib>: include
 <gen>: include
@@ -20,4 +21,4 @@ true: safe_string, bin_annot, debug
 <lib_test/*.{ml,mli,byte,native}>: package(re.str), package(camlzip), package(alcotest), use_bigarray
 
 # binary
-<bin/*.{ml,mli,byte,native}>: use_unix, use_bigarray
+<bin/*.{ml,mli,byte,native}>: use_unix, use_bigarray, package(logs), package(logs.fmt)

@@ -1,9 +1,6 @@
 open Decompress_tables
 open Decompress_common
 
-let () = [%debug Logs.set_level ~all:true (Some Logs.Debug)]
-let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
-
 exception Invalid_dictionary
 exception Invalid_complement_of_length
 exception Invalid_type_of_block
@@ -38,15 +35,11 @@ let get_bytes n blit k inflater =
   let rec loop rest inflater =
     let can = min (inflater.available - inflater.inpos) rest in
 
-    [%debug Logs.debug @@ fun m -> m "state: get_bytes [can: %d, rest: %d]" can rest];
-
     match can, rest with
     | 0, r when r > 0 -> (inflater.k <- loop rest; Wait)
     | n, r when r > 0 ->
       blit inflater.src inflater.inpos can
         (fun inflater ->
-         [%debug Logs.debug @@ fun m -> m "state: get_bytes [blit]"];
-
          inflater.inpos <- inflater.inpos + can;
          loop (rest - can) inflater)
         inflater
@@ -170,10 +163,6 @@ let get_bits n k inflater =
 let get_ui16 k inflater =
   get_byte' (fun a -> get_byte' (fun b -> k (a lor (b lsl 8)))) inflater
 
-let get_revbits n k inflater =
-  (* XXX: this function accepts only [n <= 8] *)
-  get_bits n (fun o -> k @@ reverse_bits (o lsl (8 - n))) inflater
-
 module Dictionary =
 struct
   type t =
@@ -202,7 +191,6 @@ struct
 
     let rec loop result inflater = match result with
       | n when n <= 15 ->
-        [%debug Logs.debug @@ fun m -> m "state: inflate_dict [%d]" n];
         state.previous <- n;
         Array.set state.dictionary state.iterator n;
         state.iterator <- state.iterator + 1;
@@ -211,7 +199,6 @@ struct
         then get loop inflater
         else k state.dictionary inflater
       | 16 ->
-        [%debug Logs.debug @@ fun m -> m "state: inflate_dict [%d]" 16];
         let aux n inflater =
           if state.iterator + n + 3 > state.max
           then raise Invalid_dictionary;
@@ -228,7 +215,6 @@ struct
 
         get_bits 2 aux inflater
       | 17 ->
-        [%debug Logs.debug @@ fun m -> m "state: inflate_dict [%d]" 17];
         let aux n inflater =
           if state.iterator + n + 3 > state.max
           then raise Invalid_dictionary;
@@ -242,7 +228,6 @@ struct
 
         get_bits 3 aux inflater
       | 18 ->
-        [%debug Logs.debug @@ fun m -> m "state: inflate_dict [%d]" 18];
         let aux n inflater =
           if state.iterator + n + 11 > state.max
           then raise Invalid_dictionary;
@@ -270,18 +255,6 @@ let fixed_huffman =
        else 8)
   |> fun lengths -> Huffman.make lengths 0 288 9
 
-let rec put_chr window chr next inflater =
-  [%debug Logs.debug @@ fun m -> m "state: put_chr [%S]" (String.make 1 chr)];
-
-  if inflater.outpos < inflater.needed
-  then begin
-    RW.set inflater.dst inflater.outpos chr;
-    Window.add_char chr window;
-    inflater.outpos <- inflater.outpos + 1;
-
-    next inflater
-  end else (inflater.k <- put_chr window chr next; Flush)
-
 let rec put_bytes ?(incr = (+)) window buff off len next inflater =
   let safe_window_add_ro window buff off len =
     let size = RO.length buff in
@@ -290,18 +263,9 @@ let rec put_bytes ?(incr = (+)) window buff off len next inflater =
     let extra = len - pre in
 
     if extra > 0 then begin
-      [%debug Logs.debug @@ fun m -> m "safe_window_add_ro> %a and %a"
-       RO.pp (RO.sub buff off pre)
-       RO.pp (RO.sub buff 0 extra)];
-
       Window.add_ro buff off pre window;
       Window.add_ro buff 0 extra window;
-    end else begin
-      [%debug Logs.debug @@ fun m -> m "window_add_ro> %a"
-       RO.pp (RO.sub buff off len)];
-
-      Window.add_ro buff off len window
-    end
+    end else Window.add_ro buff off len window;
   in
   let safe_blit_ro src src_off dst dst_off len =
     let size = RO.length src in
@@ -310,26 +274,15 @@ let rec put_bytes ?(incr = (+)) window buff off len next inflater =
     let extra = len - pre in
 
     if extra > 0 then begin
-      [%debug Logs.debug @@ fun m -> m "safe_blit_ro> %a and %a"
-       RO.pp (RO.sub buff off pre)
-       RO.pp (RO.sub buff 0 extra)];
-
       RW_ext.blit_ro src src_off dst dst_off pre;
       RW_ext.blit_ro src 0 dst (dst_off + pre) extra;
-    end else begin
-      [%debug Logs.debug @@ fun m -> m "blit_ro> %a"
-       RO.pp (RO.sub buff off len)];
-
-      RW_ext.blit_ro src src_off dst dst_off len
-    end
+    end else RW_ext.blit_ro src src_off dst dst_off len;
   in
 
   if inflater.outpos < inflater.needed
   then begin
     let n = min (inflater.needed - inflater.outpos) len in
-    [%debug Logs.debug @@ fun m -> m "state: put_bytes window"];
     safe_window_add_ro window buff off n;
-    [%debug Logs.debug @@ fun m -> m "state: put_bytes blit"];
     safe_blit_ro buff off inflater.dst inflater.outpos n;
     inflater.outpos <- inflater.outpos + n;
 
@@ -337,19 +290,6 @@ let rec put_bytes ?(incr = (+)) window buff off len next inflater =
     then put_bytes ~incr window buff (incr off n) (len - n) next inflater
     else next inflater
   end else (inflater.k <- put_bytes ~incr window buff off len next; Flush)
-
-let rec fill_byte window chr len next inflater =
-  if inflater.outpos < inflater.needed
-  then begin
-    let n = min (inflater.needed - inflater.outpos) len in
-    Window.fill chr n window;
-    RW.fill inflater.dst inflater.outpos n chr;
-    inflater.outpos <- inflater.outpos + n;
-
-    if len - n > 0
-    then fill_byte window chr (len - n) next inflater
-    else next inflater
-  end else (inflater.k <- fill_byte window chr len next; Flush)
 
 let rec ok inflater = Ok
 
@@ -360,8 +300,6 @@ and switch window inflater =
 
 and crc window inflater =
   let check b a inflater =
-    [%debug Logs.debug @@ fun m -> m "state: crc [%d:%d]" a b];
-
     (* if Adler32.neq (Adler32.make a b) (Window.checksum window)
     then raise Invalid_crc; *)
 
@@ -407,11 +345,7 @@ and flat window inflater =
   get_ui16 (fun len -> get_ui16 (fun nlen -> header len nlen)) inflater
 
 and inflate window get_chr get_dst inflater =
-  [%debug Logs.debug @@ fun m -> m "state: inflate"];
-
   let rec loop outpos inpos hold bits length inflater =
-    [%debug Logs.debug @@ fun m -> m "state: inflate [%d]" length];
-
     match length with
     | n when n < 256 ->
       if outpos < inflater.needed
@@ -432,16 +366,12 @@ and inflate window get_chr get_dst inflater =
       switch window inflater
     | n ->
       let rec write outpos inpos hold bits length dist inflater =
-        [%debug Logs.debug @@ fun m -> m "state: write [%d:%d]" length dist];
-
         match dist with
         | 1 ->
           let open Window in
           let open RingBuffer in
 
           let chr = RW.get window.window.buffer (window.window % (window.window.wpos - 1)) in
-
-          [%debug Logs.debug @@ fun m -> m "we will fill the char [%S]" (String.make length chr)];
 
           if outpos < inflater.needed
           then begin
@@ -458,8 +388,6 @@ and inflate window get_chr get_dst inflater =
         | n ->
           let open Window in
           let open RingBuffer in
-
-          [%debug Logs.debug @@ fun m -> m "we will put a bytes"];
 
           if outpos < inflater.needed
           then begin
@@ -552,24 +480,7 @@ and fixed window inflater =
   inflate window get_chr get_dst inflater
 
 and dynamic window inflater =
-  [%debug Logs.debug @@ fun m -> m "state: dynamic"];
-
   let make_table hlit hdist hclen buf inflater =
-    [%debug Logs.debug @@ fun m -> m "state: make_table [%d:%d:%d]" hlit hdist hclen];
-    [%debug
-     let print_arr ~sep print_data fmt arr =
-       let rec aux = function
-         | [] -> ()
-         | [ x ] -> print_data fmt x
-         | x :: r -> Format.fprintf fmt "%a%s" print_data x sep; aux r
-       in
-
-       aux (Array.to_list arr)
-     in
-     let print_int = Format.pp_print_int in
-
-     Logs.debug @@ fun m -> m "state: make_table [%a]" (print_arr ~sep:"; " print_int) buf];
-
     let tbl, max = Huffman.make buf 0 19 7 in
 
     Dictionary.inflate
@@ -628,8 +539,6 @@ and dynamic window inflater =
 and block window inflater =
   get_bits 2
     (fun n inflater ->
-     [%debug Logs.debug @@ fun m -> m "state: block [%d]" n];
-
      match n with
      | 0 -> flat window inflater
      | 1 -> fixed window inflater
@@ -639,16 +548,12 @@ and block window inflater =
 
 and last window inflater =
   get_bit (fun last inflater ->
-           [%debug Logs.debug @@ fun m -> m "state: last [%b]" last];
-
            inflater.last <- last;
            block window inflater)
      inflater
 
 and header inflater =
   let aux byte0 byte1 inflater =
-    [%debug Logs.debug @@ fun m -> m "state: header [%d:%d]" byte0 byte1];
-
     let buffer = RW.create_by inflater.dst ((1 lsl (byte0 lsr 4 + 8)) + 1) in
     let window = Window.create (byte0 lsr 4 + 8) buffer in
     last window inflater
