@@ -146,10 +146,9 @@ struct
     Options.targets := List.fold_left aux [] !Options.targets
 
   let dispatcher (generator, directory) ?(oasis_libraries = []) = function
-    | After_hygiene ->
+    | x ->
       init ();
       oasis_support generator directory ~libraries:oasis_libraries
-    | _ -> ()
 end
 
 (* Hack! *)
@@ -160,10 +159,9 @@ let () =
     (S [ A "-I"; P "stub" ])
 
 let () = dispatch @@ function
-  | After_rules ->
+  | After_hygiene as x ->
     (* initialization *)
-    Inverted_stub.dispatcher ("gen/generate.native", "stub")
-      ~oasis_libraries:[] After_hygiene;
+    Inverted_stub.dispatcher ("gen/generate.native", "stub") ~oasis_libraries:[] x;
     (* inverted stub *)
     Inverted_stub.stub "gen/generate.native" "stub" "decompress";
 
