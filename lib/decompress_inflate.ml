@@ -409,18 +409,29 @@ and flat window inflater =
 and inflate window get_chr get_dst inflater =
   [%debug Logs.debug @@ fun m -> m "state: inflate"];
 
-  let rec loop hold bits length inflater =
+  let rec loop outpos inpos hold bits length inflater =
     [%debug Logs.debug @@ fun m -> m "state: inflate [%d]" length];
 
     match length with
     | n when n < 256 ->
-      put_chr window (Char.chr n) (get_chr hold bits loop) inflater
+      if outpos < inflater.needed
+      then begin
+        let chr = Char.chr n in
+
+        Window.add_char chr window;
+        RW.set inflater.dst outpos chr;
+
+        get_chr inpos hold bits (loop (outpos + 1)) inflater
+      end else (inflater.outpos <- outpos;
+                inflater.k <- (fun inflater -> loop inflater.outpos inpos hold bits length inflater); Flush)
     | 256 ->
       inflater.hold <- hold;
       inflater.bits <- bits;
+      inflater.inpos <- inpos;
+      inflater.outpos <- outpos;
       switch window inflater
     | n ->
-      let write hold bits length dist inflater =
+      let rec write outpos inpos hold bits length dist inflater =
         [%debug Logs.debug @@ fun m -> m "state: write [%d:%d]" length dist];
 
         match dist with
@@ -431,68 +442,111 @@ and inflate window get_chr get_dst inflater =
           let chr = RW.get window.window.buffer (window.window % (window.window.wpos - 1)) in
 
           [%debug Logs.debug @@ fun m -> m "we will fill the char [%S]" (String.make length chr)];
-          fill_byte window chr length (get_chr hold bits loop) inflater;
+
+          if outpos < inflater.needed
+          then begin
+            let n = min (inflater.needed - outpos) length in
+            Window.fill chr n window;
+            RW.fill inflater.dst outpos n chr;
+
+            if length - n > 0
+            then (inflater.outpos <- outpos + n;
+                  inflater.k <- (fun inflater -> write inflater.outpos inpos hold bits (length - n) dist inflater); Flush)
+            else get_chr inpos hold bits (loop (outpos + n)) inflater
+          end else (inflater.outpos <- outpos;
+                    inflater.k <- (fun inflater -> write inflater.outpos inpos hold bits length dist inflater); Flush)
         | n ->
           let open Window in
           let open RingBuffer in
 
           [%debug Logs.debug @@ fun m -> m "we will put a bytes"];
 
-          put_bytes
-            ~incr:(fun off n -> RingBuffer.(window.window % (off + n)))
-            window (to_ro window.window.buffer)
-            (window.window % (window.window.wpos - dist))
-            length
-            (get_chr hold bits loop)
-            inflater
+          if outpos < inflater.needed
+          then begin
+            let n = min (inflater.needed - outpos) length in
+
+            let off_window = (window.window % (window.window.wpos - dist)) in
+            let sze_window = window.window.size in
+
+            let pre = sze_window - off_window in
+            let extra = n - pre in
+
+            if extra > 0
+            then begin
+              Window.add_rw window.window.buffer off_window pre window;
+              RW_ext.blit   window.window.buffer off_window inflater.dst outpos pre;
+              Window.add_rw window.window.buffer 0 extra window;
+              RW_ext.blit   window.window.buffer 0 inflater.dst (outpos + pre) extra;
+            end else begin
+              Window.add_rw window.window.buffer off_window n window;
+              RW_ext.blit   window.window.buffer off_window inflater.dst outpos n;
+            end;
+
+            if length - n > 0
+            then (inflater.outpos <- outpos + n;
+                  inflater.k <- (fun inflater -> write inflater.outpos inpos hold bits (length - n) dist inflater); Flush)
+            else get_chr inpos hold bits (loop (outpos + n)) inflater
+          end else (inflater.outpos <- outpos;
+                    inflater.k <- (fun inflater -> write inflater.outpos inpos hold bits length dist inflater); Flush)
       in
 
-      let rec read_extra_dist hold bits length dist inflater =
+      let rec read_extra_dist inpos hold bits length dist inflater =
         let l = Array.get _extra_dbits dist in
 
         if bits < l
-        then get_byte' (fun byte inflater -> read_extra_dist (hold lor (byte lsl bits)) (bits + 8) length dist inflater) inflater
+        then if inflater.available - inpos > 0
+             then let byte = Char.code @@ RO.get inflater.src inpos in
+                  read_extra_dist (inpos + 1) (hold lor (byte lsl bits)) (bits + 8) length dist inflater
+             else (inflater.k <- (fun inflater -> read_extra_dist inflater.inpos hold bits length dist inflater); Wait)
         else let extra = hold land ((1 lsl l) - 1) in
-             write (hold lsr l) (bits - l) length ((Array.get _base_dist dist) + 1 + extra) inflater
+             write outpos inpos (hold lsr l) (bits - l) length ((Array.get _base_dist dist) + 1 + extra) inflater
       in
 
-      let rec read_extra_length hold bits length inflater =
+      let rec read_extra_length inpos hold bits length inflater =
         let l = Array.get _extra_lbits length in
 
         if bits < l
-        then get_byte' (fun byte inflater -> read_extra_length (hold lor (byte lsl bits)) (bits + 8) length inflater) inflater
+        then if inflater.available - inpos > 0
+             then let byte = Char.code @@ RO.get inflater.src inpos in
+                  read_extra_length (inpos + 1) (hold lor (byte lsl bits)) (bits + 8) length inflater
+             else (inflater.k <- (fun inflater -> read_extra_length inflater.inpos hold bits length inflater); Wait)
         else begin
           let extra = hold land ((1 lsl l) - 1) in
-           get_dst (hold lsr l) (bits - l)
-             (fun hold bits dst inflater ->
-              read_extra_dist hold bits ((Array.get _base_length length) + 3 + extra) dst inflater)
-             inflater
+          get_dst inpos (hold lsr l) (bits - l)
+            (fun inpos hold bits dst inflater -> read_extra_dist inpos hold bits ((Array.get _base_length length) + 3 + extra) dst inflater)
+            inflater
         end
       in
 
-      read_extra_length hold bits (n - 257) inflater
+      read_extra_length inpos hold bits (n - 257) inflater
   in
 
-  get_chr inflater.hold inflater.bits loop inflater
+  get_chr inflater.inpos inflater.hold inflater.bits (loop inflater.outpos) inflater
 
 and fixed window inflater =
   let tbl, max = fixed_huffman in
   let mask = (1 lsl max) - 1 in
 
-  let rec get_chr hold bits next inflater =
+  let rec get_chr inpos hold bits next inflater =
     if bits < max
-    then get_byte' (fun byte inflater -> get_chr (hold lor (byte lsl bits)) (bits + 8) next inflater) inflater
+    then
+      if inflater.available - inpos > 0
+      then let byte = Char.code @@ RO.get inflater.src inpos in
+           get_chr (inpos + 1) (hold lor (byte lsl bits)) (bits + 8) next inflater
+      else (inflater.k <- (fun inflater -> get_chr inflater.inpos hold bits next inflater); Wait)
     else let (len, v) = Array.get tbl (hold land mask) in
-         next (hold lsr len) (bits - len) v inflater
+         next inpos (hold lsr len) (bits - len) v inflater
   in
 
-  let rec get_dst hold bits next inflater =
+  let rec get_dst inpos hold bits next inflater =
     if bits < 5
-    then get_byte' (fun byte inflater -> get_dst (hold lor (byte lsl bits)) (bits + 8) next inflater) inflater
-    else begin
-         let v = reverse_bits ((hold land 0x1F) lsl 3) in
-         next (hold lsr 5) (bits - 5) v inflater
-    end
+    then
+      if inflater.available - inpos > 0
+      then let byte = Char.code @@ RO.get inflater.src inpos in
+           get_dst (inpos + 1) (hold lor (byte lsl bits)) (bits + 8) next inflater
+      else (inflater.k <- (fun inflater -> get_dst inflater.inpos hold bits next inflater); Wait)
+    else let v = reverse_bits ((hold land 0x1F) lsl 3) in
+         next inpos (hold lsr 5) (bits - 5) v inflater
   in
 
   inflate window get_chr get_dst inflater
@@ -527,18 +581,24 @@ and dynamic window inflater =
        let mask_chr = (1 lsl max_chr) - 1 in
        let mask_dst = (1 lsl max_dst) - 1 in
 
-       let rec get_chr hold bits next inflater =
+       let rec get_chr inpos hold bits next inflater =
          if bits < max_chr
-         then get_byte' (fun byte inflater -> get_chr (hold lor (byte lsl bits)) (bits + 8) next inflater) inflater
+         then if inflater.available - inpos > 0
+              then let byte = Char.code @@ RO.get inflater.src inpos in
+                   get_chr (inpos + 1) (hold lor (byte lsl bits)) (bits + 8) next inflater
+              else (inflater.k <- (fun inflater -> get_chr inflater.inpos hold bits next inflater); Wait)
          else let (len, v) = Array.get tbl_chr (hold land mask_chr) in
-              next (hold lsr len) (bits - len) v inflater
+              next inpos (hold lsr len) (bits - len) v inflater
        in
 
-       let rec get_dst hold bits next inflater =
+       let rec get_dst inpos hold bits next inflater =
          if bits < max_dst
-         then get_byte' (fun byte inflater -> get_dst (hold lor (byte lsl bits)) (bits + 8) next inflater) inflater
+         then if inflater.available - inpos > 0
+              then let byte = Char.code @@ RO.get inflater.src inpos in
+                   get_dst (inpos + 1) (hold lor (byte lsl bits)) (bits + 8) next inflater
+              else (inflater.k <- (fun inflater -> get_dst inflater.inpos hold bits next inflater); Wait)
          else let (len, v) = Array.get tbl_dst (hold land mask_dst) in
-              next (hold lsr len) (bits - len) v inflater
+              next inpos (hold lsr len) (bits - len) v inflater
        in
 
        inflate window get_chr get_dst inflater)
