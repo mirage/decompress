@@ -14,7 +14,7 @@ FLG -safe-string
 # test
 PKG alcotest re camlzip
 # build
-PKG topkg ocamlbuild ocamlfind
+PKG topkg ocamlbuild findlib
 # ppx
 PKG compiler-libs logs logs.cli
 # stub
