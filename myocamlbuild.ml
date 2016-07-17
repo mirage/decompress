@@ -167,6 +167,8 @@ let () = dispatch @@ function
 
     (* unsafe *)
     flag ["unsafe"; "compile"] (S [ A "-unsafe" ]);
+    (* unbox-closure *)
+    flag ["unbox_closures"; "compile"; "native"] (S [ A "-unbox-closures" ]);
 
     (* ppx *)
     pflag_and_dep [ "ocaml"; "compile" ] "use_ppx_debug"

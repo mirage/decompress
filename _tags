@@ -1,11 +1,12 @@
-true: safe_string, bin_annot, debug
+true: safe_string, bin_annot, debug, optimize(3)
+<*/*>: warn(@20@25@26@32@34@33@37@38@39)
 
 <lib>: include
 <gen>: include
 <bindings>: include
 
 # library
-<lib/*.ml>: use_ppx_debug(false), use_bigarray, unsafe
+<lib/*.ml>: use_ppx_debug(false), use_bigarray, unsafe, unbox_closures
 
 # ppx
 <ppx/*.{ml,mli,byte,native}>: package(compiler-libs.common)
@@ -20,4 +21,4 @@ true: safe_string, bin_annot, debug
 <lib_test/*.{ml,mli,byte,native}>: package(re.str), package(camlzip), package(alcotest), use_bigarray
 
 # binary
-<bin/*.{ml,mli,byte,native}>: use_unix, use_bigarray
+<bin/*.{ml,mli,byte,native}>: use_unix, use_bigarray, package(logs), package(logs.fmt)
