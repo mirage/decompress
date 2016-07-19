@@ -13,19 +13,19 @@ struct
     let input    = Bytes.create input_size in
     let output   = Bytes.create output_size in
 
-    let refill' input =
+    let refill input =
       let n = min (size - !position) (Bytes.length input) in
       Bytes.blit_string document !position input 0 n;
       position := !position + n;
       n
     in
 
-    let flush' input size =
-      Buffer.add_subbytes buffer input 0 size;
-      size
+    let flush input off len =
+      Buffer.add_subbytes buffer input off len;
+      len
     in
 
-    Inflate.string input output refill' flush';
+    Inflate.string input output refill flush;
     Buffer.contents buffer
 end
 

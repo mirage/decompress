@@ -21,8 +21,8 @@ let inflate buff len chunk acc print =
     n
   in
 
-  let flush' _ len =
-    print ((Ctypes.coerce Ctypes.string (ptr char)) (Bytes.unsafe_to_string output)) 0 len acc;
+  let flush' _ off len =
+    print ((Ctypes.coerce Ctypes.string (ptr char)) (Bytes.unsafe_to_string output)) off len acc;
     output_size := !output_size + len;
     len
   in

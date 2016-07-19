@@ -105,8 +105,8 @@ struct
         m
     in
 
-    let flush output buf len =
-      Buffer.add_subbytes output buf 0 len; len
+    let flush output buf off len =
+      Buffer.add_subbytes output buf off len; len
     in
 
     Inflate.string i o (refill str) (flush uncompressed);
