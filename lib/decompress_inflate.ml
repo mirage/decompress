@@ -1,87 +1,31 @@
 open Decompress_tables
 open Decompress_common
 
-exception Invalid_dictionary
-exception Invalid_complement_of_length
-exception Invalid_type_of_block
-
 module Adler32 = Decompress_adler32
 module Window  = Decompress_window
 module Huffman = Decompress_huffman
 
-type ('i, 'o) t =
-  { src                   : 'i RO.t
-  ; dst                   : 'o RW.t
-  ; mutable last          : bool
-    (** true if processing last block *)
-  ; mutable hold          : int
-    (** input bit accumulator *)
-  ; mutable bits          : int
-    (** number of bits in "hold" *)
-  ; mutable outpos        : int
-    (** position output buffer *)
-  ; mutable needed        : int
-  ; mutable inpos         : int
-    (** position input buffer *)
-  ; mutable available     : int
-  ; mutable k             : ('i, 'o) t -> state }
-and state =
-  | Ok | Flush | Wait | Error
+exception Invalid_kind_of_block
+exception Invalid_complement_of_length
+exception Invalid_dictionary
 
-let eval inflater =
-  inflater.k inflater
+let log = Format.printf
 
-let get_bytes n blit k inflater =
-  let rec loop rest inflater =
-    let can = min (inflater.available - inflater.inpos) rest in
-
-    match can, rest with
-    | 0, r when r > 0 -> (inflater.k <- loop rest; Wait)
-    | n, r when r > 0 ->
-      blit inflater.src inflater.inpos can
-        (fun inflater ->
-         inflater.inpos <- inflater.inpos + can;
-         loop (rest - can) inflater)
-        inflater
-    | _ -> k inflater
+let bin_of_int d =
+  if d < 0 then invalid_arg "bin_of_int" else
+  if d = 0 then "0" else
+  let rec aux acc d =
+    if d = 0 then acc else
+    aux (string_of_int (d land 1) :: acc) (d lsr 1)
   in
+  String.concat "" (aux [] d)
 
-  loop n inflater
-
-let rec get_byte' k inflater =
-  if inflater.available - inflater.inpos > 0
-  then begin
-    let code = Char.code @@ RO.get inflater.src inflater.inpos in
-    inflater.inpos <- inflater.inpos + 1;
-
-    k code inflater
-  end else begin
-    inflater.k <- get_byte' k;
-
-    Wait
-  end
-
-let reset_bits inflater =
-  inflater.hold <- 0;
-  inflater.bits <- 0
-
-let get_bit k inflater =
-  let aux infalter =
-    let result = inflater.hold land 1 = 1 in
-    inflater.bits <- inflater.bits - 1;
-    inflater.hold <- inflater.hold lsr 1;
-
-    k result inflater
-  in
-
-  if inflater.bits = 0
-  then get_byte' (fun byte inflater ->
-                  inflater.hold <- byte;
-                  inflater.bits <- 8;
-
-                  aux inflater)
-         inflater
-  else aux inflater
+let pp_table ~sep pp_elem fmt table =
+  Format.fprintf fmt "[| @[<hov>";
+  Array.iter
+    (fun value -> Format.fprintf fmt "%a;@ " pp_elem value)
+    table;
+  Format.fprintf fmt "@]|]"
 
 let reverse_bits =
   let t =
@@ -110,59 +54,7 @@ let reverse_bits =
   in
   fun bits -> t.(bits)
 
-let peek_bits n k inflater =
-  let rec loop n k inflater =
-    if inflater.bits < n
-    then get_byte' (fun byte inflater ->
-                    inflater.hold <- inflater.hold lor (byte lsl inflater.bits);
-                    inflater.bits <- inflater.bits + 8;
-
-                    (loop[@tailcall]) n k inflater) inflater
-    else k inflater
-  in (loop[@tailcall]) n k inflater
-
-let rec safe_get_byte k inflater =
-  if inflater.bits >= 8
-  then begin
-    let byte = inflater.hold land 0xFF in
-    inflater.hold <- inflater.hold lsr 8;
-    inflater.bits <- inflater.bits - 8;
-
-    k byte inflater
-  end else if inflater.bits > 0
-  then peek_bits 8 (safe_get_byte k) inflater
-  else get_byte' k inflater
-
-let drop_bits n k inflater =
-  inflater.bits <- inflater.bits - n;
-  inflater.hold <- inflater.hold lsr n;
-
-  k inflater
-
-let get_bits n k inflater =
-  let aux inflater =
-    let result = inflater.hold land (1 lsl n - 1) in
-    inflater.bits <- inflater.bits - n;
-    inflater.hold <- inflater.hold lsr n;
-
-    k result inflater
-  in
-
-  let rec loop inflater =
-    if inflater.bits < n
-    then get_byte' (fun byte inflater ->
-                    inflater.hold <- inflater.hold lor (byte lsl inflater.bits);
-                    inflater.bits <- inflater.bits + 8;
-
-                    loop inflater) inflater
-    else aux inflater
-  in
-
-  loop inflater
-
-let get_ui16 k inflater =
-  get_byte' (fun a -> get_byte' (fun b -> k (a lor (b lsl 8)))) inflater
-
+(* Lookup table *)
 module Lookup =
 struct
   type t =
@@ -170,19 +62,25 @@ struct
     ; max   : int
     ; mask  : int }
 
+  let pp fmt { table; max; mask; } =
+    let pp_pair fmt (a, b) = Format.fprintf fmt "(%d, %d)" a b in
+    Format.fprintf fmt "{ @[<hov>table = %a;@ max = %d;@ mask = %s;@] }"
+      (pp_table ~sep:(fun fmt () -> Format.fprintf fmt ";@ ") pp_pair)
+      table max (bin_of_int mask)
+
   let make table max =
     { table; max; mask = (1 lsl max) - 1; }
 
-  let rec get lookup inpos hold bits next inflater =
-    if bits < lookup.max
-    then
-      if inflater.available - inpos > 0
-      then let byte = Char.code @@ RO.get inflater.src inpos in
-           get lookup (inpos + 1) (hold lor (byte lsl bits)) (bits + 8) next inflater
-      else (inflater.k <- (fun inflater -> get lookup inflater.inpos hold bits next inflater); Wait)
-    else let (len, v) = Array.get lookup.table (hold land lookup.mask) in
-         next inpos (hold lsr len) (bits - len) v inflater
-  [@@inline]
+  let fixed_chr =
+    let tbl =
+      Array.init 288
+        (fun n -> if n < 144 then 8
+                  else if n < 256 then 9
+                  else if n < 280 then 7
+                  else 8)
+    in
+    let tbl, max = Huffman.make tbl 0 288 9 in
+    make tbl max
 
   let fixed_dst =
     let tbl = Array.make (1 lsl 5) (0, 0) in
@@ -190,500 +88,886 @@ struct
     make tbl 5
 end
 
+type ('i, 'o) t =
+  { last  : bool
+  ; hold  : int
+  ; bits  : int
+  ; o_pos : int
+  ; o_avl : int
+  ; i_pos : int
+  ; i_avl : int
+  ; write : int
+  ; state : ('i, 'o) state }
+and ('i, 'o) state =
+  | Header
+  | Last       of 'o Window.t
+  | Block      of 'o Window.t
+  | Flat       of ('i RO.t -> 'o RW.t -> ('i, 'o) t -> ('i, 'o) res)
+  | Fixed      of 'o Window.t
+  | Dictionary of ('i RO.t -> 'o RW.t -> ('i, 'o) t -> ('i, 'o) res)
+  | Inffast    of ('o Window.t * Lookup.t * Lookup.t * code)
+  | Inflate    of ('i RO.t -> 'o RW.t -> ('i, 'o) t -> ('i, 'o) res)
+  | Switch     of 'o Window.t
+  | Crc        of ('i RO.t -> 'o RW.t -> ('i, 'o) t -> ('i, 'o) res)
+  | Exception  of exn
+and ('i, 'o) res =
+  | Cont  of ('i, 'o) t
+  | Wait  of ('i, 'o) t
+  | Flush of ('i, 'o) t
+  | Ok    of ('i, 'o) t
+  | Error of ('i, 'o) t
+and code =
+  | Length
+  | ExtLength of int
+  | Dist      of int
+  | ExtDist   of int * int
+  | Write     of int * int
+
+let pp fmt { last; hold; bits; o_pos; o_avl; i_pos; i_avl; state; } =
+  let state_to_string = function
+    | Header       -> "header"
+    | Last _       -> "last"
+    | Block _      -> "block"
+    | Flat _       -> "flat"
+    | Fixed _      -> "fixed"
+    | Dictionary _ -> "dictionary"
+    | Inffast _    -> "inffast"
+    | Inflate _    -> "inflate"
+    | Switch _     -> "window"
+    | Crc _        -> "crc"
+    | Exception _  -> "exception"
+  in
+  Format.fprintf fmt
+    "{ @[<hov>last = %b;@ \
+             hold = %s;@ \
+             bits = %d;@ \
+             in = (%d, %d);@ \
+             out = (%d, %d);@ \
+             state = %s;@] }"
+    last (bin_of_int hold) bits i_pos i_avl o_pos o_avl (state_to_string state)
+
+(* Continuation passing-style stored in [Dictionary] *)
+module KDictionary =
+struct
+  let rec get_byte k src dst t =
+    if t.i_avl > 0
+    then let byte = Char.code @@ RO.get src t.i_pos in
+         k byte src dst
+           { t with i_pos = t.i_pos + 1
+                  ; i_avl = t.i_avl - 1 }
+    else Wait { t with state = Dictionary (get_byte k) }
+
+  let peek_bits n k src dst t =
+    let rec loop src dst t =
+      if t.bits < n
+      then get_byte (fun byte src dst t ->
+                       (loop[@taillcall])
+                       src dst
+                       { t with hold = t.hold lor (byte lsl t.bits)
+                              ; bits = t.bits + 8 })
+                    src dst t
+      else k src dst t
+    in (loop[@tailcall]) src dst t
+
+  let drop_bits n k src dst t =
+    k src dst
+      { t with hold = t.hold lsr n
+             ; bits = t.bits - n }
+
+  let get_bits n k src dst t =
+    let catch src dst t =
+      let value = t.hold land ((1 lsl n) - 1) in
+
+      k value src dst { t with hold = t.hold lsr n
+                             ; bits = t.bits - n }
+    in
+    let rec loop src dst t =
+      if t.bits < n
+      then get_byte (fun byte src dst t ->
+                       (loop[@tailcall])
+                       src dst
+                       { t with hold = t.hold lor (byte lsl t.bits)
+                              ; bits = t.bits + 8 })
+                    src dst t
+      else catch src dst t
+    in (loop[@tailcall]) src dst t
+end
+
+(* Continuation passing-style stored in [Flat] *)
+module KFlat =
+struct
+  let rec get_byte k src dst t =
+    if t.i_avl > 0
+    then let byte = Char.code @@ RO.get src t.i_pos in
+         k byte src dst
+           { t with i_pos = t.i_pos + 1
+                  ; i_avl = t.i_avl - 1 }
+    else Wait { t with state = Flat (get_byte k) }
+
+  let get_ui16 k =
+    get_byte
+    @@ fun byte0 -> get_byte
+    @@ fun byte1 -> k (byte0 lor (byte1 lsl 8))
+end
+
+(* Continuation passing-style stored in [Inflate] *)
+module KInflate =
+struct
+  let rec get lookup k src dst t =
+    if t.bits < lookup.Lookup.max
+    then
+      if t.i_avl > 0
+      then let byte = Char.code @@ RO.get src t.i_pos in
+      (get[@tailcall]) lookup k src dst
+        { t with i_pos = t.i_pos + 1
+               ; i_avl = t.i_avl - 1
+               ; hold  = t.hold lor (byte lsl t.bits)
+               ; bits  = t.bits + 8 }
+      else Wait { t with state = Inflate (get lookup k) }
+    else let (len, v) = Array.get
+           lookup.Lookup.table (t.hold land lookup.Lookup.mask) in
+         k v src dst { t with hold = t.hold lsr len
+                            ; bits = t.bits - len }
+
+  let rec put_chr window chr k src dst t =
+    [%debug log "state[kinflate:put chr]: %S (output available: %d)\n%!"
+     (String.make 1 chr) t.o_avl];
+
+    if t.o_avl > 0
+    then begin
+      Window.add_char chr window;
+      RW.set dst t.o_pos chr;
+
+      k src dst { t with o_pos = t.o_pos + 1
+                       ; o_avl = t.o_avl - 1
+                       ; write = t.write + 1 }
+    end else Flush { t with state = Inflate (put_chr window chr k) }
+
+  let rec fill_chr window length chr k src dst t =
+    if t.o_avl > 0
+    then begin
+      let len = min length t.o_avl in
+
+      Window.fill chr len window;
+      RW.fill dst t.o_pos len chr;
+
+      if length - len > 0
+      then Flush
+        { t with o_pos = t.o_pos + len
+               ; o_avl = t.o_avl - len
+               ; state = Inflate (fill_chr window (length - len) chr k) }
+      else k src dst { t with o_pos = t.o_pos + len
+                            ; o_avl = t.o_avl - len }
+    end else Flush { t with state = Inflate (fill_chr window length chr k) }
+
+  let rec write window lookup_chr lookup_dst length distance k src dst t =
+    [%debug log "state[inflate]: length: %d, distance: %d\n%!" length distance];
+
+    match distance with
+    | 1 ->
+      let open Window in
+      let open RingBuffer in
+
+      let chr = RW.get window.window.buffer
+        (window.window % (window.window.wpos - 1)) in
+
+      fill_chr window length chr k src dst t
+    | distance ->
+      let open Window in
+      let open RingBuffer in
+
+      let len = min t.o_avl length in
+      let off = window.window % (window.window.wpos - distance) in
+      let sze = window.window.size in
+
+      let pre = sze - off in
+      let ext = len - pre in
+
+      if ext > 0
+      then begin
+        Window.add_rw window.window.buffer off pre window;
+        RW_ext.blit   window.window.buffer off dst t.o_pos pre;
+        Window.add_rw window.window.buffer 0 ext window;
+        RW_ext.blit   window.window.buffer 0 dst (t.o_pos + pre) ext;
+      end else begin
+        Window.add_rw window.window.buffer off len window;
+        RW_ext.blit   window.window.buffer off dst t.o_pos len;
+      end;
+
+      if length - len > 0
+      then Flush
+        { t with o_pos = t.o_pos + len
+               ; o_avl = t.o_avl - len
+               ; write = t.write + len
+               ; state = Inflate (write window lookup_chr lookup_dst (length - len) distance k) }
+      else Cont
+        { t with o_pos = t.o_pos + len
+               ; o_avl = t.o_avl - len
+               ; write = t.write + len
+               ; state = Inffast (window, lookup_chr, lookup_dst, Length) }
+
+  let rec read_extra_dist distance k src dst t =
+    let len = Array.get _extra_dbits distance in
+
+    if t.bits < len
+    then if t.i_avl > 0
+         then let byte = Char.code @@ RO.get src t.i_pos in
+              read_extra_dist
+                distance k
+                src dst
+                { t with hold = t.hold lor (byte lsl t.bits)
+                       ; bits = t.bits + 8
+                       ; i_pos = t.i_pos + 1
+                       ; i_avl = t.i_avl - 1 }
+         else Wait
+           { t with state = Inflate (read_extra_dist distance k) }
+    else let extra = t.hold land ((1 lsl len) - 1) in
+         k (Array.get _base_dist distance + 1 + extra) src dst
+           { t with hold = t.hold lsr len
+                  ; bits = t.bits - len }
+
+  let rec read_extra_length length k src dst t =
+    let len = Array.get _extra_lbits length in
+
+    if t.bits < len
+    then if t.i_avl > 0
+         then let byte = Char.code @@ RO.get src t.i_pos in
+              read_extra_length
+                length k
+                src dst
+                { t with hold = t.hold lor (byte lsl t.bits)
+                       ; bits = t.bits + 8
+                       ; i_pos = t.i_pos + 1
+                       ; i_avl = t.i_avl - 1 }
+         else Wait
+           { t with state = Inflate (read_extra_length length k) }
+    else let extra = t.hold land ((1 lsl len) - 1) in
+         k ((Array.get _base_length length) + 3 + extra) src dst
+           { t with hold = t.hold lsr len
+                  ; bits = t.bits - len }
+end
+
+(* Continuation passing-style stored in [Crc] *)
+module KCrc =
+struct
+  let drop_bits n k src dst t =
+    k src dst { t with hold = t.hold lsr n
+                     ; bits = t.bits - n }
+
+  let rec get_byte k src dst t =
+    if t.bits / 8 > 0
+    then let byte = t.hold land 255 in
+         k byte src dst { t with hold = t.hold lsr 8
+                               ; bits = t.bits - 8 }
+    else if t.i_avl > 0
+    then let byte = Char.code @@ RO.get src t.i_pos in
+          k byte src dst
+            { t with i_pos = t.i_pos + 1
+                   ; i_avl = t.i_avl - 1 }
+    else Wait { t with state = Crc (get_byte k) }
+end
+
+(* Dictionary *)
 module Dictionary =
 struct
   type t =
-    { mutable iterator : int
-    ; mutable previous : int
-    ; max              : int
-    ; dictionary       : int array }
+    { idx        : int
+    ; prv        : int
+    ; max        : int
+    ; dictionary : int array }
 
   let make max =
-    { iterator = 0
-    ; previous = 0
+    { idx = 0
+    ; prv = 0
     ; max
     ; dictionary = Array.make max 0 }
 
-  let inflate (tbl, max_bits, max) k inflater =
+  let inflate (tbl, max_bits, max) k src dst t =
+    [%debug log "state[dictionary:inflate]\n%!"];
+
     let mask_bits = (1 lsl max_bits) - 1 in
 
-    let rec get next inflater =
-      if inflater.bits < max_bits
-      then peek_bits max_bits (get next) inflater
-      else let (len, v) = Array.get tbl (inflater.hold land mask_bits) in
-           drop_bits len (next v) inflater
+    let rec get k src dst t =
+      if t.bits < max_bits
+      then KDictionary.peek_bits max_bits
+             (fun src dst t -> (get[@tailcall]) k src dst t) src dst t
+      else let (len, v) = Array.get tbl (t.hold land mask_bits) in
+           KDictionary.drop_bits len (k v) src dst t
     in
 
-    let state = make max in
-
-    let rec loop result inflater = match result with
+    let rec loop state value src dst t = match value with
       | n when n <= 15 ->
-        state.previous <- n;
-        Array.set state.dictionary state.iterator n;
-        state.iterator <- state.iterator + 1;
+        Array.set state.dictionary state.idx n;
 
-        if state.iterator < state.max
-        then get loop inflater
-        else k state.dictionary inflater
+        if state.idx + 1 < state.max
+        then get (fun src dst t -> (loop[@tailcall])
+                   { state with idx = state.idx + 1
+                              ; prv = n }
+                   src dst t) src dst t
+        else k state.dictionary src dst t
       | 16 ->
-        let aux n inflater =
-          if state.iterator + n + 3 > state.max
-          then raise Invalid_dictionary;
+        let aux n src dst t =
+          if state.idx + n + 3 > state.max
+          then raise Invalid_dictionary; (* TODO: avoid raise *)
 
-          for j = 0 to n + 3 - 1 do
-            Array.set state.dictionary state.iterator state.previous;
-            state.iterator <- state.iterator + 1;
-          done;
+          for j = 0 to n + 3 - 1
+          do Array.set state.dictionary (state.idx + j) state.prv done;
 
-          if state.iterator < state.max
-          then get loop inflater
-          else k state.dictionary inflater
+          if state.idx + n + 3 < state.max
+          then get (fun src dst t -> (loop[@tailcall])
+                     { state with idx = state.idx + n + 3 }
+                     src dst t) src dst t
+          else k state.dictionary src dst t
         in
 
-        get_bits 2 aux inflater
+        KDictionary.get_bits 2 aux src dst t
       | 17 ->
-        let aux n inflater =
-          if state.iterator + n + 3 > state.max
+        let aux n src dst t =
+          if state.idx + n + 3 > state.max
           then raise Invalid_dictionary;
 
-          state.iterator <- state.iterator + n + 3;
-
-          if state.iterator < state.max
-          then get loop inflater
-          else k state.dictionary inflater
+          if state.idx + n + 3 < state.max
+          then get (fun src dst t -> (loop[@tailcall])
+                     { state with idx = state.idx + n + 3 }
+                     src dst t) src dst t
+          else k state.dictionary src dst t
         in
 
-        get_bits 3 aux inflater
+        KDictionary.get_bits 3 aux src dst t
       | 18 ->
-        let aux n inflater =
-          if state.iterator + n + 11 > state.max
+        let aux n src dst t =
+          if state.idx + n + 11 > state.max
           then raise Invalid_dictionary;
 
-          state.iterator <- state.iterator + n + 11;
-
-          if state.iterator < state.max
-          then get loop inflater
-          else k state.dictionary inflater
+          if state.idx + n + 11 < state.max
+          then get ((loop[@tailclal])
+                    { state with idx = state.idx + n + 11 }) src dst t
+          else k state.dictionary src dst t
         in
 
-        get_bits 7 aux inflater
+        KDictionary.get_bits 7 aux src dst t
       | _ -> raise Invalid_dictionary
     in
 
-    get loop inflater
+    get (fun src dst t -> (loop[@tailcall]) (make max) src dst t) src dst t
 end
 
-let fixed_huffman =
-  Array.init 288
-    (fun n ->
-       if n < 144 then 8
-       else if n < 256 then 9
-       else if n < 280 then 7
-       else 8)
-  |> fun lengths -> Huffman.make lengths 0 288 9
+let fixed src dst t window =
+  Cont { t with state = Inffast (window, Lookup.fixed_chr, Lookup.fixed_dst, Length) }
 
-let rec put_bytes ?(incr = (+)) window buff off len next inflater =
-  let safe_window_add_ro window buff off len =
-    let size = RO.length buff in
-
-    let pre = size - off in
-    let extra = len - pre in
-
-    if extra > 0 then begin
-      Window.add_ro buff off pre window;
-      Window.add_ro buff 0 extra window;
-    end else Window.add_ro buff off len window;
-  in
-  let safe_blit_ro src src_off dst dst_off len =
-    let size = RO.length src in
-
-    let pre = size - src_off in
-    let extra = len - pre in
-
-    if extra > 0 then begin
-      RW_ext.blit_ro src src_off dst dst_off pre;
-      RW_ext.blit_ro src 0 dst (dst_off + pre) extra;
-    end else RW_ext.blit_ro src src_off dst dst_off len;
-  in
-
-  if inflater.outpos < inflater.needed
-  then begin
-    let n = min (inflater.needed - inflater.outpos) len in
-    safe_window_add_ro window buff off n;
-    safe_blit_ro buff off inflater.dst inflater.outpos n;
-    inflater.outpos <- inflater.outpos + n;
-
-    if len - n > 0
-    then put_bytes ~incr window buff (incr off n) (len - n) next inflater
-    else next inflater
-  end else (inflater.k <- put_bytes ~incr window buff off len next; Flush)
-
-let rec ok inflater = Ok
-
-and switch window inflater =
-  if inflater.last = true
-  then crc window inflater
-  else last window inflater
-
-and crc window inflater =
-  let check b a inflater =
-    (* if Adler32.neq (Adler32.make a b) (Window.checksum window) then raise Invalid_crc; *)
-
-    ok inflater
-  in
-
-  let read_a2b a1a a1b a2a a2b = check ((a1a lsl 8) lor a1b) ((a2a lsl 8) lor a2b) in
-  let read_a2a a1a a1b a2a     = safe_get_byte (read_a2b a1a a1b a2a) in
-  let read_a1b a1a a1b         = safe_get_byte (read_a2a a1a a1b) in
-  let read_a1a a1a             = safe_get_byte (read_a1b a1a) in
-
-  safe_get_byte read_a1a inflater
-
-and flat window inflater =
-  let rec loop len inflater =
-    let available_to_read = min (inflater.available - inflater.inpos) len in
-    let available_to_write = min (inflater.needed - inflater.outpos) available_to_read in
-
-    if len = 0 then switch window inflater
-    else match available_to_read, available_to_write with
-         | 0, n ->
-           inflater.k <- loop len;
-           Wait
-         | n, 0 ->
-           inflater.k <- loop len;
-           Flush
-         | _, n ->
-           get_bytes n
-             (put_bytes window)
-             (loop (len - n))
-             inflater
-  in
-  let header len nlen inflater =
-    if nlen <> 0xFFFF - len
-    then raise Invalid_complement_of_length
-    else begin
-      reset_bits inflater;
-      loop len inflater
-    end
-
-  in
-
-  get_ui16 (fun len -> get_ui16 (fun nlen -> header len nlen)) inflater
-
-and inflate lookup_chr lookup_dst window inflater =
-  let rec loop outpos inpos hold bits length inflater =
-    match length with
-    | n when n < 256 ->
-      if outpos < inflater.needed
-      then begin
-        let chr = Char.chr n in
-
-        Window.add_char chr window;
-        RW.set inflater.dst outpos chr;
-
-        Lookup.get
-          lookup_chr
-          inpos hold bits
-          (fun inpos hold bits length inflater ->
-             (loop[@tailcall])
-               (outpos + 1)
-               inpos hold bits length
-               inflater)
-          inflater
-      end else (inflater.outpos <- outpos;
-                inflater.k <- (fun inflater -> (loop[@tailcall]) inflater.outpos inpos hold bits length inflater);
-                Flush)
-    | 256 ->
-      inflater.hold   <- hold;
-      inflater.bits   <- bits;
-      inflater.inpos  <- inpos;
-      inflater.outpos <- outpos;
-      switch window inflater
-    | n ->
-      let[@landmark] rec write outpos inpos hold bits length dist inflater =
-        match dist with
-        | 1 ->
-          let open Window in
-          let open RingBuffer in
-
-          let chr = RW.get window.window.buffer (window.window % (window.window.wpos - 1)) in
-
-          if outpos < inflater.needed
-          then begin
-            let n = min (inflater.needed - outpos) length in
-            Window.fill chr n window;
-            RW.fill inflater.dst outpos n chr;
-
-            if length - n > 0
-            then (inflater.outpos <- outpos + n;
-                  inflater.k <- (fun inflater -> write
-                                    inflater.outpos
-                                    inpos hold bits (length - n) dist
-                                    inflater);
-                  Flush)
-            else
-              Lookup.get
-                lookup_chr inpos hold bits
-                (fun inpos hold bits length inflater ->
-                   (loop[@tailcall])
-                     (outpos + n)
-                     inpos hold bits length
-                     inflater)
-                inflater
-          end else (inflater.outpos <- outpos;
-                    inflater.k <- (fun inflater -> write
-                                      inflater.outpos
-                                      inpos hold bits length dist
-                                      inflater);
-                    Flush)
-        | n ->
-          let open Window in
-          let open RingBuffer in
-
-          if outpos < inflater.needed
-          then begin
-            let n = min (inflater.needed - outpos) length in
-
-            let off_window = (window.window % (window.window.wpos - dist)) in
-            let sze_window = window.window.size in
-
-            let pre = sze_window - off_window in
-            let extra = n - pre in
-
-            if extra > 0
-            then begin
-              Window.add_rw window.window.buffer off_window pre window;
-              RW_ext.blit   window.window.buffer off_window inflater.dst outpos pre;
-              Window.add_rw window.window.buffer 0 extra window;
-              RW_ext.blit   window.window.buffer 0 inflater.dst (outpos + pre) extra;
-            end else begin
-              Window.add_rw window.window.buffer off_window n window;
-              RW_ext.blit   window.window.buffer off_window inflater.dst outpos n;
-            end;
-
-            if length - n > 0
-            then (inflater.outpos <- outpos + n;
-                  inflater.k <- (fun inflater -> write
-                                    inflater.outpos
-                                    inpos hold bits (length - n) dist
-                                    inflater);
-                  Flush)
-            else
-              Lookup.get
-                lookup_chr inpos hold bits
-                (fun inpos hold bits length inflater ->
-                   (loop[@tailcall])
-                     (outpos + n)
-                     inpos hold bits length
-                     inflater)
-                inflater
-          end else (inflater.outpos <- outpos;
-                    inflater.k <- (fun inflater -> write
-                                      inflater.outpos
-                                      inpos hold bits length dist
-                                      inflater);
-                    Flush)
-      in
-
-      let[@landmark] rec read_extra_dist inpos hold bits length dist inflater =
-        let l = Array.get _extra_dbits dist in
-
-        if bits < l
-        then if inflater.available - inpos > 0
-             then let byte = Char.code @@ RO.get inflater.src inpos in
-                  read_extra_dist
-                    (inpos + 1)
-                    (hold lor (byte lsl bits))
-                    (bits + 8)
-                    length dist inflater
-             else (inflater.k <- (fun inflater -> read_extra_dist
-                     inflater.inpos
-                     hold bits length dist
-                     inflater);
-                   Wait)
-        else let extra = hold land ((1 lsl l) - 1) in
-             write
-               outpos inpos
-               (hold lsr l)
-               (bits - l)
-               length
-               ((Array.get _base_dist dist) + 1 + extra)
-               inflater
-      in
-
-      let[@landmark] rec read_extra_length inpos hold bits length inflater =
-        let l = Array.get _extra_lbits length in
-
-        if bits < l
-        then if inflater.available - inpos > 0
-             then let byte = Char.code @@ RO.get inflater.src inpos in
-                  read_extra_length
-                    (inpos + 1)
-                    (hold lor (byte lsl bits))
-                    (bits + 8)
-                    length inflater
-             else (inflater.k <- (fun inflater -> read_extra_length
-                     inflater.inpos
-                     hold bits length
-                     inflater);
-                   Wait)
-        else begin
-          let extra = hold land ((1 lsl l) - 1) in
-          Lookup.get
-            lookup_dst inpos (hold lsr l) (bits - l)
-            (fun inpos hold bits dst inflater -> read_extra_dist
-                inpos hold bits
-                ((Array.get _base_length length) + 3 + extra)
-                dst
-                inflater)
-            inflater
-        end
-      in
-
-      read_extra_length inpos hold bits (n - 257) inflater
-  [@@specialized] in
-
-  Lookup.get
-    lookup_chr
-    inflater.inpos
-    inflater.hold
-    inflater.bits
-    (fun inpos hold bits length inflater ->
-       (loop[@tailcall])
-         inflater.outpos
-         inpos hold bits length
-         inflater)
-    inflater
-
-and fixed window inflater =
-  let tbl, max = fixed_huffman in
-
-  inflate (Lookup.make tbl max) Lookup.fixed_dst window inflater
-
-and dynamic window inflater =
-  let make_table hlit hdist hclen buf inflater =
+let dictionary window src dst t =
+  let make_table hlit hdist hclen buf src dst t =
+    [%debug log "state[dictionary:make table]: buf %a\n%!"
+       (pp_table ~sep:(fun fmt _ -> Format.fprintf fmt ";@ ")
+         (fun fmt x -> Format.fprintf fmt "%d" x)) buf];
     let tbl, max = Huffman.make buf 0 19 7 in
 
-    Dictionary.inflate
-      (tbl, max, hlit + hdist)
-      (fun dict inflater ->
-       let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
-       let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
+    Dictionary.inflate (tbl, max, hlit + hdist)
+      (fun dict src dst t ->
+       [%debug log "state[dictionary] go to continuation\n%!"];
 
-       inflate (Lookup.make tbl_chr max_chr) (Lookup.make tbl_dst max_dst) window inflater)
-      inflater
+       let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
+       [%debug log "state[dictionary]: tbl chr %a\n%!" Lookup.pp (Lookup.make tbl_chr max_chr)];
+       let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
+       [%debug log "state[dictionary]: tbl dst %a\n%!" Lookup.pp (Lookup.make tbl_dst max_dst)];
+
+       Cont { t with state = Inffast (window,
+                                      Lookup.make tbl_chr max_chr,
+                                      Lookup.make tbl_dst max_dst,
+                                      Length) })
+      src dst t
   in
-  let read_table hlit hdist hclen inflater =
+
+  let read_table hlit hdist hclen src dst t =
+    [%debug log "state[dictionary:read table]: hlit: %d, hdist: %d, hclen: %d\n%!"
+       hlit hdist hclen];
+
     let buf = Array.make 19 0 in
 
-    let rec loop iterator code inflater =
-      Array.set buf (Array.get hclen_order iterator) code;
+    let rec loop idx code src dst t =
+      Array.set buf (Array.get hclen_order idx) code;
 
-      if iterator + 1 = hclen
+      if idx + 1 = hclen
       then begin
-        for i = hclen to 18 do Array.set buf (Array.get hclen_order i) 0 done;
-        make_table hlit hdist hclen buf inflater
-      end else get_bits 3 (loop (iterator + 1)) inflater
+        for i = hclen to 18
+        do Array.set buf (Array.get hclen_order i) 0 done;
+
+        make_table hlit hdist hclen buf src dst t
+      end else
+        KDictionary.get_bits 3
+          (fun src dst t -> (loop[@tailcall]) (idx + 1) src dst t) src dst t
     in
 
-    get_bits 3 (loop 0) inflater
-  in
-  let read_hclen hlit hdist = get_bits 4 (fun hclen -> read_table hlit hdist @@ hclen + 4) in
-  let read_hdist hlit       = get_bits 5 (fun hdist -> read_hclen hlit @@ hdist + 1) in
-  let read_hlit             = get_bits 5 (fun hlit  -> read_hdist @@ hlit + 257) in
-
-  read_hlit inflater
-
-and block window inflater =
-  get_bits 2
-    (fun n inflater ->
-     match n with
-     | 0 -> flat window inflater
-     | 1 -> fixed window inflater
-     | 2 -> dynamic window inflater
-     | _ -> raise Invalid_type_of_block)
-    inflater
-
-and last window inflater =
-  get_bit (fun last inflater ->
-           inflater.last <- last;
-           block window inflater)
-     inflater
-
-and header inflater =
-  let aux byte0 byte1 inflater =
-    let buffer = RW.create_by inflater.dst ((1 lsl (byte0 lsr 4 + 8)) + 1) in
-    let window = Window.create (byte0 lsr 4 + 8) buffer in
-    last window inflater
+    KDictionary.get_bits 3
+      (fun src dst t -> (loop[@tailcall]) 0 src dst t)
+      src dst t
   in
 
-  get_byte' (fun byte0 -> get_byte' (fun byte1 -> aux byte0 byte1)) inflater
+  let read_hclen hlit hdist = KDictionary.get_bits 4
+    (fun hclen -> read_table hlit hdist (hclen + 4)) in
+  let read_hdist hlit       = KDictionary.get_bits 5
+    (fun hdist -> read_hclen hlit (hdist + 1)) in
+  let read_hlit             = KDictionary.get_bits 5
+    (fun hlit  -> read_hdist (hlit + 257)) in
 
-let make src dst =
-  { src
-  ; dst
+  read_hlit src dst t
 
-  ; last      = false
-  ; hold      = 0
-  ; bits      = 0
+let crc window src dst t =
+  let _ = Window.checksum window in
 
-  ; outpos    = 0
-  ; needed    = 0
+  (KCrc.drop_bits (t.bits mod 8)
+   @@ KCrc.get_byte
+   @@ fun a1 -> KCrc.get_byte
+   @@ fun a2 -> KCrc.get_byte
+   @@ fun b1 -> KCrc.get_byte
+   @@ fun b2 src dst t -> Ok t) src dst t
 
-  ; inpos     = 0
-  ; available = 0
+let switch src dst t window =
+  if t.last
+  then Cont { t with state = Crc (crc window) }
+  else Cont { t with state = Last window }
 
-  ; k         = header }
+let flat window src dst t =
+  let rec loop length src dst t =
+    let n = min length (min t.i_avl t.o_avl) in
 
-let refill off len inflater =
-  inflater.inpos <- off;
-  inflater.available <- off + len
+    Window.add_ro src t.i_pos n window;
+    RW_ext.blit_ro src t.i_pos dst t.o_pos n;
 
-let flush off len inflater =
-  inflater.outpos <- off;
-  inflater.needed <- off + len
+    match t.i_avl - n, t.o_avl - n with
+    | 0, b when length - n > 0 ->
+      Wait  { t with i_pos = t.i_pos + n
+                   ; i_avl = 0
+                   ; o_pos = t.o_pos + n
+                   ; o_avl = b
+                   ; state = Flat (loop (length - n)) }
+    | a, 0 when length - n > 0 ->
+      Flush { t with i_pos = t.i_pos + n
+                   ; i_avl = a
+                   ; o_pos = t.o_pos + n
+                   ; o_avl = 0
+                   ; state = Flat (loop (length - n)) }
+    | a, b -> Cont  { t with i_pos = t.i_pos + n
+                           ; i_avl = a
+                           ; o_pos = t.o_pos + n
+                           ; o_avl = b
+                           ; state = Crc (crc window) }
+  in
 
-let used_in  { inpos; _ } = inpos
-let used_out { outpos; _ } = outpos
+  let header len nlen src dst t =
+    if nlen <> 0xFFF - len
+    then Cont { t with state = Exception Invalid_complement_of_length }
+    else Cont { t with hold  = 0
+                     ; bits  = 0
+                     ; state = Flat (loop len) }
+  in
+
+  (KFlat.get_ui16
+   @@ fun len -> KFlat.get_ui16
+   @@ fun nlen -> header len nlen)
+  src dst t
+
+let rec inflate window lookup_chr lookup_dst src dst t =
+  [%debug log "state[inflate]\n%!"];
+
+  let rec loop length src dst t = match length with
+    | literal when literal < 256 ->
+      [%debug log "state[inflate]: literal %S\n%!"
+         (String.make 1 (Char.chr literal))];
+      [%debug log "state[inflate]: writing: %d\n%!" t.write];
+
+      KInflate.put_chr window (Char.chr literal)
+        (fun src dst t -> KInflate.get lookup_chr
+          (fun length src dst t -> (loop[@tailcall]) length src dst t)
+          src dst t)
+        src dst t
+    | 256 ->
+      [%debug log "state[inflate]: end of block\n%!"];
+
+      Cont { t with state = Switch window }
+    | length ->
+      [%debug log "state[inflate]: length %x\n%!" length];
+      [%debug log "state[inflate]: writing: %d\n%!" t.write];
+
+      (* Party-hard *)
+      KInflate.read_extra_length (length - 257)
+        (fun length src dst t -> KInflate.get lookup_dst
+          (fun distance src dst t -> KInflate.read_extra_dist distance
+            (fun distance src dst t -> KInflate.write
+              window lookup_chr lookup_dst length distance
+              (fun src dst t -> (inflate[@taillcall])
+                window lookup_chr lookup_dst src dst t)
+              src dst t)
+            src dst t)
+          src dst t)
+        src dst t
+  in
+
+  KInflate.get
+    lookup_chr
+    (fun length src dst t -> (loop[@tailcall]) length src dst t)
+    src dst t
+
+exception End
+
+let inffast src dst t window lookup_chr lookup_dst goto =
+  [%debug log "state[inffast]\n%!"];
+
+  let hold = ref t.hold in
+  let bits = ref t.bits in
+
+  let goto = ref goto   in
+
+  let i_pos = ref t.i_pos in
+  let i_avl = ref t.i_avl in
+
+  let o_pos = ref t.o_pos in
+  let o_avl = ref t.o_avl in
+  let write = ref t.write in
+
+  try
+    while !i_avl > 1 && !o_avl > 0
+    do match !goto with
+       | Length ->
+         if !bits < lookup_chr.Lookup.max
+         then begin
+           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           bits := !bits + 8;
+           incr i_pos;
+           decr i_avl;
+           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           bits := !bits + 8;
+           incr i_pos;
+           decr i_avl;
+         end;
+
+         let (len, value) = Array.get lookup_chr.Lookup.table (!hold land lookup_chr.Lookup.mask) in
+
+         hold := !hold lsr len;
+         bits := !bits - len;
+
+         if value < 256
+         then begin
+           [%debug log "state[inffast:literal]: %d\n%!" value];
+           [%debug log "state[inffast:literal]: writing: %d\n%!" !write];
+
+           RW.set dst !o_pos (Char.chr value);
+           Window.add_char (Char.chr value) window;
+           incr o_pos;
+           incr write;
+           decr o_avl;
+
+           goto := Length;
+         end else if value = 256 then begin raise End
+         end else begin
+           goto := ExtLength (value - 257)
+         end
+       | ExtLength length ->
+         let len = Array.get _extra_lbits length in
+
+         if !bits < len
+         then begin
+           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           bits := !bits + 8;
+           incr i_pos;
+           decr i_avl;
+         end;
+
+         let extra = !hold land ((1 lsl len) - 1) in
+         [%debug log "state[inffast:ext-length]: %d\n%!" extra];
+
+         hold := !hold lsr len;
+         bits := !bits - len;
+         goto := Dist ((Array.get _base_length length) + 3 + extra)
+       | Dist length ->
+         if !bits < lookup_dst.Lookup.max
+         then begin
+           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           bits := !bits + 8;
+           incr i_pos;
+           decr i_avl;
+           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           bits := !bits + 8;
+           incr i_pos;
+           decr i_avl;
+         end;
+
+         let (len, value) = Array.get lookup_dst.Lookup.table (!hold land lookup_dst.Lookup.mask) in
+
+         hold := !hold lsr len;
+         bits := !bits - len;
+         goto := ExtDist (length, value)
+       | ExtDist (length, dist) ->
+         let len = Array.get _extra_dbits dist in
+
+         if !bits < len
+         then begin
+           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           bits := !bits + 8;
+           incr i_pos;
+           decr i_avl;
+           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           bits := !bits + 8;
+           incr i_pos;
+           decr i_avl;
+         end;
+
+         let extra = !hold land ((1 lsl len) - 1) in
+         [%debug log "state[inffast:ext-dist]: %d + 1 + %d\n%!" dist extra];
+
+         hold := !hold lsr len;
+         bits := !bits - len;
+         goto := Write (length, (Array.get _base_dist dist) + 1 + extra)
+       | Write (length, 1) ->
+         [%debug log "state[inffast:write distone]: length: %d\n%!" length];
+         [%debug log "state[inffast:write distone]: writing: %d\n%!" !write];
+
+         let open Window in
+         let open RingBuffer in
+
+         let chr = RW.get window.window.buffer
+           (window.window % (window.window.wpos - 1)) in
+
+         let n = min length !o_avl in
+
+         Window.fill chr n window;
+         RW.fill dst !o_pos n chr;
+
+         o_pos := !o_pos + n;
+         write := !write + n;
+         o_avl := !o_avl - n;
+         goto  := if length - n = 0 then Length else Write (length - n, 1)
+       | Write (length, dist) ->
+         [%debug log "state[inffast:write]: length: %d, distance: %d\n%!"
+          length dist];
+         [%debug log "state[inffast:write]: writing: %d\n%!" !write];
+
+         let open Window in
+         let open RingBuffer in
+
+         let n = min length !o_avl in
+
+         let off = (window.window % (window.window.wpos - dist)) in
+         let len = window.window.size in
+
+         let pre = len - off in
+         let ext = n - pre in
+
+         if ext > 0
+         then begin
+           Window.add_rw window.window.buffer off pre window;
+           RW_ext.blit   window.window.buffer off dst !o_pos pre;
+           Window.add_rw window.window.buffer 0 ext window;
+           RW_ext.blit   window.window.buffer 0 dst (!o_pos + pre) ext;
+         end else begin
+           Window.add_rw window.window.buffer off n window;
+           RW_ext.blit   window.window.buffer off dst !o_pos n;
+         end;
+
+         o_pos := !o_pos + n;
+         write := !write + n;
+         o_avl := !o_avl - n;
+         goto  := if length - n = 0 then Length else Write (length - n, dist)
+    done;
+
+    let write_fn length distance src dst t =
+      KInflate.write window lookup_chr lookup_dst length distance
+        (fun src dst t -> inflate window lookup_chr lookup_dst src dst t)
+        src dst t
+    in
+
+    let state = match !goto with
+      | Length ->
+        Inflate (inflate window lookup_chr lookup_dst)
+      | ExtLength length ->
+        let fn length src dst t =
+          KInflate.read_extra_length length
+            (fun length src dst t -> KInflate.get lookup_dst
+              (fun distance src dst t -> KInflate.read_extra_dist distance
+                 (fun distance src dst t -> write_fn length distance src dst t)
+                 src dst t)
+              src dst t)
+            src dst t
+        in
+
+        Inflate (fn length)
+      | Dist length ->
+        let fn length src dst t =
+          KInflate.get lookup_dst
+            (fun distance src dst t -> KInflate.read_extra_dist distance
+              (fun distance src dst t -> write_fn length distance src dst t)
+              src dst t)
+            src dst t
+        in
+
+        Inflate (fn length)
+      | ExtDist (length, distance) ->
+        let fn length distance src dst t =
+          KInflate.read_extra_dist distance
+            (fun distance src dst t -> write_fn length distance src dst t)
+            src dst t
+        in
+
+        Inflate (fn length distance)
+      | Write (length, distance) ->
+        let fn length distance src dst t = write_fn length distance src dst t in
+
+        Inflate (fn length distance)
+    in
+
+    Cont { t with hold = !hold
+                ; bits = !bits
+                ; i_pos = !i_pos
+                ; i_avl = !i_avl
+                ; o_pos = !o_pos
+                ; o_avl = !o_avl
+                ; write = !write
+                ; state = state }
+  with End ->
+    Cont { t with hold = !hold
+                ; bits = !bits
+                ; i_pos = !i_pos
+                ; i_avl = !i_avl
+                ; o_pos = !o_pos
+                ; o_avl = !o_avl
+                ; write = !write
+                ; state = Switch window }
+
+let block src dst t window =
+  [%debug log "state[block]\n%!"];
+
+  if t.bits > 1
+  then let state = match t.hold land 0x3 with
+         | 0 -> Flat (flat window)
+         | 1 -> Fixed window
+         | 2 -> Dictionary (dictionary window)
+         | _ -> Exception Invalid_kind_of_block
+       in
+
+       Cont { t with hold = t.hold lsr 2
+                   ; bits = t.bits - 2
+                   ; state }
+  else if t.i_avl > 0
+  then let byte = Char.code @@ RO.get src t.i_pos in
+
+       Cont { t with i_pos = t.i_pos + 1
+                   ; i_avl = t.i_avl - 1
+                   ; hold  = (t.hold lor (byte lsl t.bits))
+                   ; bits  = t.bits + 8 }
+  else Wait t
+
+let last src dst t window =
+  [%debug log "state[last]\n%!"];
+
+  if t.bits > 0
+  then let last = t.hold land 1 = 1 in
+
+       Cont { t with last  = last
+                   ; hold  = t.hold lsr 1
+                   ; bits  = t.bits - 1
+                   ; state = Block window }
+  else if t.i_avl > 0
+  then let byte = Char.code @@ RO.get src t.i_pos in
+
+       Cont { t with i_pos = t.i_pos + 1
+                   ; i_avl = t.i_avl - 1
+                   ; hold  = (t.hold lor (byte lsl t.bits))
+                   ; bits  = t.bits + 8 }
+  else Wait t
+
+let header src dst t =
+  [%debug log "state[header]\n%!"];
+
+  if t.i_avl > 1
+  then let byte0 = Char.code @@ RO.get src t.i_pos in
+       let _     = Char.code @@ RO.get src (t.i_pos + 1) in
+
+       let buffer = RW.create_by dst ((1 lsl (byte0 lsr 4 + 8)) + 1) in
+       let window = Window.create (byte0 lsr 4 + 8) buffer in
+
+       Cont { t with i_pos = t.i_pos + 2
+                   ; i_avl = t.i_avl - 2
+                   ; state = Last window }
+  else Wait t
+
+let error src dst t exn =
+  Error { t with state = Exception exn }
+
+let eval src dst t =
+  let eval0 t = match t.state with
+    | Header -> header src dst t
+    | Last window -> last src dst t window
+    | Block window -> block src dst t window
+    | Flat k -> k src dst t
+    | Fixed window -> fixed src dst t window
+    | Dictionary k -> k src dst t
+    | Inffast (window, lookup_chr, lookup_dst, code) ->
+      inffast src dst t window lookup_chr lookup_dst code
+    | Inflate k -> k src dst t
+    | Switch window -> switch src dst t window
+    | Crc k -> k src dst t
+    | Exception exn -> error src dst t exn
+  in
+
+  let rec loop t =
+    [%debug log "state> %a\n%!" pp t];
+    match eval0 t with
+    | Cont t -> loop t
+    | x -> x
+  in
+
+  loop t
+
+let default =
+  { last  = false
+  ; hold  = 0
+  ; bits  = 0
+  ; i_pos = 0
+  ; i_avl = 0
+  ; o_pos = 0
+  ; o_avl = 0
+  ; write = 0
+  ; state = Header }
+
+let refill off len t =
+  { t with i_pos = off
+         ; i_avl = len }
+
+let flush off len t =
+  { t with o_pos = off
+         ; o_avl = len }
+
+let used_in t  = t.i_pos
+let used_out t = t.o_pos
 
 let decompress src dst refill' flush' =
-  let inflater = make src dst in
+  let t = flush 0 (RW.length dst) default in
 
-  flush 0 (RW.length dst) inflater;
+  let rec loop t = match eval src dst t with
+    | Cont t -> (loop[@tailcall]) t
+    | Ok t ->
+      let dropped = flush' dst 0 (used_out t) in
+      let _ = flush 0 dropped t in ()
+    | Flush t ->
+      let dropped = flush' dst 0 (used_out t) in
 
-  let rec aux () = match eval inflater with
-    | Ok ->
-      let drop = flush' dst (used_out inflater) in
-      flush 0 drop inflater
-    | Flush ->
-      let drop = flush' dst (used_out inflater) in
-      flush 0 drop inflater; aux ()
-    | Wait ->
-      let fill = refill' src in
-      refill 0 fill inflater; aux ()
-    | Error -> failwith "Inflate.decompress"
+      [%debug log "main loop> we flush %d byte(s)\n%!" dropped];
+      loop (flush 0 dropped t)
+    | Wait t ->
+      let filled = refill' src in
+      loop (refill 0 filled t)
+    | Error t -> failwith "Inflate.decompress"
   in
 
-  aux ()
+  loop t
 
-let string input output refill flush =
-  let input = RO.from_string (Bytes.unsafe_to_string input) in
-  let output = RW.from_bytes output in
+let string src dst refill flush =
+  let src = RO.from_string (Bytes.unsafe_to_string src) in
+  let dst = RW.from_bytes dst in
 
   let refill (v : normal RO.t) : int = match v with
     | RO.String v -> refill (Bytes.unsafe_of_string v) in
-  let flush (v : normal RW.t) : int -> int = match v with
+  let flush (v : normal RW.t) : int -> int -> int = match v with
     | RW.Bytes v -> flush v in
 
-  decompress input output refill flush
-
-let bigstring input output refill flush =
-  let input = RO.from_bigstring input in
-  let output = RW.from_bigstring output in
-
-  let refill (v : fast RO.t) : int = match v with
-    | RO.Bigstring v -> refill v in
-  let flush (v : fast RW.t) : int -> int = match v with
-    | RW.Bigstring v -> flush v in
-
-  decompress input output refill flush
+  decompress src dst refill flush
