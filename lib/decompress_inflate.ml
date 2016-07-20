@@ -155,7 +155,8 @@ struct
 
   let fixed_dst =
     let tbl = Array.make (1 lsl 5) (0, 0) in
-    Array.iteri (fun i _ -> Array.set tbl i (reverse_bits (i lsl 3), 5)) tbl;
+    Array.iteri (fun i _ -> [%debug Format.eprintf "state[fixed dst table]: %d -> 0x%x\n%!" i (reverse_bits (i lsl 3))];
+                 Array.set tbl i (5, reverse_bits (i lsl 3))) tbl;
     make tbl 5
 end
 
