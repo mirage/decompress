@@ -93,24 +93,6 @@ let update buff off len t =
     { a1 = !t'.a1 mod base
     ; a2 = !t'.a2 mod base }
 
-let combine a b len =
-  assert (len >= 0);
-
-  let len = len mod base in
-  let r = { a1 = a.a1; a2 = (len * a.a1) mod base; } in
-
-  (* TODO
-  r.a1 <- r.a1 + b.a1 + base - 1;
-  r.a2 <- r.a2 + a.a2 + b.a2 + base - len;
-
-  if r.a1 >= base then r.a1 <- r.a1 - base;
-  if r.a1 >= base then r.a1 <- r.a1 - base;
-  if r.a2 >= (base lsl 1) then r.a2 <- r.a2 - (base lsl 1);
-  if r.a2 >= base then r.a2 <- r.a2 - base;
-  *)
-
-  r
-
 let eq a b  = (a.a1 = b.a1) && (a.a2 = b.a2)
 let neq a b = not (eq a b)
 
