@@ -14,9 +14,9 @@ let inflate buff len chunk acc print =
   let position = ref 0 in
   let output_size = ref 0 in
 
-  let refill' _ off len =
+  let refill' _ _ _ =
     let n = min (len - !position) chunk in
-    Bytes.blit_string buff !position input off len;
+    Bytes.blit_string buff !position input 0 n;
     position := !position + n;
     n
   in
