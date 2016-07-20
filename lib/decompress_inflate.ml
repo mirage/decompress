@@ -583,28 +583,35 @@ let flat window src dst t =
     let window = Window.write_ro src t.i_pos n window in
     RW_ext.blit_ro src t.i_pos dst t.o_pos n;
 
-    match t.i_avl - n, t.o_avl - n with
-    | 0, b when length - n > 0 ->
+    if length - n = 0
+    then Cont  { t with i_pos = t.i_pos + n
+                      ; i_avl = t.i_avl - n
+                      ; o_pos = t.o_pos + n
+                      ; o_avl = t.o_avl - n
+                      ; state = Switch window }
+    else match t.i_avl - n, t.o_avl - n with
+    | 0, b ->
       Wait  { t with i_pos = t.i_pos + n
                    ; i_avl = 0
                    ; o_pos = t.o_pos + n
                    ; o_avl = b
-                   ; state = Flat (loop (length - n)) }
-    | a, 0 when length - n > 0 ->
+                   ; state = Flat (loop window (length - n)) }
+    | a, 0 ->
       Flush { t with i_pos = t.i_pos + n
                    ; i_avl = a
                    ; o_pos = t.o_pos + n
                    ; o_avl = 0
-                   ; state = Flat (loop (length - n)) }
-    | a, b -> Cont  { t with i_pos = t.i_pos + n
-                           ; i_avl = a
-                           ; o_pos = t.o_pos + n
-                           ; o_avl = b
-                           ; state = Crc (crc window) }
+                   ; state = Flat (loop window (length - n)) }
+    | a, b ->
+      Cont { t with i_pos = t.i_pos + n
+                   ; i_avl = a
+                   ; o_pos = t.o_pos + n
+                   ; o_avl = b
+                   ; state = Flat (loop window (length - n)) }
   in
 
-  let header len nlen src dst t =
-    if nlen <> 0xFFF - len
+  let header window len nlen src dst t =
+    if nlen <> 0xFFFF - len
     then Cont { t with state = Exception Invalid_complement_of_length }
     else Cont { t with hold  = 0
                      ; bits  = 0
