@@ -1,4 +1,4 @@
-true: safe_string, bin_annot, debug, optimize(3)
+true: safe_string, bin_annot, debug
 <*/*>: warn(@32@20@25@26@34@33@37@39)
 
 <lib>: include
@@ -6,7 +6,7 @@ true: safe_string, bin_annot, debug, optimize(3)
 <bindings>: include
 
 # library
-<lib/*.ml>: use_ppx_debug(false), use_bigarray, unsafe, unbox_closures
+<lib/*.ml>: use_ppx_debug(false), use_bigarray, unsafe
 
 # ppx
 <ppx/*.{ml,mli,byte,native}>: package(compiler-libs.common)
