@@ -15,6 +15,8 @@ val flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
 val refill     : int -> int -> ('i, 'o) t -> ('i, 'o) t
 val used_in    : ('i, 'o) t -> int
 val used_out   : ('i, 'o) t -> int
+val available_in : ('i, 'o) t -> int
+val available_out : ('i, 'o) t -> int
 
-val decompress : 'a RO.t -> 'a RW.t -> ('a RO.t -> int) -> ('a RW.t -> int -> int -> int) -> unit
-val string     : bytes -> bytes -> (bytes -> int) -> (bytes -> int -> int -> int) -> unit
+val decompress : 'a RO.t -> 'a RW.t -> ('a RO.t -> int -> int -> int) -> ('a RW.t -> int -> int -> int) -> unit
+val string     : bytes -> bytes -> (bytes -> int -> int -> int) -> (bytes -> int -> int -> int) -> unit

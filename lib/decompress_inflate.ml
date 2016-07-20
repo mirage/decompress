@@ -964,6 +964,9 @@ let flush off len t =
   { t with o_pos = off
          ; o_avl = len }
 
+let available_in t  = t.i_avl
+let available_out t = t.o_avl
+
 let used_in t  = t.i_pos
 let used_out t = t.o_pos
 
@@ -980,8 +983,8 @@ let decompress src dst refill' flush' =
 
       loop (flush 0 dropped t)
     | Wait t ->
-      let filled = refill' src in
-      loop (refill 0 filled t)
+      let filled = refill' src 0 (RO.length src - available_in t) in
+      loop (refill 0 (available_in t + filled) t)
     | Error t -> failwith "Inflate.decompress"
   in
 
@@ -991,7 +994,7 @@ let string src dst refill flush =
   let src = RO.from_string (Bytes.unsafe_to_string src) in
   let dst = RW.from_bytes dst in
 
-  let refill (v : normal RO.t) : int = match v with
+  let refill (v : normal RO.t) : int -> int -> int = match v with
     | RO.String v -> refill (Bytes.unsafe_of_string v) in
   let flush (v : normal RW.t) : int -> int -> int = match v with
     | RW.Bytes v -> flush v in

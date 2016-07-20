@@ -98,9 +98,9 @@ struct
     let refill input =
       let n = String.length input in
       let to_read = ref n in
-      fun buf ->
-        let m = min !to_read (Bytes.length buf) in
-        String.blit input (n - !to_read) buf 0 m;
+      fun buf off len ->
+        let m = min !to_read len in
+        String.blit input (n - !to_read) buf off m;
         to_read := !to_read - m;
         m
     in

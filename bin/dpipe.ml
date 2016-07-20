@@ -13,9 +13,9 @@ struct
     let input    = Bytes.create input_size in
     let output   = Bytes.create output_size in
 
-    let refill input =
-      let n = min (size - !position) (Bytes.length input) in
-      Bytes.blit_string document !position input 0 n;
+    let refill input off len =
+      let n = min (size - !position) len in
+      Bytes.blit_string document !position input off n;
       position := !position + n;
       n
     in
@@ -80,5 +80,5 @@ let () =
   if Sys.argv |> Array.length >= 1
   then if Sys.argv |> Array.length >= 2 && Sys.argv.(1) = "-d"
     then Inflate.string ~input_size:1024 ~output_size:1024 (load_input ()) |> write_output
-    else Deflate.string ~input_size:1024 ~output_size:1024 ~level:1 (load_input ()) |> write_output
+    else Deflate.string ~input_size:1024 ~output_size:1024 ~level:0 (load_input ()) |> write_output
   else ()
