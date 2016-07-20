@@ -40,6 +40,14 @@ let atom atom t =
   { a1
   ; a2 = if a1 + t.a2 >= base then (a1 + t.a2) - base else a1 + t.a2 }
 
+let fill chr len t =
+  let rec aux t = function
+    | 0 -> t
+    | n -> aux (atom chr t) (n - 1)
+  in
+
+  aux t len
+
 let update buff off len t =
   match len with
   | 0 -> t
@@ -97,3 +105,6 @@ let eq a b  = (a.a1 = b.a1) && (a.a2 = b.a2)
 let neq a b = not (eq a b)
 
 let get { a1; a2; } = (a1, a2)
+
+let pp fmt { a1; a2; } =
+  Format.fprintf fmt "(%d, %d)" a1 a2
