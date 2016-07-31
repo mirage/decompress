@@ -8,7 +8,7 @@ bug-reports:  "https://github.com/oklm-wsh/Decompress/issues"
 dev-repo:     "https://github.com/oklm-wsh/Decompress.git"
 license:      "MIT"
 
-build: [ "ocaml" "pkg/pkg.ml" "build" "--pinned" pinned "--with-unix" base-unix:installed ]
+build: [ "ocaml" "pkg/pkg.ml" "build" "--pinned" pinned ]
 build-test: [ [ "ocaml" "pkg/pkg.ml" "build" "--pinned" pinned "--tests" "true" ]
               [ "ocaml" "pkg/pkg.ml" "test" ] ]
 
