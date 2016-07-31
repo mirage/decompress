@@ -6,7 +6,7 @@ true: safe_string, bin_annot, debug
 <bindings>: include
 
 # library
-<lib/*.ml>: use_ppx_debug(false), use_bigarray, unsafe
+<lib/*.ml>: use_ppx_debug(false), use_bigarray, unsafe, inline(1000)
 
 # ppx
 <ppx/*.{ml,mli,byte,native}>: package(compiler-libs.common)
