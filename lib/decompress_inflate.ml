@@ -213,7 +213,7 @@ struct
     let rec loop src dst t =
       if t.bits < n
       then get_byte (fun byte src dst t ->
-                       (loop[@taillcall])
+                       (loop[@tailcall])
                        src dst
                        { t with hold = t.hold lor (byte lsl t.bits)
                               ; bits = t.bits + 8 })
@@ -640,7 +640,7 @@ let rec inflate window lookup_chr lookup_dst src dst t =
           (fun distance src dst t -> KInflate.read_extra_dist distance
             (fun distance src dst t -> KInflate.write
               window lookup_chr lookup_dst length distance
-              (fun window src dst t -> (inflate[@taillcall])
+              (fun window src dst t -> (inflate[@tailcall])
                 window lookup_chr lookup_dst src dst t)
               src dst t)
             src dst t)
