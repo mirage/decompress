@@ -1,5 +1,4 @@
 open Ast_mapper
-open Ast_helper
 open Asttypes
 open Parsetree
 open Longident

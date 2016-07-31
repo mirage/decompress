@@ -58,7 +58,7 @@ let rec depth = function
     1 + min (depth a) (depth b)
   | Flat (depth, _) -> depth
 
-let rec decompress = function
+let decompress = function
   | Flat (depth, table) ->
     let rec aux index level depth =
       if depth > 0
@@ -111,7 +111,7 @@ let rec depth = function
   | Flat (d, a) ->
     List.map (fun x -> d + depth x) (Array.to_list a) |> List.min ~default:d
 
-let rec read_and_find get_bit get_bits node k state =
+let read_and_find get_bit get_bits node k state =
   let rec aux tree state = match tree with
     | Leaf i -> k i state
     | Node (a, b) ->

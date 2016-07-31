@@ -11,7 +11,6 @@ sig
       is no such byte. *)
   type src
   type dst
-  type mode
 
   (** Returns a new input abstraction reading from the given source. *)
   val make : ?window_bits:int -> ?level:int -> src -> dst -> t

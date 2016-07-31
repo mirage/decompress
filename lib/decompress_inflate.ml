@@ -46,13 +46,9 @@ struct
   let () = [%debug Logs.set_level ~all:true (Some Logs.Debug)]
   let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
 
-  exception Invalid_huffman
   exception Invalid_dictionary
-  exception Invalid_header
   exception Invalid_complement_of_length
   exception Invalid_type_of_block
-  exception Invalid_extrabits
-  exception Invalid_distance
   exception Invalid_crc
 
   module O = struct type elt = char [@@immmediate] include O end
@@ -79,8 +75,6 @@ struct
       (** position input buffer *)
     ; mutable available     : int
     ; mutable k             : t -> [ `Ok | `Flush | `Wait | `Error ] }
-
-  exception Expected_data
 
   let eval inflater =
     inflater.k inflater
@@ -124,7 +118,7 @@ struct
     inflater.bits <- 0
 
   let get_bit k inflater =
-    let rec aux infalter =
+    let aux infalter =
       let result = inflater.hold land 1 = 1 in
       inflater.bits <- inflater.bits - 1;
       inflater.hold <- inflater.hold lsr 1;
@@ -485,20 +479,8 @@ struct
   and dynamic window inflater =
     [%debug Logs.debug @@ fun m -> m "state: dynamic"];
 
-    let print_arr ~sep print_data fmt arr =
-      let rec aux = function
-        | [] -> ()
-        | [ x ] -> print_data fmt x
-        | x :: r -> Format.fprintf fmt "%a%s" print_data x sep; aux r
-      in
-
-      aux (Array.to_list arr)
-    in
-    let print_int = Format.pp_print_int in
-
     let make_table hlit hdist hclen buf inflater =
       [%debug Logs.debug @@ fun m -> m "state: make_table [%d:%d:%d]" hlit hdist hclen];
-      [%debug Logs.debug @@ fun m -> m "state: make_table [%a]" (print_arr ~sep:"; " print_int) buf];
 
       Dictionary.inflate
         (Huffman.make buf 0 19 7, hlit + hdist)

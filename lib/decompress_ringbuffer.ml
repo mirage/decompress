@@ -76,23 +76,6 @@ struct
     if t.rpos + n < t.size then t.rpos <- t.rpos + n
     else t.rpos <- t.rpos + n - t.size
 
-  let transmit t f =
-    if t.wpos = t.rpos then 0
-    else
-      let len0 =
-        if t.wpos >= t.rpos then t.wpos - t.rpos
-        else t.size - t.rpos
-      in
-      let len = f t.buffer t.rpos len0 in
-      assert (len <= len0);
-      drop t len;
-      len
-
-  let pp fmt t =
-    if t.rpos <= t.wpos
-    then Format.fprintf fmt "[ rpos: %d; ... wpos: %d; ]" t.rpos t.wpos
-    else Format.fprintf fmt "[ wpos: %d; ... rpos: %d; ]" t.wpos t.rpos
-
   let move t n =
     assert (n <= available_to_write t);
     if t.wpos + n < t.size then t.wpos <- t.wpos + n

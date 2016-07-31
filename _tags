@@ -1,5 +1,25 @@
-# OASIS_START
-# OASIS_STOP
-true: annot
-true: safe_string
-<lib/*.ml{,i}>: ppx_debug
+true: safe_string, bin_annot, debug, optimize(3)
+<*/*>: warn(@32@20@25@26@34@33@37@39)
+
+<lib>: include
+<gen>: include
+<bindings>: include
+
+# library
+<lib/*.ml>: use_ppx_debug(false), use_bigarray, unsafe
+
+# ppx
+<ppx/*.{ml,mli,byte,native}>: package(compiler-libs.common)
+
+# generate (inverted stub)
+<gen/*.{ml,mli,byte,native}>: package(ctypes.foreign), package(ctypes.stubs)
+
+# inverted stub
+<bindings/*.{ml,mli}>: package(ctypes.stubs)
+
+# test
+<lib_test/*.{ml,mli,byte,native}>: package(re.str), package(camlzip), package(alcotest), use_bigarray
+
+# binary
+<bin/dpipe.{ml,mli,byte,native}>: use_unix, use_bigarray
+<bin/dcpr.{ml,mli,byte,native}>: use_bigarray, package(camlzip), package(cmdliner)

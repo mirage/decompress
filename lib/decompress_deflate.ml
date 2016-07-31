@@ -5,7 +5,6 @@ sig
   type t
   type src
   type dst
-  type mode
 
   val make : ?window_bits:int -> ?level:int -> src -> dst -> t
   val eval : t -> [ `Ok | `Flush | `Error | `Wait ]
@@ -41,24 +40,12 @@ sig
   val of_input : i -> t
 end
 
-let binary_of_byte ?(size = 8) byte =
-  if byte < 0 then invalid_arg "binary_of_byte" else
-  if byte = 0 then String.make size '0' else
-    let rec aux acc byte =
-      if byte = 0 then acc else
-        aux (string_of_int (byte land 1) :: acc) (byte lsr 1)
-    in
-    let l = aux [] byte in
-    String.make (size - List.length l) '0' ^ String.concat "" (aux [] byte)
-
 module Make (I : INPUT) (O : OUTPUT with type i = I.t) : S
   with type src = I.t
    and type dst = O.t =
 struct
   let () = [%debug Logs.set_level (Some Logs.Debug)]
   let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
-
-  exception Expected_data
 
   module Adler32 = Decompress_adler32.Make(Char)(struct type elt = char include I end)
   module Lz77    = Decompress_lz77.Make(O)
@@ -80,78 +67,9 @@ struct
     | Flat (_, size, _) -> size = 0
     | Static lz77 | Dynamic lz77 -> Lz77.is_empty lz77
 
-  let window_bits_of_mode = function
-    | Static lz77 | Dynamic lz77 -> Lz77.window_bits lz77
-    | Flat (buffer, _, window_bits) -> window_bits
-
   let dynamic ~level window_bits = Dynamic (Lz77.make ~window_bits ~level ())
   let static  ~level window_bits = Static (Lz77.make ~window_bits ~level ())
   let flat                    () = Flat (O.create 0xFFFF, 0, 0xFFFF)
-
-  type flush =
-    | Sync_flush
-    (** It performs the following tasks:
-     *  * If there is some buffered but not yet compressed data, then this data
-     *    is compressed into one or several blocks (the type for each block will
-     *    depend on the amount and nature of data).
-     *  * A new type 0 block with empty contents is appended.
-     *
-     *  A type 0 block with empty contents consists of:
-     *  * the three-bit block header;
-     *  * 0 to 7 bits equal to zero, to achieve byte alignment;
-     *  * the four-byte sequence 00 00 FF FF.
-     *)
-    | Partial_flush
-    (** After. *)
-    | Full_flush
-    (** The "full flush" (with Z_FULL_FLUSH) is a variant of the sync flush. The
-     *  difference lies in the LZ77 step. Recall that the LZ77 algorithm
-     *  replaces some sequences of characters by references to an identical
-     *  sequence occurring somewhere in the previous uncompressed data (the
-     *  backward distance is up to 32 kB in DEFLATE). This can be viewed in the
-     *  following way: the previous data bytes collectively represent a
-     *  dictionary of sequences, which the LZ77 unit can use by including
-     *  symbolic references, when such a sequence is encountered.
-     *
-     *  At the very beginning of the stream, the dictionary is empty (it can be
-     *  set to arbitrary data, but the deflater and the inflater must use the
-     *  same preset dictionary, which is a convention outside the scope of this
-     *  document). It is then filled with the first 32 kB of data. As more data
-     *  is processed, the dictionary is constantly updated, and entries which
-     *  become too old are dropped. The full flush is a sync flush where the
-     *  dictionary is emptied: after a full flush, the deflater will refrain
-     *  from using copy symbols which reference sequences appearing before the
-     *  flush point.
-     *
-     *  From the inflater point of view, no special treatment of full flushes is
-     *  needed. The difference between a sync flush and a full flush alters only
-     *  the way the deflater selects symbols. A full flush degrades the
-     *  compression efficiency since it removes sequence sharing opportunities
-     *  for the next 32 kB of data; however, this degradation is very slight if
-     *  full flushes are applied only rarely with regards to the 32 kB window
-     *  size, e.g. every 1 MB or so. Full flushes are handy for damage recovery:
-     *
-     *  * a full flush is also a sync flush, which includes the very specific
-     *    and highly recognizable 00 00 FF FF pattern;
-     *  * byte alignment is restored by a full flush;
-     *  * inflation can take over from a full flush point without any knowledge
-     *    of the previous bytes.
-     *
-     *  It is therefore recommended to include occasional full flushes in long
-     *  streams of data, except if the outer protocol makes it useless (e.g. TLS
-     *  and SSH are security protocols which apply cryptographic integrity
-     *  checks which detect alterations with a very high probability, and it is
-     *  specified that they MUST NOT try to recover from damage, since such
-     *  damage could be malicious).)
-     *)
-
-  let fixed_huffman_length_table =
-    Array.init 288
-      (fun n ->
-         if n < 144 then (n + 0x030, 8)
-         else if n < 256 then (n - 144 + 0x190, 9)
-         else if n < 280 then (n - 256 + 0x000, 7)
-         else (n - 280 + 0x0C0, 8))
 
   type src = I.t
   type dst = O.t
@@ -179,17 +97,10 @@ struct
       mutable crc       : Adler32.t;
       mutable mode      : mode;
 
-      mutable flush     : flush option;
       mutable lock      : bool;
 
       mutable k         : t -> [ `Ok | `Flush | `Error | `Wait ];
     }
-
-  type writing =
-    [ `Length
-    | `Extra_length
-    | `Dist
-    | `Extra_dist ]
 
   let put_byte deflater byte =
     [%debug Logs.debug @@ fun m -> m "put one byte: 0x%02x" byte];
@@ -204,15 +115,6 @@ struct
   let put_short deflater short =
     put_byte deflater (short land 0xFF);
     put_byte deflater (short lsr 8 land 0xFF)
-
-  let read_byte deflater =
-    if deflater.available - deflater.inpos > 0
-    then begin
-      let code = I.get deflater.src deflater.inpos |> Char.code in
-      [%debug Logs.debug @@ fun m -> m "read one byte: 0x%02x" code];
-      deflater.inpos <- deflater.inpos + 1;
-      code
-    end else raise Expected_data
 
   let put_short_msb deflater short =
     put_byte deflater (short lsr 8 land 0xFF);
@@ -233,18 +135,6 @@ struct
   let add_bit deflater value =
     add_bits deflater (if value then 1 else 0) 1
 
-  let flush deflater =
-    if deflater.bits = 16
-    then begin
-      put_short deflater deflater.hold;
-      deflater.hold <- 0;
-      deflater.bits <- 0
-    end else if deflater.bits >= 8 then begin
-      put_byte deflater (deflater.hold land 0xFF);
-      deflater.hold <- deflater.hold lsr 8;
-      deflater.bits <- deflater.bits - 8
-    end else ()
-
   let align deflater =
     if deflater.bits > 8
     then begin
@@ -258,18 +148,6 @@ struct
 
     deflater.hold <- 0;
     deflater.bits <- 0
-
-  let put_bytes deflater ?(size = deflater.needed) bytes =
-    if deflater.bits <> 0 then flush deflater;
-    O.blit
-      bytes deflater.i
-      deflater.dst deflater.outpos
-      (O.length bytes);
-    deflater.needed <- deflater.needed - (O.length bytes);
-    deflater.outpos <- deflater.outpos + (O.length bytes)
-
-  exception OK
-  exception Avoid
 
   let get_tree_symbols hlit lit_len_lengths hdist dist_lengths =
     let src = Array.make (hlit + hdist) 0 in
@@ -362,8 +240,6 @@ struct
 
     Array.sub result 0 !n_result, freqs
 
-  exception No_more_input
-
   let rec make ?(window_bits = 15) ?(level = 4) src dst =
     let mode = match level with
       | 0 -> flat ()
@@ -399,7 +275,6 @@ struct
     ; crc             = Adler32.init ()
     ; mode
 
-    ; flush           = None
     ; lock            = false
 
     ; k               = header }
@@ -453,7 +328,7 @@ struct
   and read deflater =
     [%debug Logs.debug @@ fun m -> m "state: read (last = %b)" deflater.last];
 
-    let rec aux deflater =
+    let aux deflater =
       let new_mode, read = match deflater.mode with
         | Flat (buffer, real_size, window_bits) ->
           let len = min (0xFFFF - real_size) deflater.available in
@@ -524,16 +399,11 @@ struct
     end else `Wait
 
   and flushing_method deflater =
-    let new_k = match deflater.flush, deflater.last with
-      (* if we have [Some x], user expect a new compute, otherwise we can
-         continue *)
-      | Some Sync_flush, false    -> sync_flush
-      | Some Partial_flush, false -> sync_flush
-      | Some Full_flush, false    -> sync_flush
-      | _, true                   ->
+    let new_k = match deflater.last with
+      | true ->
         [%debug Logs.debug @@ fun m -> m "we stop compute, the last flag is send"];
         end_flush
-      | None, false           ->
+      | false ->
         [%debug Logs.debug @@ fun m -> m "we continue to read the block"];
 
         match deflater.mode with
@@ -1045,8 +915,6 @@ struct
 
       eval deflater
     end else `Flush
-
-  and error deflater = `Error
 
   and ok deflater = `Ok
 

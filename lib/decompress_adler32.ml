@@ -155,10 +155,5 @@ struct
 
   let neq a b = not (eq a b)
 
-  let to_string { a1; a2; } =
-    let buffer = Buffer.create 16 in
-    Printf.bprintf buffer "[%02x; %02x]" a1 a2;
-    Buffer.contents buffer
-
   let get { a1; a2; } = (a1, a2)
 end
