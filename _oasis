@@ -38,6 +38,12 @@ Flag stub
   Description:          Generate shared C library of Decompress
   Default:              false
 
+Library memcpy
+  Path:                 memcpy
+  Modules:              Memcpy
+  CSources:             memcpy/stub_memcpy.c
+  BuildDepends:         bigarray
+
 Library decompress
   Path:                 lib
   Modules:              Decompress, Decompress_common, Decompress_inflate, Decompress_deflate
@@ -45,6 +51,7 @@ Library decompress
                         Decompress_ringbuffer,
                         Decompress_lz77, Decompress_window, Decompress_adler32, Decompress_tables
   NativeOpt:            -inline 1000
+  BuildDepends:         memcpy
 
 Executable ppx_debug
   Path:                 ppx
@@ -85,7 +92,7 @@ Object bindings
   Install:              false
   Path:                 bindings
   Modules:              Bindings
-  BuildDepends:         decompress, ctypes.stubs, ctypes.foreign
+  BuildDepends:         memcpy, decompress, ctypes.stubs, ctypes.foreign
   Build$:               flag(stub)
 
 Executable generate
@@ -93,7 +100,7 @@ Executable generate
   Path:                 gen
   MainIs:               generate.ml
   CompiledObject:       best
-  BuildDepends:         bindings
+  BuildDepends:         bindings, ctypes.stubs
   Build$:               flag(stub)
 
 SourceRepository master

@@ -1,36 +1,16 @@
-module type ATOM =
-sig
-  type t
+open Decompress_common
 
-  val code : t -> int
-end
+type t
 
-module type SCALAR =
-sig
-  type elt
-  type t
+val default : t
+val make    : int -> int -> t
 
-  val get : t -> int -> elt
-end
+val update  : 'a RO.t -> int -> int -> t -> t
+val fill    : char -> int -> t -> t
+val atom    : char -> t -> t
 
-module type S =
-sig
-  type t
-  type atom
-  type buffer
+val eq  : t -> t -> bool
+val neq : t -> t -> bool
+val get : t -> (int * int)
 
-  val init : unit -> t
-  val make : int -> int -> t
-
-  val update  : buffer -> int -> int -> t -> t
-  val atom    : atom -> t -> t
-  val combine : t -> t -> int -> t
-
-  val eq  : t -> t -> bool
-  val neq : t -> t -> bool
-  val get : t -> (int * int)
-end
-
-module Make (Atom : ATOM) (Scalar : SCALAR with type elt = Atom.t) : S
-  with type atom = Atom.t
-   and type buffer = Scalar.t
+val pp  : Format.formatter -> t -> unit

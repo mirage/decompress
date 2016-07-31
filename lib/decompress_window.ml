@@ -1,83 +1,41 @@
-module type ATOM =
-sig
-  type t
+open Decompress_common
 
-  val code : t -> int
-end
+module RingBuffer = Decompress_ringbuffer
+module Adler32    = Decompress_adler32
 
-module type SCALAR =
-sig
-  type elt
-  type t
+type 'a t =
+  { bits         : int
+  ; window       : 'a RingBuffer.t
+  ; mutable crc  : Adler32.t }
 
-  val create : int -> t
-  val blit   : t -> int -> t -> int -> int -> unit
-  val get    : t -> int -> elt
-  val set    : t -> int -> elt -> unit
-end
+let create bits buffer =
+  { bits   = bits
+  ; window = RingBuffer.create (1 lsl bits) buffer
+  ; crc    = Adler32.default }
 
-module type S =
-sig
-  type t
-  type crc
-  type atom
-  type buffer
+let add_string buff off len t =
+  RingBuffer.write_string t.window buff off len;
+  t.crc <- Adler32.update (RO.from_string buff) off len t.crc
 
-  val init : ?bits:int -> unit -> t
+let add_ro buff off len t =
+  RingBuffer.write_ro t.window buff off len;
+  t.crc <- Adler32.update buff off len t.crc
 
-  val add_buffer : buffer -> int -> int -> t -> unit
-  val add_atom   : atom -> t -> unit
+let add_rw buff off len t =
+  RingBuffer.write_ro t.window (to_ro buff) off len;
+  t.crc <- Adler32.update (to_ro buff) off len t.crc
 
-  val last   : t -> atom
-  val get    : t -> int -> atom
-  val buffer : t -> int -> int -> buffer
+let add_char chr t =
+  RingBuffer.write_char t.window chr;
+  t.crc <- Adler32.atom chr t.crc
 
-  val checksum  : t -> crc
-  val available : t -> int
-end
+let fill chr len t =
+  RingBuffer.fill t.window chr len;
 
-module Make (Atom : ATOM) (Scalar : SCALAR with type elt = Atom.t) : S
-  with type crc = Decompress_adler32.Make(Atom)(Scalar).t
-   and type atom = Atom.t
-   and type buffer = Scalar.t =
-struct
-  module CRC = Decompress_adler32.Make(Atom)(Scalar)
-  module RingBuffer = Decompress_ringbuffer.Make(Atom)(Scalar)
+  let rec aux acc = function 0 -> acc
+    | n -> aux (Adler32.atom chr acc) (n - 1) in
+  t.crc <- aux t.crc len
 
-  type t =
-    { bits         : int
-    ; window       : RingBuffer.t
-    ; mutable crc  : CRC.t }
+let checksum t = t.crc
 
-  type crc = CRC.t
-  type atom = CRC.atom
-  type buffer = CRC.buffer
-
-  let init ?(bits = 15) () =
-    { bits   = bits
-    ; window = RingBuffer.create (1 lsl bits)
-    ; crc    = CRC.init () }
-
-  let add_buffer buff off len t =
-    RingBuffer.write t.window buff off len;
-    t.crc <- CRC.update buff off len t.crc
-
-  let add_atom atom t =
-    let buff = Scalar.create 1 in
-    Scalar.set buff 0 atom;
-    RingBuffer.write t.window buff 0 1;
-    t.crc <- CRC.update buff 0 1 t.crc
-
-  let checksum t = t.crc
-
-  let available t = RingBuffer.available_to_read t.window
-
-  let last t =
-    RingBuffer.rget t.window 1 (* dist one *)
-
-  let get t idx =
-    RingBuffer.rget t.window idx
-
-  let buffer t dist size =
-    RingBuffer.rsub t.window dist size
-end
+let available t = RingBuffer.available_to_read t.window
