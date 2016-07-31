@@ -13,7 +13,7 @@ let () =
   let build = Pkg.build ~cmd:builder () in
   Pkg.describe "decompress" ~build @@ fun c ->
 
-  Ok [ Pkg.lib ~exts:Exts.library "lib/decompress"
+  Ok [ Pkg.mllib ~api:["Decompress"] "lib/decompress.mllib"
      ; Pkg.lib ~exts:Exts.c_dll_library "lib/libdecompress"
      ; Pkg.bin "bin/dpipe"
      ; Pkg.test "lib_test/decompress_test" ]
