@@ -479,20 +479,8 @@ struct
   and dynamic window inflater =
     [%debug Logs.debug @@ fun m -> m "state: dynamic"];
 
-    let print_arr ~sep print_data fmt arr =
-      let rec aux = function
-        | [] -> ()
-        | [ x ] -> print_data fmt x
-        | x :: r -> Format.fprintf fmt "%a%s" print_data x sep; aux r
-      in
-
-      aux (Array.to_list arr)
-    in
-    let print_int = Format.pp_print_int in
-
     let make_table hlit hdist hclen buf inflater =
       [%debug Logs.debug @@ fun m -> m "state: make_table [%d:%d:%d]" hlit hdist hclen];
-      [%debug Logs.debug @@ fun m -> m "state: make_table [%a]" (print_arr ~sep:"; " print_int) buf];
 
       Dictionary.inflate
         (Huffman.make buf 0 19 7, hlit + hdist)
