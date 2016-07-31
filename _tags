@@ -21,5 +21,5 @@ true: safe_string, bin_annot, debug, optimize(3)
 <lib_test/*.{ml,mli,byte,native}>: package(re.str), package(camlzip), package(alcotest), use_bigarray
 
 # binary
-<bin/dpipe.{ml,mli,byte,native}>: use_unix, use_bigarray, package(logs), package(logs.fmt)
-<bin/dcpr.{ml,mli,byte,native}>: use_bigarray, package(camlzip), package(cmdliner), package(logs), package(logs.fmt)
+<bin/dpipe.{ml,mli,byte,native}>: use_unix, use_bigarray
+<bin/dcpr.{ml,mli,byte,native}>: use_bigarray, package(camlzip), package(cmdliner)
