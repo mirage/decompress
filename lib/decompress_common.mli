@@ -27,8 +27,8 @@ sig
   val to_string : t -> string
 end
 
-type normal = [ `Normal ]
-type fast   = [ `Fast ]
+type normal = Normal
+type fast   = Fast
 
 module RO :
 sig
