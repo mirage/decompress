@@ -50,14 +50,14 @@ struct
         let n = String.length input in
         let to_read = ref n in
         fun buf ->
-          let m = min !to_read (String.length buf) in
-          String.blit input (n - !to_read) (Bytes.unsafe_of_string buf) 0 m;
+          let m = min !to_read (Bytes.length buf) in
+          String.blit input (n - !to_read) buf 0 m;
           to_read := !to_read - m;
           m
       in
 
       let flush output buf len =
-        Buffer.add_substring output buf 0 len in
+        Buffer.add_subbytes output buf 0 len in
 
       Zlib.compress (refill str) (flush compressed);
       Buffer.contents compressed
@@ -72,14 +72,14 @@ struct
         let n = String.length input in
         let to_read = ref n in
         fun buf ->
-          let m = min !to_read (String.length buf) in
-          String.blit input (n - !to_read) (Bytes.unsafe_of_string buf) 0 m;
+          let m = min !to_read (Bytes.length buf) in
+          String.blit input (n - !to_read) buf 0 m;
           to_read := !to_read - m;
           m
       in
 
       let flush output buf len =
-        Buffer.add_substring output buf 0 len in
+        Buffer.add_subbytes output buf 0 len in
 
       Zlib.uncompress (refill str) (flush uncompressed);
       Buffer.contents uncompressed
