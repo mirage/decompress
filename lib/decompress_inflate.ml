@@ -99,10 +99,11 @@ struct
   let checksum { crc; _ } = crc
 end
 
-exception Invalid_kind_of_block
-exception Invalid_complement_of_length
-exception Invalid_dictionary
-exception Invalid_crc
+type error = ..
+type error += Invalid_kind_of_block of int
+type error += Invalid_complement_of_length of int * int
+type error += Invalid_dictionary
+type error += Invalid_crc of Adler32.t
 
 let reverse_bits =
   let t =
@@ -183,13 +184,13 @@ and ('i, 'o) state =
   | Inflate    of ('i RO.t -> 'o RW.t -> ('i, 'o) t -> ('i, 'o) res)
   | Switch     of 'o Window.t
   | Crc        of ('i RO.t -> 'o RW.t -> ('i, 'o) t -> ('i, 'o) res)
-  | Exception  of exn
+  | Exception  of error
 and ('i, 'o) res =
   | Cont  of ('i, 'o) t
   | Wait  of ('i, 'o) t
   | Flush of ('i, 'o) t
   | Ok    of ('i, 'o) t
-  | Error of ('i, 'o) t
+  | Error of ('i, 'o) t * error
 and code =
   | Length
   | ExtLength of int
@@ -197,8 +198,14 @@ and code =
   | ExtDist   of int * int
   | Write     of int * int
 
-let error src dst t exn =
-  Error { t with state = Exception exn }
+type ('i, 'o) r =
+  [ `End of ('i, 'o) t
+  | `Flush of ('i, 'o) t
+  | `Await of ('i, 'o) t
+  | `Error of ('i, 'o) t * error ]
+
+let error t exn =
+  Error ({ t with state = Exception exn }, exn)
 
 module KHeader =
 struct
@@ -459,7 +466,7 @@ struct
       | 16 ->
         let aux n src dst t =
           if state.idx + n + 3 > state.max
-          then error src dst t Invalid_dictionary
+          then error t Invalid_dictionary
           else begin
             for j = 0 to n + 3 - 1
             do Array.set state.dictionary (state.idx + j) state.prv done;
@@ -476,7 +483,7 @@ struct
       | 17 ->
         let aux n src dst t =
           if state.idx + n + 3 > state.max
-          then error src dst t Invalid_dictionary
+          then error t Invalid_dictionary
           else begin
             if state.idx + n + 3 < state.max
             then get (fun src dst t -> (loop[@tailcall])
@@ -490,7 +497,7 @@ struct
       | 18 ->
         let aux n src dst t =
           if state.idx + n + 11 > state.max
-          then error src dst t Invalid_dictionary
+          then error t Invalid_dictionary
           else begin
             if state.idx + n + 11 < state.max
             then get ((loop[@tailclal])
@@ -500,7 +507,7 @@ struct
         in
 
         KDictionary.get_bits 7 aux src dst t
-      | _ -> error src dst t Invalid_dictionary
+      | _ -> error t Invalid_dictionary
     in
 
     get (fun src dst t -> (loop[@tailcall]) (make max) src dst t) src dst t
@@ -612,7 +619,7 @@ let flat window src dst t =
 
   let header window len nlen src dst t =
     if nlen <> 0xFFFF - len
-    then Cont { t with state = Exception Invalid_complement_of_length }
+    then error t (Invalid_complement_of_length (len, nlen))
     else Cont { t with hold  = 0
                      ; bits  = 0
                      ; state = Flat (loop window len) }
@@ -862,7 +869,7 @@ let block src dst t window =
          | 0 -> Flat (flat window)
          | 1 -> Fixed window
          | 2 -> Dictionary (dictionary window)
-         | _ -> Exception Invalid_kind_of_block
+         | n -> Exception (Invalid_kind_of_block n)
        in
 
        Cont { t with hold = t.hold lsr 2
@@ -914,27 +921,21 @@ let eval src dst t =
     | Inflate k -> k src dst t
     | Switch window -> switch src dst t window
     | Crc k -> k src dst t
-    | Exception exn -> error src dst t exn
+    | Exception exn -> error t exn
   in
 
   let rec loop t =
     match eval0 t with
     | Cont t -> loop t
-    | x -> x
+    | Wait t -> `Await t
+    | Flush t -> `Flush t
+    | Ok t -> `End t
+    | Error (t, exn) -> `Error (t, exn)
   in
 
   loop t
 
-let default =
-  { last  = false
-  ; hold  = 0
-  ; bits  = 0
-  ; i_pos = 0
-  ; i_avl = 0
-  ; o_pos = 0
-  ; o_avl = 0
-  ; write = 0
-  ; state = Header }
+let sp = Format.sprintf
 
 let refill off len t =
   if t.i_pos = t.i_len
@@ -954,33 +955,55 @@ let available_out t = t.o_len - t.o_pos
 let used_in t  = t.i_pos
 let used_out t = t.o_pos
 
+let default =
+  { last  = false
+  ; hold  = 0
+  ; bits  = 0
+  ; i_off = 0
+  ; i_pos = 0
+  ; i_len = 0
+  ; o_off = 0
+  ; o_pos = 0
+  ; o_len = 0
+  ; write = 0
+  ; state = Header header }
+
 let decompress src dst refill' flush' =
   let t = flush 0 (RW.length dst) default in
 
   let rec loop t = match eval src dst t with
-    | Cont t -> (loop[@tailcall]) t
-    | Ok t ->
+    | `End t ->
       let dropped = flush' dst 0 (used_out t) in
       let _ = flush 0 dropped t in ()
-    | Flush t ->
+    | `Flush t ->
       let dropped = flush' dst 0 (used_out t) in
-
       loop (flush 0 dropped t)
-    | Wait t ->
+    | `Await t ->
       let filled = refill' src 0 (RO.length src - available_in t) in
       loop (refill 0 (available_in t + filled) t)
-    | Error t -> failwith "Inflate.decompress"
+    | `Error (t, exn) -> failwith "Inflate.decompress"
   in
 
   loop t
 
-let string src dst refill flush =
+let string src dst refill' flush' =
   let src = RO.from_string (Bytes.unsafe_to_string src) in
   let dst = RW.from_bytes dst in
 
-  let refill (v : normal RO.t) : int -> int -> int = match v with
-    | RO.String v -> refill (Bytes.unsafe_of_string v) in
-  let flush (v : normal RW.t) : int -> int -> int = match v with
-    | RW.Bytes v -> flush v in
+  let refill' (v : normal RO.t) : int -> int -> int = match v with
+    | RO.String v -> refill' (Bytes.unsafe_of_string v) in
+  let flush'  (v : normal RW.t) : int -> int -> int = match v with
+    | RW.Bytes v -> flush' v in
 
-  decompress src dst refill flush
+  decompress src dst refill' flush'
+
+let bigstring src dst refill' flushi' =
+  let src = RO.from_bigstring src in
+  let dst = RW.from_bigstring dst in
+
+  let refill' (v : fast RO.t) : int -> int -> int = match v with
+    | RO.Bigstring v -> refill' v in
+  let flush'  (v : fast RW.t) : int -> int -> int = match v with
+    | RW.Bigstring v -> flushi' v in
+
+  decompress src dst refill' flush'
