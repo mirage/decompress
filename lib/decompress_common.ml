@@ -160,8 +160,6 @@ struct
   type t = bigstring
 
   let blit src src_idx dst dst_idx len =
-    let src = Array1.sub src src_idx len in
-    let dst = Array1.sub dst dst_idx len in
     Memcpy.memcpy_bigstring src dst len src_idx dst_idx
 
   let blit_string src src_idx dst dst_idx len =
