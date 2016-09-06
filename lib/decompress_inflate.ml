@@ -200,15 +200,24 @@ and code =
 let error src dst t exn =
   Error { t with state = Exception exn }
 
+module KHeader =
+struct
+  let rec get_byte k src dst t =
+    if (t.i_len - t.i_pos) > 0
+    then let byte = Char.code @@ RO.get src (t.i_off + t.i_pos) in
+         k byte src dst
+           { t with i_pos = t.i_pos + 1 }
+    else Wait { t with state = Header (get_byte k) }
+end
+
 (* Continuation passing-style stored in [Dictionary] *)
 module KDictionary =
 struct
   let rec get_byte k src dst t =
-    if t.i_avl > 0
-    then let byte = Char.code @@ RO.get src t.i_pos in
+    if (t.i_len - t.i_pos) > 0
+    then let byte = Char.code @@ RO.get src (t.i_off + t.i_pos) in
          k byte src dst
-           { t with i_pos = t.i_pos + 1
-                  ; i_avl = t.i_avl - 1 }
+           { t with i_pos = t.i_pos + 1 }
     else Wait { t with state = Dictionary (get_byte k) }
 
   let peek_bits n k src dst t =
@@ -250,12 +259,18 @@ end
 (* Continuation passing-style stored in [Flat] *)
 module KFlat =
 struct
+  let drop_bits n k src dst t =
+    k src dst { t with hold = t.hold lsr n
+                     ; bits = t.bits - n }
+
   let rec get_byte k src dst t =
-    if t.i_avl > 0
-    then let byte = Char.code @@ RO.get src t.i_pos in
-         k byte src dst
-           { t with i_pos = t.i_pos + 1
-                  ; i_avl = t.i_avl - 1 }
+    if t.bits / 8 > 0
+    then let byte = t.hold land 255 in
+         k byte src dst { t with hold = t.hold lsr 8
+                               ; bits = t.bits - 8 }
+    else if (t.i_len - t.i_pos) > 0
+    then let byte = Char.code @@ RO.get src (t.i_off + t.i_pos) in
+         k byte src dst { t with i_pos = t.i_pos + 1 }
     else Wait { t with state = Flat (get_byte k) }
 
   let get_ui16 k =
@@ -270,11 +285,10 @@ struct
   let rec get lookup k src dst t =
     if t.bits < lookup.Lookup.max
     then
-      if t.i_avl > 0
-      then let byte = Char.code @@ RO.get src t.i_pos in
+      if (t.i_len - t.i_pos) > 0
+      then let byte = Char.code @@ RO.get src (t.i_off + t.i_pos) in
       (get[@tailcall]) lookup k src dst
         { t with i_pos = t.i_pos + 1
-               ; i_avl = t.i_avl - 1
                ; hold  = t.hold lor (byte lsl t.bits)
                ; bits  = t.bits + 8 }
       else Wait { t with state = Inflate (get lookup k) }
@@ -284,31 +298,28 @@ struct
                             ; bits = t.bits - len }
 
   let rec put_chr window chr k src dst t =
-    if t.o_avl > 0
+    if (t.o_len - t.o_pos) > 0
     then begin
       let window = Window.write_char chr window in
-      RW.set dst t.o_pos chr;
+      RW.set dst (t.o_off + t.o_pos) chr;
 
       k window src dst { t with o_pos = t.o_pos + 1
-                              ; o_avl = t.o_avl - 1
                               ; write = t.write + 1 }
     end else Flush { t with state = Inflate (put_chr window chr k) }
 
   let rec fill_chr window length chr k src dst t =
-    if t.o_avl > 0
+    if (t.o_len - t.o_pos) > 0
     then begin
-      let len = min length t.o_avl in
+      let len = min length (t.o_len - t.o_pos) in
 
       let window = Window.fill_char chr len window in
-      RW.fill dst t.o_pos len chr;
+      RW.fill dst (t.o_off + t.o_pos) len chr;
 
       if length - len > 0
       then Flush
         { t with o_pos = t.o_pos + len
-               ; o_avl = t.o_avl - len
                ; state = Inflate (fill_chr window (length - len) chr k) }
-      else k window src dst { t with o_pos = t.o_pos + len
-                                   ; o_avl = t.o_avl - len }
+      else k window src dst { t with o_pos = t.o_pos + len }
     end else Flush { t with state = Inflate (fill_chr window length chr k) }
 
   let rec write window lookup_chr lookup_dst length distance k src dst t =
@@ -319,7 +330,7 @@ struct
 
       fill_chr window length chr k src dst t
     | distance ->
-      let len = min t.o_avl length in
+      let len = min (t.o_len - t.o_pos) length in
       let off = Window.((window.wpos - distance) % window) in
       let sze = window.Window.size in
 
@@ -330,13 +341,13 @@ struct
         if ext > 0
         then begin
           let window0 = Window.write_rw window.Window.buffer off pre window in
-          RW_ext.blit   window0.Window.buffer off dst t.o_pos pre;
+          RW_ext.blit   window0.Window.buffer off dst (t.o_off + t.o_pos) pre;
           let window1 = Window.write_rw window0.Window.buffer 0 ext window0 in
-          RW_ext.blit   window1.Window.buffer 0 dst (t.o_pos + pre) ext;
+          RW_ext.blit   window1.Window.buffer 0 dst (t.o_off + t.o_pos + pre) ext;
           window1
         end else begin
           let window0 = Window.write_rw window.Window.buffer off len window in
-          RW_ext.blit   window0.Window.buffer off dst t.o_pos len;
+          RW_ext.blit   window0.Window.buffer off dst (t.o_off + t.o_pos) len;
           window0
         end
       in
@@ -344,12 +355,10 @@ struct
       if length - len > 0
       then Flush
         { t with o_pos = t.o_pos + len
-               ; o_avl = t.o_avl - len
                ; write = t.write + len
                ; state = Inflate (write window lookup_chr lookup_dst (length - len) distance k) }
       else Cont
         { t with o_pos = t.o_pos + len
-               ; o_avl = t.o_avl - len
                ; write = t.write + len
                ; state = Inffast (window, lookup_chr, lookup_dst, Length) }
 
@@ -357,15 +366,14 @@ struct
     let len = Array.get _extra_dbits distance in
 
     if t.bits < len
-    then if t.i_avl > 0
-         then let byte = Char.code @@ RO.get src t.i_pos in
+    then if (t.i_len - t.i_pos) > 0
+         then let byte = Char.code @@ RO.get src (t.i_off + t.i_pos) in
               read_extra_dist
                 distance k
                 src dst
                 { t with hold = t.hold lor (byte lsl t.bits)
                        ; bits = t.bits + 8
-                       ; i_pos = t.i_pos + 1
-                       ; i_avl = t.i_avl - 1 }
+                       ; i_pos = t.i_pos + 1 }
          else Wait
            { t with state = Inflate (read_extra_dist distance k) }
     else let extra = t.hold land ((1 lsl len) - 1) in
@@ -377,15 +385,14 @@ struct
     let len = Array.get _extra_lbits length in
 
     if t.bits < len
-    then if t.i_avl > 0
-         then let byte = Char.code @@ RO.get src t.i_pos in
+    then if (t.i_len - t.i_pos) > 0
+         then let byte = Char.code @@ RO.get src (t.i_off + t.i_pos) in
               read_extra_length
                 length k
                 src dst
                 { t with hold = t.hold lor (byte lsl t.bits)
                        ; bits = t.bits + 8
-                       ; i_pos = t.i_pos + 1
-                       ; i_avl = t.i_avl - 1 }
+                       ; i_pos = t.i_pos + 1 }
          else Wait
            { t with state = Inflate (read_extra_length length k) }
     else let extra = t.hold land ((1 lsl len) - 1) in
@@ -406,11 +413,10 @@ struct
     then let byte = t.hold land 255 in
          k byte src dst { t with hold = t.hold lsr 8
                                ; bits = t.bits - 8 }
-    else if t.i_avl > 0
-    then let byte = Char.code @@ RO.get src t.i_pos in
+    else if (t.i_len - t.i_pos) > 0
+    then let byte = Char.code @@ RO.get src (t.i_off + t.i_pos) in
           k byte src dst
-            { t with i_pos = t.i_pos + 1
-                   ; i_avl = t.i_avl - 1 }
+            { t with i_pos = t.i_pos + 1 }
     else Wait { t with state = Crc (get_byte k) }
 end
 
@@ -580,35 +586,27 @@ let switch src dst t window =
 
 let flat window src dst t =
   let rec loop window length src dst t =
-    let n = min length (min t.i_avl t.o_avl) in
+    let n = min length (min (t.i_len - t.i_pos) (t.o_len - t.o_pos)) in
 
-    let window = Window.write_ro src t.i_pos n window in
-    RW_ext.blit_ro src t.i_pos dst t.o_pos n;
+    let window = Window.write_ro src (t.i_off + t.i_pos) n window in
+    RW_ext.blit_ro src (t.i_off + t.i_pos) dst (t.o_off + t.o_pos) n;
 
     if length - n = 0
     then Cont  { t with i_pos = t.i_pos + n
-                      ; i_avl = t.i_avl - n
                       ; o_pos = t.o_pos + n
-                      ; o_avl = t.o_avl - n
                       ; state = Switch window }
-    else match t.i_avl - n, t.o_avl - n with
+    else match t.i_len - (t.i_pos + n), t.o_len - (t.o_pos + n) with
     | 0, b ->
       Wait  { t with i_pos = t.i_pos + n
-                   ; i_avl = 0
                    ; o_pos = t.o_pos + n
-                   ; o_avl = b
                    ; state = Flat (loop window (length - n)) }
     | a, 0 ->
       Flush { t with i_pos = t.i_pos + n
-                   ; i_avl = a
                    ; o_pos = t.o_pos + n
-                   ; o_avl = 0
                    ; state = Flat (loop window (length - n)) }
     | a, b ->
       Cont { t with i_pos = t.i_pos + n
-                   ; i_avl = a
                    ; o_pos = t.o_pos + n
-                   ; o_avl = b
                    ; state = Flat (loop window (length - n)) }
   in
 
@@ -665,28 +663,24 @@ let inffast src dst t window lookup_chr lookup_dst goto =
   let goto = ref goto   in
 
   let i_pos = ref t.i_pos in
-  let i_avl = ref t.i_avl in
 
   let o_pos = ref t.o_pos in
-  let o_avl = ref t.o_avl in
   let write = ref t.write in
 
   let window = ref window in
 
   try
-    while !i_avl > 1 && !o_avl > 0
+    while (t.i_len - !i_pos) > 1 && (t.o_len - !o_pos) > 0
     do match !goto with
        | Length ->
          if !bits < lookup_chr.Lookup.max
          then begin
-           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           hold := !hold lor ((Char.code @@ RO.get src (t.i_off + !i_pos)) lsl !bits);
            bits := !bits + 8;
            incr i_pos;
-           decr i_avl;
-           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           hold := !hold lor ((Char.code @@ RO.get src (t.i_off + !i_pos)) lsl !bits);
            bits := !bits + 8;
            incr i_pos;
-           decr i_avl;
          end;
 
          let (len, value) = Array.get lookup_chr.Lookup.table (!hold land lookup_chr.Lookup.mask) in
@@ -697,11 +691,10 @@ let inffast src dst t window lookup_chr lookup_dst goto =
          if value < 256
          then begin
            [%debug Format.eprintf "state[inffast:literal]: %S\n%!" (String.make 1 (Char.chr value))];
-           RW.set dst !o_pos (Char.chr value);
+           RW.set dst (t.o_off + !o_pos) (Char.chr value);
            window := Window.write_char (Char.chr value) !window;
            incr o_pos;
            incr write;
-           decr o_avl;
 
            goto := Length;
          end else if value = 256 then begin raise End
@@ -713,10 +706,9 @@ let inffast src dst t window lookup_chr lookup_dst goto =
 
          if !bits < len
          then begin
-           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           hold := !hold lor ((Char.code @@ RO.get src (t.i_off + !i_pos)) lsl !bits);
            bits := !bits + 8;
            incr i_pos;
-           decr i_avl;
          end;
 
          let extra = !hold land ((1 lsl len) - 1) in
@@ -728,14 +720,12 @@ let inffast src dst t window lookup_chr lookup_dst goto =
        | Dist length ->
          if !bits < lookup_dst.Lookup.max
          then begin
-           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           hold := !hold lor ((Char.code @@ RO.get src (t.i_off + !i_pos)) lsl !bits);
            bits := !bits + 8;
            incr i_pos;
-           decr i_avl;
-           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           hold := !hold lor ((Char.code @@ RO.get src (t.i_off + !i_pos)) lsl !bits);
            bits := !bits + 8;
            incr i_pos;
-           decr i_avl;
          end;
 
          let (len, value) = Array.get lookup_dst.Lookup.table (!hold land lookup_dst.Lookup.mask) in
@@ -750,14 +740,12 @@ let inffast src dst t window lookup_chr lookup_dst goto =
 
          if !bits < len
          then begin
-           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           hold := !hold lor ((Char.code @@ RO.get src (t.i_off + !i_pos)) lsl !bits);
            bits := !bits + 8;
            incr i_pos;
-           decr i_avl;
-           hold := !hold lor ((Char.code @@ RO.get src !i_pos) lsl !bits);
+           hold := !hold lor ((Char.code @@ RO.get src (t.i_off + !i_pos)) lsl !bits);
            bits := !bits + 8;
            incr i_pos;
-           decr i_avl;
          end;
 
          let extra = !hold land ((1 lsl len) - 1) in
@@ -772,19 +760,18 @@ let inffast src dst t window lookup_chr lookup_dst goto =
          let chr = RW.get !window.Window.buffer
            Window.((!window.wpos - 1) % !window) in
 
-         let n = min length !o_avl in
+         let n = min length (t.o_len - !o_pos) in
 
          window := Window.fill_char chr n !window;
-         RW.fill dst !o_pos n chr;
+         RW.fill dst (t.o_off + !o_pos) n chr;
 
          o_pos := !o_pos + n;
          write := !write + n;
-         o_avl := !o_avl - n;
          goto  := if length - n = 0 then Length else Write (length - n, 1)
        | Write (length, dist) ->
          [%debug Format.eprintf "state[inffast:dist]: length %d, distance %d\n%!"
            length dist];
-         let n = min length !o_avl in
+         let n = min length (t.o_len - !o_pos) in
 
          let off = Window.((!window.Window.wpos - dist) % !window) in
          let len = !window.Window.size in
@@ -795,19 +782,18 @@ let inffast src dst t window lookup_chr lookup_dst goto =
          window := if ext > 0
            then begin
              let window0 = Window.write_rw !window.Window.buffer off pre !window in
-             RW_ext.blit   window0.Window.buffer off dst !o_pos pre;
+             RW_ext.blit   window0.Window.buffer off dst (t.o_off + !o_pos) pre;
              let window1 = Window.write_rw window0.Window.buffer 0 ext window0 in
-             RW_ext.blit   window1.Window.buffer 0 dst (!o_pos + pre) ext;
+             RW_ext.blit   window1.Window.buffer 0 dst (t.o_off + !o_pos + pre) ext;
              window1
            end else begin
              let window0 = Window.write_rw !window.Window.buffer off n !window in
-             RW_ext.blit   window0.Window.buffer off dst !o_pos n;
+             RW_ext.blit   window0.Window.buffer off dst (t.o_off + !o_pos) n;
              window0
            end;
 
          o_pos := !o_pos + n;
          write := !write + n;
-         o_avl := !o_avl - n;
          goto  := if length - n = 0 then Length else Write (length - n, dist)
     done;
 
@@ -859,18 +845,14 @@ let inffast src dst t window lookup_chr lookup_dst goto =
     Cont { t with hold = !hold
                 ; bits = !bits
                 ; i_pos = !i_pos
-                ; i_avl = !i_avl
                 ; o_pos = !o_pos
-                ; o_avl = !o_avl
                 ; write = !write
                 ; state = state }
   with End ->
     Cont { t with hold = !hold
                 ; bits = !bits
                 ; i_pos = !i_pos
-                ; i_avl = !i_avl
                 ; o_pos = !o_pos
-                ; o_avl = !o_avl
                 ; write = !write
                 ; state = Switch !window }
 
@@ -886,11 +868,10 @@ let block src dst t window =
        Cont { t with hold = t.hold lsr 2
                    ; bits = t.bits - 2
                    ; state }
-  else if t.i_avl > 0
-  then let byte = Char.code @@ RO.get src t.i_pos in
+  else if (t.i_len - t.i_pos) > 0
+  then let byte = Char.code @@ RO.get src (t.i_off + t.i_pos) in
 
        Cont { t with i_pos = t.i_pos + 1
-                   ; i_avl = t.i_avl - 1
                    ; hold  = (t.hold lor (byte lsl t.bits))
                    ; bits  = t.bits + 8 }
   else Wait t
@@ -903,11 +884,10 @@ let last src dst t window =
                    ; hold  = t.hold lsr 1
                    ; bits  = t.bits - 1
                    ; state = Block window }
-  else if t.i_avl > 0
-  then let byte = Char.code @@ RO.get src t.i_pos in
+  else if (t.i_len - t.i_pos) > 0
+  then let byte = Char.code @@ RO.get src (t.i_off + t.i_pos) in
 
        Cont { t with i_pos = t.i_pos + 1
-                   ; i_avl = t.i_avl - 1
                    ; hold  = (t.hold lor (byte lsl t.bits))
                    ; bits  = t.bits + 8 }
   else Wait t
@@ -957,15 +937,19 @@ let default =
   ; state = Header }
 
 let refill off len t =
-  { t with i_pos = off
-         ; i_avl = len }
+  if t.i_pos = t.i_len
+  then { t with i_off = off
+              ; i_len = len
+              ; i_pos = 0 }
+  else raise (Invalid_argument (sp "Inflate.refill: you lost something (pos: %d, len: %d)" t.i_pos t.i_len))
 
 let flush off len t =
-  { t with o_pos = off
-         ; o_avl = len }
+  { t with o_off = off
+         ; o_len = len
+         ; o_pos = 0 }
 
-let available_in t  = t.i_avl
-let available_out t = t.o_avl
+let available_in t  = t.i_len - t.i_pos
+let available_out t = t.o_len - t.o_pos
 
 let used_in t  = t.i_pos
 let used_out t = t.o_pos
