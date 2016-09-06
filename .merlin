@@ -17,6 +17,4 @@ PKG alcotest re camlzip
 # build
 PKG topkg ocamlbuild findlib
 # ppx
-PKG compiler-libs logs logs.cli
-# stub
-PKG ctypes ctypes.foreign
+PKG compiler-libs
