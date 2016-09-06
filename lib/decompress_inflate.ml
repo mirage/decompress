@@ -164,14 +164,16 @@ type ('i, 'o) t =
   { last  : bool
   ; hold  : int
   ; bits  : int
+  ; o_off : int
   ; o_pos : int
-  ; o_avl : int
+  ; o_len : int
+  ; i_off : int
   ; i_pos : int
-  ; i_avl : int
+  ; i_len : int
   ; write : int
   ; state : ('i, 'o) state }
 and ('i, 'o) state =
-  | Header
+  | Header     of ('i RO.t -> 'o RW.t -> ('i, 'o) t -> ('i, 'o) res)
   | Last       of 'o Window.t
   | Block      of 'o Window.t
   | Flat       of ('i RO.t -> 'o RW.t -> ('i, 'o) t -> ('i, 'o) res)
@@ -910,20 +912,17 @@ let last src dst t window =
   else Wait t
 
 let header src dst t =
-  if t.i_avl > 1
-  then let byte0 = Char.code @@ RO.get src t.i_pos in
-       let _     = Char.code @@ RO.get src (t.i_pos + 1) in
+  (KHeader.get_byte
+   @@ fun byte0 -> KHeader.get_byte
+   @@ fun byte1 src dst t ->
+        let window = Window.make_by ~proof:dst (1 lsl (byte0 lsr 4 + 8)) in
 
-       let window = Window.make_by ~proof:dst (1 lsl (byte0 lsr 4 + 8)) in
-
-       Cont { t with i_pos = t.i_pos + 2
-                   ; i_avl = t.i_avl - 2
-                   ; state = Last window }
-  else Wait t
+        Cont { t with state = Last window })
+  src dst t
 
 let eval src dst t =
   let eval0 t = match t.state with
-    | Header -> header src dst t
+    | Header k -> k src dst t
     | Last window -> last src dst t window
     | Block window -> block src dst t window
     | Flat k -> k src dst t
