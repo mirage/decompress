@@ -1,9 +1,6 @@
 open Decompress_tables
 open Decompress_common
 
-let () = [%debug Logs.set_level (Some Logs.Debug)]
-let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
-
 type 'a elt =
   | Buffer of 'a RO.t
   | Insert of int * int
@@ -123,7 +120,7 @@ let really_compress state =
     let buff = buffer state.ringbuffer in
     let ( <*  ) chr n = Int64.(shift_left (of_int (Char.code chr)) n) in
     let ( <|> ) i n   =
-      [%debug Logs.debug @@ fun m -> m "%Ld ^ %Ld" i n];
+      [%debug Format.eprintf "%Ld ^ %Ld" i n];
       Int64.logor i n in
 
     (fun idx -> RO.get buff idx),
@@ -135,15 +132,15 @@ let really_compress state =
      let a = ref 0 in
      let l = (1 lsl state.window_bits) + 1 in
 
-     [%debug Logs.debug @@ fun m -> m "rb_u64, rest = %d" (l - idx)];
+     [%debug Format.eprintf "rb_u64, rest = %d" (l - idx)];
 
      while idx + (!a * 2) < l && idx + (!a * 2) < 8
-     do [%debug Logs.debug @@ fun m -> m "1: rb_64, get character [%c] at %d"
+     do [%debug Format.eprintf "1: rb_64, get character [%c] at %d"
          (RO.get buff (idx + (!a * 2))) (idx + (!a * 2))];
 
         r := !r <|> ((RO.get buff (idx + (!a * 2))) <* ((!a * 2) * 8));
 
-        [%debug Logs.debug @@ fun m -> m "2: rb_64, get character [%c] at %d"
+        [%debug Format.eprintf "2: rb_64, get character [%c] at %d"
          (RO.get buff (idx + (!a * 2) + 1)) (idx + (!a * 2) + 1)];
 
         r := !r <|> ((RO.get buff (idx + (!a * 2) + 1)) <* ((!a * 2) * 8 + 8));
@@ -151,13 +148,13 @@ let really_compress state =
         incr a;
      done;
 
-     [%debug Logs.debug @@ fun m -> m "we read %02d byte(s) for [rb_u64]"
+     [%debug Format.eprintf "we read %02d byte(s) for [rb_u64]"
       (!a * 2)];
-     [%debug Logs.debug @@ fun m -> m "we read %02d byte(s) for [rb_u64]"
+     [%debug Format.eprintf "we read %02d byte(s) for [rb_u64]"
       (8 - (!a * 2))];
 
      for i = (!a * 2) to 7
-     do [%debug Logs.debug @@ fun m -> m "rb_64, get character [%c] at %d"
+     do [%debug Format.eprintf "rb_64, get character [%c] at %d"
          (RO.get buff RingBuffer.(state.ringbuffer % (idx + i)))
          (idx + i)];
         r := !r <|> ((RO.get buff (state.ringbuffer % (idx + i))) <* (i * 8))
@@ -175,7 +172,7 @@ let really_compress state =
   let flushing () =
     if Buffer.empty state.buffer = false
     then begin
-      [%debug Logs.debug @@ fun m -> m "we need to flush buffer [%a]"
+      [%debug Format.eprintf  "we need to flush buffer [%a]"
        RO.pp (Buffer.contents state.buffer)];
       state.res <- Buffer (Buffer.contents state.buffer) :: state.res;
       Buffer.clear state.buffer;
@@ -196,7 +193,7 @@ let really_compress state =
 
   while !idx < len - 12
   do
-    [%debug Logs.debug @@ fun m -> m "anchor is %d" !idx];
+    [%debug Format.eprintf "anchor is %d" !idx];
 
     let anchor   = !idx in  (* comparison starting-point *)
     let op       = ref 0 in (* position to old pattern in ring buffer *)
@@ -205,7 +202,7 @@ let really_compress state =
 
     (* convenience function *)
     let cmp_and_incr () =
-      [%debug Logs.debug @@ fun m -> m "we compare [%d:%c] == [%d:%c]"
+      [%debug Format.eprintf "we compare [%d:%c] == [%d:%c]"
        !idx (i_chr !idx) !op (r_chr !op)];
 
       if r_chr !op = i_chr !idx
@@ -224,7 +221,7 @@ let really_compress state =
        let b = Bytes.create 2 in
        Bytes.set b 0 (i_chr (!idx + 1));
        Bytes.set b 0 (i_chr (!idx + 2));
-       Logs.debug @@ fun m -> m "we try a distone match: [%c:%d] = [%c:%d] and [%S:%d] = [%S:%d]"
+       Format.eprintf "we try a distone match: [%c:%d] = [%c:%d] and [%S:%d] = [%S:%d]"
          (i_chr !idx) !idx (i_chr (!idx - 1)) (!idx - 1)
          (Bytes.unsafe_to_string a) (!idx - 1)
          (Bytes.unsafe_to_string b) (!idx + 1)];
@@ -240,7 +237,7 @@ let really_compress state =
         raise Match
       end;
 
-      [%debug Logs.debug @@ fun m -> m "we lookup a pattern in hash table"];
+      [%debug Format.eprintf "we lookup a pattern in hash table"];
       let hval = hash !idx in
       let anchor' = RingBuffer.(state.ringbuffer % (rpos' + anchor)) in
 
@@ -253,7 +250,7 @@ let really_compress state =
        * in this case, that means the previous writing in ring buffer update
        * [rpos] at the begin of (ring) buffer. *)
 
-      [%debug Logs.debug @@ fun m -> m "we have a distance %d with the old \
+      [%debug Format.eprintf "we have a distance %d with the old \
         pattern [rpos = %d, anchor = %d, op = %d]"
        !distance rpos' anchor !op];
 
@@ -287,7 +284,7 @@ let really_compress state =
       raise Match
     with
     | Literal ->
-      [%debug Logs.debug @@ fun m -> m "we have a literal [%c]" (i_chr anchor)];
+      [%debug Format.eprintf "we have a literal [%c]" (i_chr anchor)];
 
       state.freqs_literal.(Char.code @@ i_chr anchor) <-
         state.freqs_literal.(Char.code @@ i_chr anchor) + 1;
@@ -306,7 +303,7 @@ let really_compress state =
          * compute of [ip] and [op]. *)
         if !distance = 0
         then begin
-          [%debug Logs.debug @@ fun m -> m "we have a distone"];
+          [%debug Format.eprintf "we have a distone"];
 
           let pattern  = i_chr (!idx - 1) in
           let value1   = repeat pattern in
@@ -319,7 +316,7 @@ let really_compress state =
               [%debug
                let s = Bytes.create 8 in
                for i = 0 to 7 do Bytes.set s i (r_chr RingBuffer.(state.ringbuffer % (!op + i))) done;
-               Logs.debug @@ fun m -> m "we compare %Ld <> [%Ld:%d:%S]"
+               Format.eprintf "we compare %Ld <> [%Ld:%d:%S]"
                  value1 value2 !op (Bytes.unsafe_to_string s)];
 
               if value1 <> value2
@@ -327,7 +324,7 @@ let really_compress state =
                 (* find the byte that starts to differ *)
                 while !idx < bound && (!idx - 3 - anchor) < 245
                 do
-                   [%debug Logs.debug @@ fun m -> m "we compare [%c:%d] <> [%c]"
+                   [%debug Format.eprintf "we compare [%c:%d] <> [%c]"
                     (r_chr !op) !op pattern];
 
                    if r_chr !op <> pattern
@@ -361,12 +358,12 @@ let really_compress state =
          * access in buffer. in other case, we have an access in buffer by
          * [ip]. *)
         end else begin
-          [%debug Logs.debug @@ fun m -> m "we have a match"];
+          [%debug Format.eprintf "we have a match"];
 
           try begin
             while !idx < (bound - 8 - 2) && (!idx - 3 - anchor) < 245
             do
-              [%debug Logs.debug @@ fun m -> m "we compare %Ld <> %Ld"
+              [%debug Format.eprintf "we compare %Ld <> %Ld"
                 (i_u64 !idx) (r_u64 !op)];
 
               if r_u64 !op <> i_u64 !idx
@@ -374,7 +371,7 @@ let really_compress state =
                 (* find the byte that starts to differ *)
                 while !idx < bound && (!idx - 3 - anchor) < 245
                 do
-                   [%debug Logs.debug @@ fun m -> m "we compare [%d:%c] <> [%d:%c]"
+                   [%debug Format.eprintf "we compare [%d:%c] <> [%d:%c]"
                     !idx (i_chr !idx) !op (r_chr !op)];
 
                    if cmp_and_incr () = false then raise Break done;
@@ -396,15 +393,15 @@ let really_compress state =
             end
         end;
 
-        [%debug Logs.debug @@ fun m -> m "we drop the first 3 bytes of [ip = %d]" !idx];
+        [%debug Format.eprintf "we drop the first 3 bytes of [ip = %d]" !idx];
         idx := !idx - 3;
-        [%debug Logs.debug @@ fun m -> m "we compute len of match: [%d - %d = %d]" !idx anchor (!idx - anchor)];
+        [%debug Format.eprintf  "we compute len of match: [%d - %d = %d]" !idx anchor (!idx - anchor)];
         len := !idx - anchor;
 
         flushing ();
 
         let add_match len distance =
-          [%debug Logs.debug @@ fun m -> m "we write len: %d and distance: %d"
+          [%debug Format.eprintf "we write len: %d and distance: %d"
            len distance];
 
           let leng = _length.(len) in
@@ -424,7 +421,7 @@ let really_compress state =
                done;
                Bytes.unsafe_to_string s
              end
-           in Logs.debug @@ fun m -> m "we add Insert [%S] (available read: %d) (available write: %d)"
+           in Format.eprintf "we add Insert [%S] (available read: %d) (available write: %d)"
               s
               (RingBuffer.available_to_read state.ringbuffer)
               (RingBuffer.available_to_write state.ringbuffer)];
@@ -439,7 +436,7 @@ let really_compress state =
           Buffer.add_char state.buffer chr;
         in
 
-        [%debug Logs.debug @@ fun m -> m "we found length: %d and distance: %d"
+        [%debug Format.eprintf "we found length: %d and distance: %d"
          !len !distance];
 
         (** TODO: I limit the len to 245 + 8 + 2 = 255 in distone or dist
@@ -458,7 +455,7 @@ let really_compress state =
         *)
         if !len > 255 && (!len mod 255) >= 3
         then begin
-          [%debug Logs.debug @@ fun m -> m "multiple insert, we have len %d > 255 and (len mod 255) >= 3, the distance is %d" !len !distance];
+          [%debug Format.eprintf "multiple insert, we have len %d > 255 and (len mod 255) >= 3, the distance is %d" !len !distance];
           let times = !len / 255 in
           for i = 0 to times - 1
           do add_match 255 !distance done;
@@ -466,7 +463,7 @@ let really_compress state =
           add_match (!len mod 255) !distance
         end else if !len > 255 && (!len mod 255) < 3
         then begin
-          [%debug Logs.debug @@ fun m -> m "multiple insert, we have len %d > 255 and (len mod 255) < 3, the distance is %d" !len !distance];
+          [%debug Format.eprintf "multiple insert, we have len %d > 255 and (len mod 255) < 3, the distance is %d" !len !distance];
           let times = !len / 255 in
           for i = 0 to times - 1
           do add_match 255 !distance done;
@@ -500,7 +497,7 @@ let atomic_compress state buff off len =
   then really_compress state
 
 let finish state =
-  [%debug Logs.debug @@ fun m -> m "we have a rest: %d byte(s)"
+  [%debug Format.eprintf "we have a rest: %d byte(s)"
     (RingBuffer.available_to_read state.ringbuffer)];
 
   if RingBuffer.available_to_read state.ringbuffer > 12

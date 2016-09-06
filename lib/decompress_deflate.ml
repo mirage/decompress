@@ -1,9 +1,6 @@
 open Decompress_tables
 open Decompress_common
 
-let () = [%debug Logs.set_level (Some Logs.Debug)]
-let () = [%debug Logs.set_reporter (Logs_fmt.reporter ())]
-
 module Adler32 = Decompress_adler32
 module Lz77    = Decompress_lz77
 module Tree    = Decompress_tree
@@ -59,7 +56,7 @@ and state =
   | Ok | Flush | Wait | Error
 
 let put_byte deflater byte =
-  [%debug Logs.debug @@ fun m -> m "put one byte: 0x%02x" byte];
+  [%debug Format.eprintf "put one byte: 0x%02x" byte];
 
   RW.set
     deflater.dst
@@ -94,11 +91,11 @@ let add_bit deflater value =
 let align deflater =
   if deflater.bits > 8
   then begin
-    [%debug Logs.debug @@ fun m -> m "we have a data pending: %02x" deflater.hold];
+    [%debug Format.eprintf "we have a data pending: %02x" deflater.hold];
     put_short deflater deflater.hold
   end else if deflater.bits > 0
   then begin
-    [%debug Logs.debug @@ fun m -> m "we have a data pending: %02x" deflater.hold];
+    [%debug Format.eprintf "we have a data pending: %02x" deflater.hold];
     put_byte deflater (deflater.hold land 0xFF)
   end;
 
@@ -238,10 +235,10 @@ let rec make ?(window_bits = 15) ?(level = 4) src dst =
 and eval deflater = deflater.k deflater
 
 and header deflater =
-  [%debug Logs.debug @@ fun m -> m "state: header"];
+  [%debug Format.eprintf "state: header"];
 
   let rec write_header0 header deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_header0"];
+    [%debug Format.eprintf "state: write_header0"];
 
     if deflater.needed > 0
     then begin
@@ -252,8 +249,8 @@ and header deflater =
     end else Flush
 
   and write_header1 header deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_header1"];
-    [%debug Logs.debug @@ fun m -> m "we need 1 byte(s) and we have %d byte(s)" deflater.needed];
+    [%debug Format.eprintf "state: write_header1"];
+    [%debug Format.eprintf "we need 1 byte(s) and we have %d byte(s)" deflater.needed];
 
     if deflater.needed > 0
     then begin
@@ -262,7 +259,7 @@ and header deflater =
 
       eval deflater
     end else begin
-      [%debug Logs.debug @@ fun m -> m "we need to flush output to write 1 bytes"];
+      [%debug Format.eprintf "we need to flush output to write 1 bytes"];
       Flush
     end
   in
@@ -282,25 +279,24 @@ and header deflater =
   else Flush
 
 and read deflater =
-  [%debug Logs.debug @@ fun m -> m "state: read (last = %b)" deflater.last];
+  [%debug Format.eprintf "state: read (last = %b)" deflater.last];
 
   let aux deflater =
     let new_mode, read = match deflater.mode with
       | Flat (buffer, real_size, window_bits) ->
         let len = min (0xFFFF - real_size) deflater.available in
 
-        [%debug Logs.debug @@ fun m -> m
-          "read and write flat data (size: %d byte(s))" len];
+        [%debug Format.eprintf "read and write flat data (size: %d byte(s))" len];
 
         RW_ext.blit_ro deflater.src deflater.inpos buffer real_size len;
         deflater.crc <- Adler32.update deflater.src deflater.inpos len deflater.crc;
 
-        [%debug Logs.debug @@ fun m -> m "the size of new buffer of flat is %d" (real_size + len)];
+        [%debug Format.eprintf "the size of new buffer of flat is %d" (real_size + len)];
 
         Flat (buffer, real_size + len, window_bits), len
 
       | Dynamic lz77 ->
-        [%debug Logs.debug @@ fun m -> m "read input data and complete Lz77 dictionary for a dynamic Huffman tree"];
+        [%debug Format.eprintf "read input data and complete Lz77 dictionary for a dynamic Huffman tree"];
 
         (* complete Lz77 dictionary *)
         Lz77.atomic_compress lz77 deflater.src
@@ -316,7 +312,7 @@ and read deflater =
         Dynamic lz77, deflater.available
 
       | Static lz77 ->
-        [%debug Logs.debug @@ fun m -> m "read input data and complete Lz77 dictionary for a static Huffman tree"];
+        [%debug Format.eprintf "read input data and complete Lz77 dictionary for a static Huffman tree"];
 
         (* complete Lz77 dictionary *)
         Lz77.atomic_compress lz77 deflater.src
@@ -349,14 +345,14 @@ and flushing_method deflater =
     (* if we have [Some x], user expect a new compute, otherwise we can
        continue *)
     | true                   ->
-      [%debug Logs.debug @@ fun m -> m "we stop compute, the last flag is send"];
+      [%debug Format.eprintf "we stop compute, the last flag is send"];
       end_flush
     | false           ->
-      [%debug Logs.debug @@ fun m -> m "we continue to read the block"];
+      [%debug Format.eprintf "we continue to read the block"];
 
       match deflater.mode with
       | Flat (buffer, real_size, window_bits) when real_size = 0xFFFF ->
-        [%debug Logs.debug @@ fun m -> m "we stop the flat block and create a new"];
+        [%debug Format.eprintf "we stop the flat block and create a new"];
 
        sync_flush
       | _ -> read
@@ -367,7 +363,7 @@ and flushing_method deflater =
   eval deflater
 
 and sync_flush deflater =
-  [%debug Logs.debug @@ fun m -> m "state: sync_flush"];
+  [%debug Format.eprintf "state: sync_flush"];
 
   deflater.k <-
     if mode_is_empty deflater.mode
@@ -377,14 +373,14 @@ and sync_flush deflater =
   eval deflater
 
 and end_flush deflater =
-  [%debug Logs.debug @@ fun m -> m "state: end_flush"];
+  [%debug Format.eprintf "state: end_flush"];
 
   deflater.k <- new_block (align_writing write_crc1) true;
 
   eval deflater
 
 and new_block after_block is_last_block deflater =
-  [%debug Logs.debug @@ fun m -> m "state: new_block"];
+  [%debug Format.eprintf "state: new_block"];
 
   if deflater.needed > 1
   then begin
@@ -395,10 +391,10 @@ and new_block after_block is_last_block deflater =
   end else Flush
 
 and empty_block deflater =
-  [%debug Logs.debug @@ fun m -> m "state: empty block"];
+  [%debug Format.eprintf "state: empty block"];
 
   let rec write_last_flag deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_last_flag"];
+    [%debug Format.eprintf "state: write_last_flag"];
 
     if deflater.needed > 1
     then begin
@@ -409,7 +405,7 @@ and empty_block deflater =
     end else Flush
 
   and write_flat_block deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_flat_block"];
+    [%debug Format.eprintf "state: write_flat_block"];
 
     if deflater.needed > 1
     then begin
@@ -420,10 +416,10 @@ and empty_block deflater =
     end else Flush
 
   and write_empty_block deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_empty_block"];
+    [%debug Format.eprintf "state: write_empty_block"];
 
     let rec write_len deflater =
-      [%debug Logs.debug @@ fun m -> m "state: write_len"];
+      [%debug Format.eprintf "state: write_len"];
 
       if deflater.needed > 1
       then begin
@@ -434,7 +430,7 @@ and empty_block deflater =
       end else Flush
 
     and write_nlen deflater =
-      [%debug Logs.debug @@ fun m -> m "state: write_nlen"];
+      [%debug Format.eprintf "state: write_nlen"];
 
       if deflater.needed > 1
       then begin
@@ -453,7 +449,7 @@ and empty_block deflater =
   eval deflater
 
 and write_block after_block deflater =
-  [%debug Logs.debug @@ fun m -> m "state: block"];
+  [%debug Format.eprintf "state: block"];
 
   if deflater.needed > 1
   then begin
@@ -469,7 +465,7 @@ and write_block after_block deflater =
   end else Flush
 
 and len after_block len buffer deflater =
-  [%debug Logs.debug @@ fun m -> m "state: len"];
+  [%debug Format.eprintf "state: len"];
 
   if deflater.needed > 1
   then begin
@@ -480,7 +476,7 @@ and len after_block len buffer deflater =
   end else Flush
 
 and nlen after_block len buffer deflater =
-  [%debug Logs.debug @@ fun m -> m "state: nlen"];
+  [%debug Format.eprintf "state: nlen"];
 
   if deflater.needed > 1
   then begin
@@ -494,7 +490,7 @@ and nlen after_block len buffer deflater =
   end else Flush
 
 and write_flat after_block buffer deflater =
-  [%debug Logs.debug @@ fun m -> m "state: write_flat"];
+  [%debug Format.eprintf "state: write_flat"];
 
   let len = min (deflater.i_max - deflater.i) deflater.needed in
 
@@ -503,7 +499,7 @@ and write_flat after_block buffer deflater =
 
   deflater.i <- deflater.i + len;
 
-  [%debug Logs.debug @@ fun m -> m "we write %02d in flat block and the rest is %02d" len (deflater.i_max - deflater.i)];
+  [%debug Format.eprintf "we write %02d in flat block and the rest is %02d" len (deflater.i_max - deflater.i)];
 
   deflater.k <-
     if deflater.i = deflater.i_max
@@ -521,7 +517,7 @@ and clear_flat after_block deflater =
   eval deflater
 
 and initialize_fixed after_block (lz77, _, _) deflater =
-  [%debug Logs.debug @@ fun m -> m "state: initialize_fixed"];
+  [%debug Format.eprintf "state: initialize_fixed"];
 
   let get_chr chr = _static_ltree.(chr) in
   let get_length length =
@@ -556,7 +552,7 @@ and initialize_fixed after_block (lz77, _, _) deflater =
   eval deflater
 
 and initialize_dynamic after_block (lz77, freqs_literal, freqs_distance) deflater =
-  [%debug Logs.debug @@ fun m -> m "state: initialize_dynamic"];
+  [%debug Format.eprintf "state: initialize_dynamic"];
 
   let trans_length = Array.make 19 0 in
   let literal_length  = Tree.get_lengths freqs_literal 15 in
@@ -587,7 +583,7 @@ and initialize_dynamic after_block (lz77, freqs_literal, freqs_distance) deflate
   let hclen = !hclen in
 
   let rec write_hlit deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_hlit"];
+    [%debug Format.eprintf "state: write_hlit"];
 
     if deflater.needed > 1
     then begin
@@ -598,7 +594,7 @@ and initialize_dynamic after_block (lz77, freqs_literal, freqs_distance) deflate
     end else Flush
 
   and write_hdist deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_hdist"];
+    [%debug Format.eprintf "state: write_hdist"];
 
     if deflater.needed > 1
     then begin
@@ -609,7 +605,7 @@ and initialize_dynamic after_block (lz77, freqs_literal, freqs_distance) deflate
     end else Flush
 
   and write_hclen deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_hclen"];
+    [%debug Format.eprintf "state: write_hclen"];
 
     if deflater.needed > 1
     then begin
@@ -623,7 +619,7 @@ and initialize_dynamic after_block (lz77, freqs_literal, freqs_distance) deflate
     end else Flush
 
   and write_trans deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_trans"];
+    [%debug Format.eprintf "state: write_trans"];
 
     if deflater.needed > 1
     then begin
@@ -642,7 +638,7 @@ and initialize_dynamic after_block (lz77, freqs_literal, freqs_distance) deflate
     end else Flush
 
   and write_symbols deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_symbols"];
+    [%debug Format.eprintf "state: write_symbols"];
 
     if deflater.needed > 1
     then begin
@@ -662,7 +658,7 @@ and initialize_dynamic after_block (lz77, freqs_literal, freqs_distance) deflate
     end else Flush
 
   and write_symbols_extra code deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_symbols"];
+    [%debug Format.eprintf "state: write_symbols"];
 
     let bitlen = match code with
       | 16 -> 2
@@ -685,7 +681,7 @@ and initialize_dynamic after_block (lz77, freqs_literal, freqs_distance) deflate
     end else Flush
 
   and dynamic_getter deflater =
-    [%debug Logs.debug @@ fun m -> m "state: dynamic_getter"];
+    [%debug Format.eprintf "state: dynamic_getter"];
 
     let get_chr chr = literal_code.(chr), literal_length.(chr) in
     let get_length length =
@@ -732,10 +728,10 @@ and write after_writing
     ~get_dist
     ~get_extra_dist
     lz77 deflater =
-  [%debug Logs.debug @@ fun m -> m "state: write"];
+  [%debug Format.eprintf "state: write"];
 
   let write =
-    [%debug Logs.debug @@ fun m -> m "state: write"];
+    [%debug Format.eprintf "state: write"];
 
     write
       after_writing
@@ -756,13 +752,13 @@ and write after_writing
     | `Dist | `Extra_dist -> dist
   in
   let rec write_buffer data rest deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_buffer (iterator: %d, max: %d)" deflater.i deflater.i_max];
+    [%debug Format.eprintf "state: write_buffer (iterator: %d, max: %d)" deflater.i deflater.i_max];
 
     let i = ref deflater.i in
 
     while !i < deflater.i_max && deflater.needed > 1
     do
-      [%debug Logs.debug @@ fun m -> m "we will write the literal %c (code = %d)"
+      [%debug Format.eprintf "we will write the literal %c (code = %d)"
         (RO.get data !i) (RO.get data !i |> Char.code |> get_chr |> fst)];
 
       let code, length = RO.get data !i |> Char.code |> get_chr in
@@ -771,7 +767,7 @@ and write after_writing
       incr i
     done;
 
-    [%debug Logs.debug @@ fun m -> m "we write %d data(s)" !i];
+    [%debug Format.eprintf "we write %d data(s)" !i];
 
     deflater.i <- !i;
     deflater.k <-
@@ -784,7 +780,7 @@ and write after_writing
     else Flush
   in
   let rec write_insert ?(writing = `Length) v rest deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_insert"];
+    [%debug Format.eprintf "state: write_insert"];
 
     if deflater.needed > 1
     then begin
@@ -801,7 +797,7 @@ and write after_writing
     end else Flush
   in
   let write_eof deflater =
-    [%debug Logs.debug @@ fun m -> m "state: write_eof"];
+    [%debug Format.eprintf "state: write_eof"];
 
     if deflater.needed > 1
     then begin
@@ -828,7 +824,7 @@ and write after_writing
   eval deflater
 
 and align_writing next deflater =
-  [%debug Logs.debug @@ fun m -> m "state: align_writing"];
+  [%debug Format.eprintf "state: align_writing"];
 
   if deflater.needed > 1
   then begin
@@ -839,7 +835,7 @@ and align_writing next deflater =
   end else Flush
 
 and write_crc1 deflater =
-  [%debug Logs.debug @@ fun m -> m "state: write_crc1"];
+  [%debug Format.eprintf "state: write_crc1"];
 
   if deflater.needed > 1
   then begin
@@ -852,7 +848,7 @@ and write_crc1 deflater =
   end else Flush
 
 and write_crc2 deflater =
-  [%debug Logs.debug @@ fun m -> m "state: write_crc2"];
+  [%debug Format.eprintf "state: write_crc2"];
 
   if deflater.needed > 1
   then begin
@@ -870,16 +866,16 @@ let contents { outpos; _ } =
   outpos
 
 let flush deflater drop =
-  [%debug Logs.debug @@ fun m -> m "we flush %d byte(s)" drop];
+  [%debug Format.eprintf "we flush %d byte(s)" drop];
   deflater.needed <- deflater.needed + drop;
   deflater.outpos <- 0;
-  [%debug Logs.debug @@ fun m -> m "we can write %d byte(s)" deflater.needed]
+  [%debug Format.eprintf "we can write %d byte(s)" deflater.needed]
 
 let refill deflater refill =
-  [%debug Logs.debug @@ fun m -> m "we refill %d byte(s)" refill];
+  [%debug Format.eprintf "we refill %d byte(s)" refill];
   deflater.available <- deflater.available + refill;
   deflater.inpos <- 0;
-  [%debug Logs.debug @@ fun m -> m "we can read %d byte(s)" deflater.available]
+  [%debug Format.eprintf "we can read %d byte(s)" deflater.available]
 
 let last deflater is_last =
   deflater.last <- is_last
