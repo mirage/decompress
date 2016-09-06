@@ -1,42 +1,28 @@
-module type INPUT =
-sig
-  type t
+open Decompress_common
 
-  val get  : t -> int -> char
-  val sub  : t -> int -> int -> t
-  val make : int -> char -> t
-end
+type error = ..
+type error += Invalid_kind_of_block of int
+type error += Invalid_complement_of_length of int * int
+type error += Invalid_dictionary
+type error += Invalid_crc of Decompress_adler32.t
 
-module type OUTPUT =
-sig
-  type t
-  type i
+type ('i, 'o) t
+type ('i, 'o) r =
+  [ `End of ('i, 'o) t
+  | `Flush of ('i, 'o) t
+  | `Await of ('i, 'o) t
+  | `Error of ('i, 'o) t * error ]
 
-  val create : int -> t
-  val length : t -> int
-  val blit   : t -> int -> t -> int -> int -> unit
-  val iblit  : i -> int -> t -> int -> int -> unit
-  val get    : t -> int -> char
-  val set    : t -> int -> char -> unit
-end
+val eval          : 'a RO.t -> 'a RW.t -> ('a, 'a) t -> ('a, 'a) r
 
-module type S =
-sig
-  type t
-  type src
-  type dst
+val flush         : int -> int -> ('i, 'o) t -> ('i, 'o) t
+val refill        : int -> int -> ('i, 'o) t -> ('i, 'o) t
 
-  val make : src -> dst -> t
-  val eval : t -> [`Ok | `Flush | `Error | `Wait ]
+val used_in       : ('i, 'o) t -> int
+val used_out      : ('i, 'o) t -> int
+val available_in  : ('i, 'o) t -> int
+val available_out : ('i, 'o) t -> int
 
-  val flush    : int -> int -> t -> unit
-  val refill   : int -> int -> t -> unit
-  val used_in  : t -> int
-  val used_out : t -> int
-
-  val decompress : src -> dst -> (src -> int) -> (dst -> int -> int) -> unit
-end
-
-module Make (I : INPUT) (O : OUTPUT with type i = I.t) : S
-  with type dst = O.t
-   and type src = I.t
+val decompress    : 'a RO.t -> 'a RW.t -> ('a RO.t -> int -> int -> int) -> ('a RW.t -> int -> int -> int) -> unit
+val string        : bytes -> bytes -> (bytes -> int -> int -> int) -> (bytes -> int -> int -> int) -> unit
+val bigstring     : bigstring -> bigstring -> (bigstring -> int -> int -> int) -> (bigstring -> int -> int -> int) -> unit

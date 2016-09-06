@@ -6,14 +6,11 @@ open Topkg
 
 let builder c os files =
   let ocamlbuild = Conf.tool "ocamlbuild" os in
-  OS.Cmd.run @@
-  Cmd.(ocamlbuild % "-use-ocamlfind" % "-plugin-tag" % "package(str)" %% of_list files)
+  OS.Cmd.run @@ Cmd.(ocamlbuild % "-use-ocamlfind" %% of_list files)
 
 let () =
   let build = Pkg.build ~cmd:builder () in
   Pkg.describe "decompress" ~build @@ fun c ->
 
-  Ok [ Pkg.mllib ~api:["Decompress"] "lib/decompress.mllib"
-     ; Pkg.lib ~exts:Exts.c_dll_library "lib/libdecompress"
-     ; Pkg.bin "bin/dpipe"
+  Ok [ Pkg.lib ~exts:Exts.library "lib/decompress"
      ; Pkg.test "lib_test/decompress_test" ]

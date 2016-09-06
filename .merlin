@@ -10,12 +10,11 @@ B _build/ppx
 
 FLG -ppx './_build/ppx/ppx_debug.byte -debug'
 FLG -safe-string
+FLG -w @32@20@25@26@34@33@37@39
 
 # test
 PKG alcotest re camlzip
 # build
-PKG topkg ocamlbuild ocamlfind
+PKG topkg ocamlbuild findlib
 # ppx
-PKG compiler-libs logs logs.cli
-# stub
-PKG ctypes ctypes.foreign
+PKG compiler-libs

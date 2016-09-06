@@ -1,25 +1,17 @@
-true: safe_string, bin_annot, debug, optimize(3)
+true: safe_string, bin_annot, debug
 <*/*>: warn(@32@20@25@26@34@33@37@39)
 
 <lib>: include
-<gen>: include
-<bindings>: include
 
 # library
-<lib/*.ml>: use_ppx_debug(false), use_bigarray, unsafe
+<lib/*.ml>: use_bigarray, use_ppx_debug(false)
 
 # ppx
 <ppx/*.{ml,mli,byte,native}>: package(compiler-libs.common)
-
-# generate (inverted stub)
-<gen/*.{ml,mli,byte,native}>: package(ctypes.foreign), package(ctypes.stubs)
-
-# inverted stub
-<bindings/*.{ml,mli}>: package(ctypes.stubs)
 
 # test
 <lib_test/*.{ml,mli,byte,native}>: package(re.str), package(camlzip), package(alcotest), use_bigarray
 
 # binary
-<bin/dpipe.{ml,mli,byte,native}>: use_unix, use_bigarray
+<bin/dpipe.{ml,mli,byte,native}>: use_unix, use_bigarray, linkdep(bin/bs.o)
 <bin/dcpr.{ml,mli,byte,native}>: use_bigarray, package(camlzip), package(cmdliner)
