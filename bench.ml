@@ -92,7 +92,10 @@ let do_cmd input_filename mode =
   in
 
   let res = List.map (fun binary -> let e = run_once (Filename.concat (Unix.getcwd ()) binary) in binary, e) binaries in
-  Format.printf "%s\n%!" ([%derive.show: (string * r) list] res)
+  let (`Ok dpipe) : r = List.assoc "dpipe.native" res in
+  let (`Ok zpipe) : r = List.assoc "zpipe" res in
+  Format.printf "%s\n%!" ([%derive.show: (string * r) list] res);
+  Format.printf "factor: %Ld\n%!" (Int64.div dpipe.duration zpipe.duration)
 
 open Cmdliner
 
