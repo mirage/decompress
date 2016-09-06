@@ -60,14 +60,13 @@ let prefix heap max =
   aux 0 heap; tbl
 
 (* This algorithm is describe at RFC 1951 § 3.2.2.
- *
- * The huffman codes used for each alphabet in the "deflate" format have two
- * additional rules:
- *
- * * All codes of a given bit length have lexicographically consecutive
- *   values, in the same order as the symbols they represent.
- * * Shorter codes lexicographically precede longer codes.
- *
+
+   The huffman codes used for each alphabet in the "deflate" format have two
+   additional rules:
+
+   - All codes of a given bit length have lexicographically consecutive
+     values, in the same order as the symbols they represent.
+   - Shorter codes lexicographically precede longer codes.
 *)
 let make table position size max_bits =
   let bl_count = Array.make (max_bits + 1) 0 in
@@ -92,10 +91,10 @@ let make table position size max_bits =
   done;
 
   (* Assign numerical values to all codes, using consecutive
-   * values for all codes of the same length with the base
-   * values determined at step 2. Codes that are never used
-   * (which have a bit length of zero) must not be assigned a
-   * value.
+     values for all codes of the same length with the base
+     values determined at step 2. Codes that are never used
+     (which have a bit length of zero) must not be assigned a
+     value.
   *)
   let ordered = ref Heap.Empty in
   let max  = ref 0 in
