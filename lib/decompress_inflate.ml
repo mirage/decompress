@@ -620,7 +620,8 @@ let flat window src dst t =
                      ; state = Flat (loop window len) }
   in
 
-  (KFlat.get_ui16
+  (KFlat.drop_bits (t.bits mod 8)
+   @@ KFlat.get_ui16
    @@ fun len -> KFlat.get_ui16
    @@ fun nlen -> header window len nlen)
   src dst t
