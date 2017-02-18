@@ -1,6 +1,0 @@
-lib/decompress.cmxa
-bindings/bindings.cmx
-stub/decompress_bindings.cmx
-bindings/apply_bindings.cmx
-stub/decompress.o
-stub/init.o

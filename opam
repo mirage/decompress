@@ -9,6 +9,7 @@ dev-repo:     "https://github.com/oklm-wsh/Decompress.git"
 license:      "MIT"
 
 build: [ "ocaml" "pkg/pkg.ml" "build" "--pinned" pinned ]
+
 build-test: [ [ "ocaml" "pkg/pkg.ml" "build" "--pinned" pinned "--tests" "true" ]
               [ "ocaml" "pkg/pkg.ml" "test" ] ]
 
@@ -17,16 +18,9 @@ depends: [
   "ocamlfind"      {build}
   "topkg"          {build}
   "base-bytes"
-  "alcotest"       {test}
-  "re"             {test}
   "camlzip"        {test}
-  "cmdliner"       {test}
-  "ctypes"         {build}
-  "ctypes-foreign" {build}
+  "re"             {test}
+  "alcotest"       {test}
 ]
 
-depopts: [
-  "base-unix"
-]
-
-available: [ocaml-version >= "4.02.0"]
+available: [ocaml-version >= "4.03.0"]

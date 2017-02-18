@@ -1,88 +1,37 @@
-open Decompress
+module B = Decompress.B
 
-exception Inflate_error
-exception Deflate_error
+external bs_read : Unix.file_descr -> B.Bigstring.t -> int -> int -> int =
+  "bigstring_read" [@@noalloc]
+external bs_write : Unix.file_descr -> B.Bigstring.t -> int -> int -> int =
+  "bigstring_write" [@@noalloc]
 
-module Inflate =
-struct
-  include Inflate.Make(ExtString)(ExtBytes)
+(** Abstract [Unix.read] with ['a B.t]. *)
+let unix_read (type a) ch (tmp : a B.t) off len = match tmp with
+  | B.Bytes v -> Unix.read ch v off len
+  | B.Bigstring v -> bs_read ch v off len
 
-  let string ?(window_bits = 15) document =
-    let buffer   = Buffer.create 16 in
-    let position = ref 0 in
-    let size     = String.length document in
+let unix_write (type a) ch (tmp : a B.t) off len = match tmp with
+  | B.Bytes v -> Unix.write ch v off len
+  | B.Bigstring v -> bs_write ch v off len
 
-    let input    = Bytes.create 2 in
-    let output   = Bytes.create 2 in
-
-    let refill' input =
-      let n = min (size - !position) (String.length input) in
-      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
-      position := !position + n;
-      n
-    in
-
-    let flush' input size =
-      Buffer.add_subbytes buffer input 0 size;
-      size
-    in
-
-    decompress (Bytes.unsafe_to_string input) output refill' flush';
-    Buffer.contents buffer
-end
-
-module Deflate =
-struct
-  include Deflate.Make(ExtString)(ExtBytes)
-
-  let string ?(window_bits = 15) document =
-    let buffer   = Buffer.create 16 in
-    let position = ref 0 in
-    let size     = String.length document in
-
-    let input    = Bytes.create 16 in
-    let output   = Bytes.create 16 in
-
-    let refill' input =
-      let n = min (size - !position) (String.length input) in
-      Bytes.blit_string document !position (Bytes.unsafe_of_string input) 0 n;
-      position := !position + n;
-      if !position >= size then true, n else false, n
-    in
-
-    let flush' input size =
-      Buffer.add_subbytes buffer input 0 size;
-      size
-    in
-
-    compress ~window_bits (Bytes.unsafe_to_string input) output refill' flush';
-    Buffer.contents buffer
-end
-
-let () = Printexc.record_backtrace true
-
-let read_line ic =
-  try Some (input_line ic)
-  with End_of_file -> None
-
-let read_lines ic =
-  let rec loop acc =
-    match read_line ic with
-    (* Unix only *)
-    | Some line -> loop ((line ^ "\n") :: acc)
-    | None -> List.rev acc
-  in
-  loop []
-
-let load_input () =
-  read_lines stdin |> List.fold_left ( ^ ) ""
-
-let write_output str =
-  let _ = Unix.write_substring Unix.stdout str 0 (String.length str) in ()
+let _chunk = 0xFFFF
 
 let () =
-  if Sys.argv |> Array.length >= 1
-  then if Sys.argv |> Array.length >= 2 && Sys.argv.(1) = "-d"
-    then Inflate.string (load_input ()) |> write_output
-    else Deflate.string (load_input ()) |> write_output
-  else ()
+  let src = B.from_bigstring @@ B.Bigstring.create _chunk in
+  let dst = B.from_bigstring @@ B.Bigstring.create _chunk in
+
+  if Array.length Sys.argv = 1
+  then let t = Decompress.Deflate.default ~proof:src ~wbits:15 5 in
+       let _ = Decompress.Deflate.to_result
+         src dst
+         (fun src -> unix_read Unix.stdin src 0 _chunk)
+         (fun dst len -> let _ = unix_write Unix.stdout dst 0 len in _chunk)
+         t
+       in ()
+  else let t = Decompress.Inflate.default in
+       let _ = Decompress.Inflate.to_result
+         src dst
+         (fun src -> unix_read Unix.stdin src 0 _chunk)
+         (fun dst len -> let _ = unix_write Unix.stdout dst 0 len in _chunk)
+         t
+       in ()

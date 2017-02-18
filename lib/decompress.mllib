@@ -1,12 +1,6 @@
-Decompress_adler32
-Decompress_common
-Decompress_deflate
-Decompress_heap
-Decompress_huffman
-Decompress_inflate
-Decompress_lz77
-Decompress_ringbuffer
-Decompress_tables
-Decompress_tree
-Decompress_window
 Decompress
+B
+Q
+Seq
+Safe
+Adler32

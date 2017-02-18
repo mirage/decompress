@@ -1,21 +1,9 @@
 S lib
-S bin
-S ppx
-S lib_test
-
 B _build/lib
-B _build/bin
-B _build/lib_test
-B _build/ppx
 
-FLG -ppx './_build/ppx/ppx_debug.byte -debug'
-FLG -safe-string
+# Only for testing
 
-# test
-PKG alcotest re camlzip
-# build
-PKG topkg ocamlbuild ocamlfind
-# ppx
-PKG compiler-libs logs logs.cli
-# stub
-PKG ctypes ctypes.foreign
+S test
+B _build/test
+
+PKG camlzip alcotest re.str

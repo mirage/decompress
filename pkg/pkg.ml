@@ -1,19 +1,23 @@
 #!/usr/bin/env ocaml
-#use "topfind";;
-#require "topkg";;
+
+#directory "pkg";;
+#use       "topfind";;
+#require   "topkg";;
 
 open Topkg
 
-let builder c os files =
-  let ocamlbuild = Conf.tool "ocamlbuild" os in
-  OS.Cmd.run @@
-  Cmd.(ocamlbuild % "-use-ocamlfind" % "-plugin-tag" % "package(str)" %% of_list files)
+let unix = Conf.with_pkg "unix"
+let opam = Pkg.opam_file ~lint_deps_excluding:None "opam"
 
 let () =
-  let build = Pkg.build ~cmd:builder () in
-  Pkg.describe "decompress" ~build @@ fun c ->
+  Pkg.describe ~opams:[opam] "decompress" @@ fun c ->
 
-  Ok [ Pkg.mllib ~api:["Decompress"] "lib/decompress.mllib"
-     ; Pkg.lib ~exts:Exts.c_dll_library "lib/libdecompress"
-     ; Pkg.bin "bin/dpipe"
-     ; Pkg.test "lib_test/decompress_test" ]
+  let unix = Conf.value c unix in
+  let test = unix in
+
+  Ok [ Pkg.lib "pkg/META"
+     ; Pkg.doc "README.md"
+     ; Pkg.doc "CHANGES.md"
+     ; Pkg.lib ~exts:Exts.module_library "lib/decompress"
+     ; Pkg.bin  ~cond:unix "bin/dpipe" ~dst:"dpipe"
+     ; Pkg.test ~cond:test "test/test" ]
