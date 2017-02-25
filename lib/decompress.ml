@@ -368,6 +368,11 @@ struct
   let await t lst = Wait (t, lst)
   let error t exn = Error ({ t with state = Exception exn }, exn)
 
+  let _max_distance    = 8191
+  let _max_length      = 256
+  let _size_of_int64   = 8
+  let _idx_boundary    = 2
+
   type key = Int32.t option
 
   let key src idx len : key =
@@ -388,7 +393,8 @@ struct
 
   let longuest_substring src x y len =
     let rec aux acc l =
-      if x + l < y
+      if l < _max_length
+      && x + l < y
       && y + l < len
       && Safe.get src (x + l) = Safe.get src (y + l)
       then aux (Some (l + 1)) (l + 1)
@@ -436,8 +442,8 @@ struct
           || idx - x >= max_fardistance
           then acc
           else match longuest_substring src x idx (t.i_off + t.i_len) with
-            | None -> aux acc r
-            | Some len -> aux (max acc (Some (x, len))) r
+            | Some len when len >= 3 -> aux (max acc (Some (x, len))) r
+            | _ -> aux acc r
       in
 
       match aux None candidates with
@@ -466,11 +472,6 @@ struct
     Seq.of_queue results
 
   let _hlog = [| 0; 11; 11; 11; 12; 13; 13; 13; 13; 13 |]
-
-  let _max_distance    = 8191
-  let _max_length      = 256
-  let _size_of_int64   = 8
-  let _idx_boundary    = 2
 
   (* Same as blosclz, fast and imperative implementation *)
   let deffast
