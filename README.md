@@ -26,7 +26,7 @@ Decompress can be installed with `opam`:
 ## Sample programs
 
 Sample program are  located in the `bin` directory  of the distribution.  It can
-be built with:
+be built with (dependancy with Unix module):
 
     ocamlbuild -use-ocamlfind bin/dpipe.native
 
