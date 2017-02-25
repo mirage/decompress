@@ -1,3 +1,6 @@
+module B = Decompress_b
+module Adler32 = Decompress_adler32
+
 type read  = [ `Read ]
 type write = [ `Write ]
 

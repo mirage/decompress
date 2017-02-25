@@ -1,7 +1,7 @@
 module B :
 sig
-  type st
-  type bs
+  type st = St
+  type bs = Bs
 
   module Bigstring :
   sig
@@ -19,6 +19,9 @@ sig
     val get_u16   : t -> int -> int
     val get_u32   : t -> int -> int32
     val get_u64   : t -> int -> int64
+    val set_u16   : t -> int -> int -> unit
+    val set_u32   : t -> int -> int32 -> unit
+    val set_u64   : t -> int -> int64 -> unit
     val to_string : t -> string
     val blit      : t -> int -> t -> int -> int -> unit
     val pp        : Format.formatter -> t -> unit
@@ -40,6 +43,9 @@ sig
   val get_u16        : 'a t -> int -> int
   val get_u32        : 'a t -> int -> int32
   val get_u64        : 'a t -> int -> int64
+  val set_u16        : 'a t -> int -> int -> unit
+  val set_u32        : 'a t -> int -> int32 -> unit
+  val set_u64        : 'a t -> int -> int64 -> unit
 
   val to_string      : 'a t -> string
 

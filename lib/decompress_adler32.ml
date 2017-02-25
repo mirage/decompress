@@ -1,3 +1,5 @@
+module B       = Decompress_b
+
 type t = Int32.t
 
 module I =

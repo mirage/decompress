@@ -1,4 +1,8 @@
-module B = B
+module B       = Decompress_b
+module Q       = Decompress_q
+module Adler32 = Decompress_adler32
+module Safe    = Decompress_safe
+module Seq     = Decompress_seq
 
 let repeat atm =
   let atm = Char.code atm |> Int64.of_int in
