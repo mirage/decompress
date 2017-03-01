@@ -15,6 +15,7 @@ We  respect   the  interface  of  `zlib`   and  all  flush   mode  is  available
 The interface proposed is a non-blocking interface.
 
 Home page: http://din.osau.re/
+
 Contact: Romain Calascibetta `<romain.calascibet ta@gmail.com>`
 
 ## Installation
