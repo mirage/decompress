@@ -1,7 +1,8 @@
 true: safe_string, bin_annot, debug
 <*/*>: warn_error(+1..49), warn(A-4-41-44)
 
+<lib/*>: package(hex)
 <lib>: include
 
 <test/*>: use_bigarray, package(re.str), package(camlzip), package(alcotest)
-<bin/*>: use_bigarray, use_unix, linkdep(bin/bs.o)
+<bin/*>: use_bigarray, use_unix, package(cmdliner), linkdep(bin/bs.o)

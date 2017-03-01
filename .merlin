@@ -6,4 +6,4 @@ B _build/lib
 S test
 B _build/test
 
-PKG camlzip alcotest re.str
+PKG camlzip alcotest re.str cmdliner
