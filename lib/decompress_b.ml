@@ -187,7 +187,7 @@ let to_string
   | Bigstring v -> Bigstring.to_string v
 
 let empty
-  : type a. a t -> a t
-  = function
+  : type a. proof:a t -> a t
+  = fun ~proof -> match proof with
   | Bytes _ -> Bytes Bytes.empty
   | Bigstring _ -> Bigstring Bigstring.empty
