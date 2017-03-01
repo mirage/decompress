@@ -191,3 +191,6 @@ let empty
   = fun ~proof -> match proof with
   | Bytes _ -> Bytes Bytes.empty
   | Bigstring _ -> Bigstring Bigstring.empty
+
+let proof_bytes = Bytes Bytes.empty
+let proof_bigstring = Bigstring Bigstring.empty
