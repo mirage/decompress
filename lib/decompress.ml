@@ -317,6 +317,7 @@ module L =
 struct
   type error = ..
   type error += Invalid_level of int
+  type error += Invalid_wbits of int
 
   let pp_error fmt = function
     | Invalid_level level -> Format.fprintf fmt "(Invalid_level %d)" level
@@ -712,20 +713,27 @@ struct
   let default
     ?(level = 0)
     ?(on = fun _ -> ())
-    window_bits =
-    if level >= 0 && level <= 9
+    wbits =
+    if level >= 0 && level <= 9 && wbits >= 8 && wbits <= 15
     then { i_off = 0
          ; i_pos = 0
          ; i_len = 0
          ; level
          ; on
-         ; state = Deflate window_bits }
-    else { i_off = 0
+         ; state = Deflate wbits }
+    else if wbits >= 8 && wbits <= 15
+    then { i_off = 0
          ; i_pos = 0
          ; i_len = 0
          ; level = 0
          ; on
          ; state = Exception (Invalid_level level) }
+    else { i_off = 0
+         ; i_pos = 0
+         ; i_len = 0
+         ; level = 0
+         ; on
+         ; state = Exception (Invalid_wbits wbits) }
 end
 
 (* Table from zlib *)
@@ -1098,7 +1106,7 @@ struct
     let rec put_byte chr k src dst t =
       if (t.o_len - t.o_pos) > 0
       then begin
-        Safe.set dst (t.o_off + t.o_pos) (Char.chr chr);
+        Safe.set dst (t.o_off + t.o_pos) (Char.unsafe_chr chr);
         k src dst { t with o_pos = t.o_pos + 1 }
       end else Flush { t with state = Header (put_byte chr k) }
   end
@@ -1861,7 +1869,9 @@ struct
   let default ~proof ?(wbits = 15) level =
     { hold  = 0
     ; bits  = 0
-    ; temp  = Safe.read_and_write @@ B.from ~proof 0x8000
+    ; temp  = if level <> 0
+              then Safe.read_and_write @@ B.empty ~proof
+              else Safe.read_and_write @@ B.from ~proof 0x8000
     ; o_off = 0
     ; o_pos = 0
     ; o_len = 0
@@ -1907,6 +1917,117 @@ struct
       (function B.Bigstring v -> flusher v) t
 end
 
+module Window =
+struct
+  type 'a t =
+    { rpos   : int
+    ; wpos   : int
+    ; size   : int
+    ; buffer : ([ Safe.read | Safe.write ], 'a) Safe.t
+    ; crc    : Int32.t }
+
+  let create ~proof =
+    let size = 1 lsl 15 in
+    { rpos   = 0
+    ; wpos   = 0
+    ; size   = size + 1
+    ; buffer = Safe.read_and_write @@ B.from ~proof (size + 1)
+    ; crc    = 1l }
+
+  let crc { crc; _ } = crc
+
+  let reset t =
+    { t with rpos = 0
+           ; wpos = 0
+           ; crc = 1l }
+
+  let available_to_write { wpos; rpos; size; _ } =
+    if wpos >= rpos then size - (wpos - rpos) - 1
+    else rpos - wpos - 1
+
+  let drop n ({ rpos; size; _ } as t) =
+    { t with rpos = if rpos + n < size then rpos + n
+                    else rpos + n - size }
+
+  let move n ({ wpos; size; _ } as t) =
+    { t with wpos = if wpos + n < size then wpos + n
+                    else wpos + n - size }
+
+  let write_ro buf off len t =
+    let t = if len > available_to_write t
+            then drop (len - (available_to_write t)) t
+            else t in
+
+    let pre = t.size - t.wpos in
+    let extra = len - pre in
+
+    if extra > 0 then begin
+      Safe.blit buf off t.buffer t.wpos pre;
+      Safe.blit buf (off + pre) t.buffer 0 extra;
+    end else
+      Safe.blit buf off t.buffer t.wpos len;
+
+    move len { t with crc = Adler32.adler32 buf t.crc off len }
+
+  let write_rw buf off len t =
+    let t = if len > available_to_write t
+            then drop (len - (available_to_write t)) t
+            else t in
+
+    let pre = t.size - t.wpos in
+    let extra = len - pre in
+
+    if extra > 0 then begin
+      Safe.blit buf off t.buffer t.wpos pre;
+      Safe.blit buf (off + pre) t.buffer 0 extra;
+    end else begin
+      Safe.blit buf off t.buffer t.wpos len;
+    end;
+
+    move len { t with crc = Adler32.adler32 buf t.crc off len }
+
+  let write_char chr t =
+    let t = if 1 > available_to_write t
+            then drop (1 - (available_to_write t)) t
+            else t in
+
+    Safe.set t.buffer t.wpos chr;
+
+    move 1 { t with crc = Adler32.adler32
+                            (B.from_bytes @@ Bytes.make 1 chr)
+                            t.crc 0 1 }
+
+  let fill_char chr len t =
+    let t = if len > available_to_write t
+            then drop (len - (available_to_write t)) t
+            else t in
+
+    let pre = t.size - t.wpos in
+    let extra = len - pre in
+
+    if extra > 0 then begin
+      Safe.fill t.buffer t.wpos pre chr;
+      Safe.fill t.buffer 0 extra chr;
+    end else
+      Safe.fill t.buffer t.wpos len chr;
+
+    move len { t with crc = Adler32.adler32
+                              (B.from_bytes @@ Bytes.make len chr)
+                              t.crc 0 len }
+
+  let rec sanitize n ({ size; _ } as t) =
+    if n < 0 then sanitize (size + n) t
+    else if n >= 0 && n < size then n
+    else sanitize (n - size) t
+
+  let ( % ) n t =
+    if n < t.size
+    then sanitize n t
+    else raise (Failure "Window.( % )")
+
+  let checksum { crc; _ } = crc
+end
+
 (** non-blocking and functionnal implementation of Inflate *)
 module type INFLATE =
 sig
@@ -1934,7 +2055,7 @@ sig
   val used_out : ('i, 'o) t -> int
   val write    : ('i, 'o) t -> int
 
-  val default  : ('i, 'o) t
+  val default  : 'o Window.t -> ('i, 'o) t
 
   val to_result : 'a B.t -> 'a B.t ->
                   ('a B.t -> int) ->
@@ -1949,6 +2070,8 @@ sig
                   (B.Bigstring.t -> int -> int) ->
                   (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
+
+
 
 module Inflate : INFLATE =
 struct
@@ -2048,106 +2171,6 @@ struct
       done;
 
       prefix !ordered !max, !max
-  end
-
-  module Window =
-  struct
-    type 'a t =
-      { rpos   : int
-      ; wpos   : int
-      ; size   : int
-      ; buffer : ([ Safe.read | Safe.write ], 'a) Safe.t
-      ; crc    : Int32.t }
-
-    let make_by ~proof size =
-      { rpos   = 0
-      ; wpos   = 0
-      ; size   = size + 1
-      ; buffer = Safe.read_and_write @@ B.from ~proof (size + 1)
-      ; crc    = 1l }
-
-    let available_to_write { wpos; rpos; size; _ } =
-      if wpos >= rpos then size - (wpos - rpos) - 1
-      else rpos - wpos - 1
-
-    let drop n ({ rpos; size; _ } as t) =
-      { t with rpos = if rpos + n < size then rpos + n
-                      else rpos + n - size }
-
-    let move n ({ wpos; size; _ } as t) =
-      { t with wpos = if wpos + n < size then wpos + n
-                      else wpos + n - size }
-
-    let write_ro buf off len t =
-      let t = if len > available_to_write t
-              then drop (len - (available_to_write t)) t
-              else t in
-
-      let pre = t.size - t.wpos in
-      let extra = len - pre in
-
-      if extra > 0 then begin
-        Safe.blit buf off t.buffer t.wpos pre;
-        Safe.blit buf (off + pre) t.buffer 0 extra;
-      end else
-        Safe.blit buf off t.buffer t.wpos len;
-
-      move len { t with crc = Adler32.adler32 buf t.crc off len }
-
-    let write_rw buf off len t =
-      let t = if len > available_to_write t
-              then drop (len - (available_to_write t)) t
-              else t in
-
-      let pre = t.size - t.wpos in
-      let extra = len - pre in
-
-      if extra > 0 then begin
-        Safe.blit buf off t.buffer t.wpos pre;
-        Safe.blit buf (off + pre) t.buffer 0 extra;
-      end else begin
-        Safe.blit buf off t.buffer t.wpos len;
-      end;
-
-      move len { t with crc = Adler32.adler32 buf t.crc off len }
-
-    let write_char chr t =
-      let t = if 1 > available_to_write t
-              then drop (1 - (available_to_write t)) t
-              else t in
-
-      Safe.set t.buffer t.wpos chr;
-
-      move 1 { t with crc = Adler32.adler32
-                              (B.from_bytes @@ Bytes.make 1 chr)
-                              t.crc 0 1 }
-
-    let fill_char chr len t =
-      let t = if len > available_to_write t
-              then drop (len - (available_to_write t)) t
-              else t in
-
-      let pre = t.size - t.wpos in
-      let extra = len - pre in
-
-      if extra > 0 then begin
-        Safe.fill t.buffer t.wpos pre chr;
-        Safe.fill t.buffer 0 extra chr;
-      end else
-        Safe.fill t.buffer t.wpos len chr;
-
-      move len { t with crc = Adler32.adler32
-                                (B.from_bytes @@ Bytes.make len chr)
-                                t.crc 0 len }
-
-    let rec sanitize n ({ size; _ } as t) =
-      if n < 0 then sanitize (size + n) t
-      else if n >= 0 && n < size then n
-      else sanitize (n - size) t
-
-    let ( % ) n t = sanitize n t
-
-    let checksum { crc; _ } = crc
   end
 
   type error = ..
@@ -3022,11 +3045,14 @@ struct
                      ; bits  = t.bits + 8 }
     else Wait t
 
-  let header src dst t =
+  let header window src dst t =
     (KHeader.get_byte
-     @@ fun byte0 -> KHeader.get_byte
-     @@ fun _ _ dst t ->
-          let window = Window.make_by ~proof:(Safe.proof dst) (1 lsl (byte0 lsr 4 + 8)) in
+     @@ fun _ -> KHeader.get_byte
+     @@ fun _ _ _ t ->
+          (* XXX(dinosaure): need to fix the size of the window.
+                             in fact, it's depending by the header. I don't
+                             know why so we need to understand deeply what is
+                             going on because, w.t.f. *)
 
           Cont { t with state = Last window })
     src dst t
@@ -3062,7 +3088,7 @@ struct
 
     loop t
 
-  let default =
+  let default window =
     { last  = false
     ; hold  = 0
     ; bits  = 0
@@ -3073,7 +3099,7 @@ struct
     ; o_pos = 0
     ; o_len = 0
     ; write = 0
-    ; state = Header header }
+    ; state = Header (header window) }
 
   let refill off len t =
     if t.i_pos = t.i_len

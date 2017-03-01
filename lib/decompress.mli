@@ -32,28 +32,31 @@ sig
     | Bytes     : Bytes.t -> st t
     | Bigstring : Bigstring.t -> bs t
 
-  val from_bytes     : Bytes.t -> st t
-  val from_bigstring : Bigstring.t -> bs t
-  val from           : proof: 'a t -> int -> 'a t
+  val from_bytes      : Bytes.t -> st t
+  val from_bigstring  : Bigstring.t -> bs t
+  val from            : proof: 'a t -> int -> 'a t
 
-  val length         : 'a t -> int
-  val get            : 'a t -> int -> char
-  val set            : 'a t -> int -> char -> unit
+  val length          : 'a t -> int
+  val get             : 'a t -> int -> char
+  val set             : 'a t -> int -> char -> unit
 
-  val get_u16        : 'a t -> int -> int
-  val get_u32        : 'a t -> int -> int32
-  val get_u64        : 'a t -> int -> int64
-  val set_u16        : 'a t -> int -> int -> unit
-  val set_u32        : 'a t -> int -> int32 -> unit
-  val set_u64        : 'a t -> int -> int64 -> unit
+  val get_u16         : 'a t -> int -> int
+  val get_u32         : 'a t -> int -> int32
+  val get_u64         : 'a t -> int -> int64
+  val set_u16         : 'a t -> int -> int -> unit
+  val set_u32         : 'a t -> int -> int32 -> unit
+  val set_u64         : 'a t -> int -> int64 -> unit
 
-  val to_string      : 'a t -> string
+  val to_string       : 'a t -> string
 
-  val blit           : 'a t -> int -> 'a t -> int -> int -> unit
-  val sub            : 'a t -> int -> int -> 'a t
-  val fill           : 'a t -> int -> int -> char -> unit
-  val pp             : Format.formatter -> 'a t -> unit
-  val empty          : 'a t -> 'a t
+  val blit            : 'a t -> int -> 'a t -> int -> int -> unit
+  val sub             : 'a t -> int -> int -> 'a t
+  val fill            : 'a t -> int -> int -> char -> unit
+  val pp              : Format.formatter -> 'a t -> unit
+  val empty           : proof:'a t -> 'a t
+
+  val proof_bytes     : st t
+  val proof_bigstring : bs t
 end
 
 (** Decompress, functionnal implementation of Zlib in OCaml. *)
@@ -246,6 +249,21 @@ end
 
 module Deflate : DEFLATE
 
+(** Window used by the Inflate algorithm.
+
+    A functionnal implementation of window to use with the inflate algorithm.
+    After one process, you can [reset] and reuse the window for a new process.
+    This API is available to limit the allocation by Decompress.
+*)
+module Window :
+sig
+  type 'o t
+
+  val create : proof:'o B.t -> 'o t
+  val reset  : 'o t -> 'o t
+  val crc    : 'o t -> Int32.t
+end
+
 (** Inflate algorithm.
 
     A functionnal non-blocking implementation of Zlib algorithm.
@@ -317,7 +335,7 @@ sig
   val write    : ('i, 'o) t -> int
 
   (** [default] makes a new state [t]. *)
-  val default  : ('i, 'o) t
+  val default  : 'o Window.t -> ('i, 'o) t
 
   (** [to_result i o refill flush t] is a convenience function to apply the
       inflate algorithm on the stream [refill] and call [flush] when the
