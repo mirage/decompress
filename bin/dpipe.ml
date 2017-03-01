@@ -19,8 +19,8 @@ let unix_write (type a) ch (tmp : a B.t) off len = match tmp with
 let _chunk = 0xFFFF
 
 let do_command mode level wbits =
-  let src = B.from_bigstring @@ B.Bigstring.create _chunk in
-  let dst = B.from_bigstring @@ B.Bigstring.create _chunk in
+  let src = B.from ~proof:B.proof_bigstring _chunk in
+  let dst = B.from ~proof:B.proof_bigstring _chunk in
 
   match mode with
   | `Compression ->
