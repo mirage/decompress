@@ -23,6 +23,7 @@ let string_of_file filename =
   let n = in_channel_length ic in
   let s = Bytes.create n in
   really_input ic s 0 n;
+  close_in ic;
   Bytes.unsafe_to_string s
 
 let bigstring_of_file filename =
@@ -38,7 +39,7 @@ module type COMMON =
 sig
   type t
 
-  val compress   : ?level:int -> (t -> int) -> (t -> int -> unit) -> unit
+  val compress   : ?level:int -> ?wbits:int -> (t -> int) -> (t -> int -> unit) -> unit
   val uncompress : (t -> int) -> (t -> int -> unit) -> unit
 end
 
@@ -51,12 +52,13 @@ struct
 
   let input  = Bytes.create 0xFFFF
   let output = Bytes.create 0xFFFF
+  let window = Decompress.Window.create ~proof:Decompress.B.proof_bytes
 
-  let compress ?(level = 4) refill flush =
+  let compress ?(level = 4) ?(wbits = 15) refill flush =
     Decompress.Deflate.bytes input output
       refill
       (fun buf len -> flush buf len; 0xFFFF)
-      (Decompress.Deflate.default ~proof:(Decompress.B.from_bytes Bytes.empty) level)
+      (Decompress.Deflate.default ~proof:(Decompress.B.from_bytes Bytes.empty) level ~wbits)
     |> function
        | Ok _ -> ()
        | Error exn -> raise (Decompress_deflate exn)
@@ -65,7 +67,7 @@ struct
     Decompress.Inflate.bytes input output
       refill
       (fun buf len -> flush buf len; 0xFFFF)
-      (Decompress.Inflate.default)
+      (Decompress.Inflate.default (Decompress.Window.reset window))
     |> function
        | Ok _ -> ()
        | Error exn -> raise (Decompress_inflate exn)
@@ -75,7 +77,7 @@ module C : COMMON with type t = Bytes.t =
 struct
   type t = Bytes.t
 
-  let compress ?level refill flush =
+  let compress ?level ?wbits:_ refill flush =
     Zlib.compress ?level refill flush
 
   let uncompress refill flush =
@@ -86,7 +88,7 @@ module Z (I : COMMON with type t = Bytes.t) =
 struct
   module Deflate =
   struct
-    let string ?level content =
+    let string ?level ?wbits content =
       let result = Buffer.create (String.length content) in
 
       let refill input =
@@ -104,7 +106,7 @@ struct
           Buffer.add_subbytes output buf 0 len
       in
 
-      I.compress ?level (refill content) (flush result);
+      I.compress ?level ?wbits (refill content) (flush result);
       Buffer.contents result
   end
 
@@ -136,34 +138,49 @@ end
 module Decompress = Z(D)
 module Camlzip    = Z(C)
 
-let c2d ?level content =
-  Camlzip.Deflate.string ?level content
+let c2d ?level ?wbits content =
+  Camlzip.Deflate.string ?level ?wbits content
   |> Decompress.Inflate.string
 
-let d2c ?level content =
-  Decompress.Deflate.string ?level content
+let d2c ?level ?wbits content =
+  Decompress.Deflate.string ?level ?wbits content
   |> Camlzip.Inflate.string
 
-let d2d ?level content =
-  Decompress.Deflate.string ?level content
+let d2d ?level ?wbits content =
+  Decompress.Deflate.string ?level ?wbits content
   |> Decompress.Inflate.string
 
-let make_test filename =
-  let content = string_of_file filename in
+let level = [ 0; 1; 2; 3; 4; 5; 6; 7; 8; 9 ]
+let wbits = [ 15 ]
+  (* XXX(dinosaure): we need to avoid alcotest to write a file output, otherwise
+                     we have an I/O error. *)
 
-  let with_level level =
-    [ Printf.sprintf "--level %d %s" level filename,
+let make_test filename =
+
+  let make level wbits =
+    [ Printf.sprintf "c2d level:%d wbits:%d %s" level wbits filename,
       `Slow,
-      (fun () -> Alcotest.(check string) content (c2d ~level content) content)
-    ; Printf.sprintf "--level %d %s" level filename,
+      (fun () -> let content = string_of_file filename in
+                 Alcotest.(check string) content (c2d ~level ~wbits content)
+      content;
+                 Gc.compact ())
+    ; Printf.sprintf "d2c level:%d wbits:%d %s" level wbits filename,
       `Slow,
-      (fun () -> Alcotest.(check string) content (d2c ~level content) content)
-    ; Printf.sprintf "--level %d %s" level filename,
+      (fun () -> let content = string_of_file filename in
+                 Alcotest.(check string) content (d2c ~level ~wbits content)
+      content;
+                 Gc.compact ())
+    ; Printf.sprintf "d2d level:%d wbits:%d %s" level wbits filename,
       `Slow,
-      (fun () -> Alcotest.(check string) content (d2d ~level content) content) ]
+      (fun () -> let content = string_of_file filename in
+                 Alcotest.(check string) content (d2d ~level ~wbits content)
+      content;
+                 Gc.compact ()) ]
   in
 
-  List.map with_level [0; 1; 2; 3; 4; 5; 6; 7; 8; 9]
+  List.map make level
+  |> List.map (fun maker -> List.fold_left (fun a x -> maker x :: a) [] wbits)
+  |> List.concat
   |> List.concat
 
 let () =
