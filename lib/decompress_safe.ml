@@ -23,4 +23,4 @@ let pp        = B.pp
 let to_string = B.to_string
 let adler32   = Adler32.adler32
 
-external proof : ('a, 'i) t -> 'i B.t = "%identity"
+external from : ('a, 'i) t -> 'i B.t = "%identity"
