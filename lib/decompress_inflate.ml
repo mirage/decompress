@@ -97,56 +97,6 @@ let get_bit k inflater =
          inflater
   else aux inflater
 
-let rec huffman_read_and_find_get_bit_get_bits tree k state = match tree with
-  | Huffman.Leaf i -> k i state
-  | Huffman.Node (a, b) ->
-    get_bit_specialized k a b state
-  | Huffman.Flat (n, a) ->
-    get_bits_specialized k a n state
-and get_bit_specialized kk a b inflater =
-  if inflater.bits = 0
-  then get_byte'_specialized a b kk inflater
-  else get_bit_specialized_aux a b kk inflater
-and get_bit_specialized_aux a b kk inflater =
-  let result = inflater.hold land 1 = 1 in
-  inflater.bits <- inflater.bits - 1;
-  inflater.hold <- inflater.hold lsr 1;
-  if result
-  then huffman_read_and_find_get_bit_get_bits b kk inflater
-  else huffman_read_and_find_get_bit_get_bits a kk inflater
-and get_byte'_specialized a b kk  inflater =
-  if inflater.available - inflater.inpos > 0
-  then begin
-    let code = Char.code @@ RO.get inflater.src inflater.inpos in
-    inflater.inpos <- inflater.inpos + 1;
-    inflater.hold <- code;
-    inflater.bits <- 8;
-    get_bit_specialized_aux a b kk inflater
-  end else begin
-    inflater.k <- get_byte'_specialized a b kk;
-    Wait
-  end
-and get_bits_specialized kk a n inflater =
-  if inflater.bits < n
-  then get_byte'_loop kk a n inflater
-  else
-    let result = inflater.hold land (1 lsl n - 1) in
-    inflater.bits <- inflater.bits - n;
-    inflater.hold <- inflater.hold lsr n;
-    huffman_read_and_find_get_bit_get_bits (Array.get a result) kk inflater
-and get_byte'_loop kk a n inflater =
-  if inflater.available - inflater.inpos > 0
-  then begin
-    let code = Char.code @@ RO.get inflater.src inflater.inpos in
-    inflater.inpos <- inflater.inpos + 1;
-    inflater.hold <- inflater.hold lor (code lsl inflater.bits);
-    inflater.bits <- inflater.bits + 8;
-    get_bits_specialized kk a n inflater
-  end else begin
-    inflater.k <- (get_byte'_loop kk a n);
-    Wait
-  end
-
 let reverse_bits =
   let t =
     [| 0x00; 0x80; 0x40; 0xC0; 0x20; 0xA0; 0x60; 0xE0; 0x10; 0x90; 0x50; 0xD0;
@@ -173,6 +123,35 @@ let reverse_bits =
        0x3F; 0xBF; 0x7F; 0xFF |]
   in
   fun bits -> t.(bits)
+
+let peek_bits n k inflater =
+  let rec loop n k inflater =
+    if inflater.bits < n
+    then get_byte' (fun byte inflater ->
+                    inflater.hold <- inflater.hold lor (byte lsl inflater.bits);
+                    inflater.bits <- inflater.bits + 8;
+
+                    (loop[@tailcall]) n k inflater) inflater
+    else k inflater
+  in (loop[@tailcall]) n k inflater
+
+let rec safe_get_byte k inflater =
+  if inflater.bits >= 8
+  then begin
+    let byte = inflater.hold land 0xFF in
+    inflater.hold <- inflater.hold lsr 8;
+    inflater.bits <- inflater.bits - 8;
+
+    k byte inflater
+  end else if inflater.bits > 0
+  then peek_bits 8 (safe_get_byte k) inflater
+  else get_byte' k inflater
+
+let drop_bits n k inflater =
+  inflater.bits <- inflater.bits - n;
+  inflater.hold <- inflater.hold lsr n;
+
+  k inflater
 
 let get_bits n k inflater =
   let aux inflater =
@@ -216,10 +195,14 @@ struct
     ; max
     ; dictionary = Array.make max 0 }
 
-  let inflate (tree, max) k inflater =
-    let get next inflater =
-      huffman_read_and_find_get_bit_get_bits
-        tree next inflater
+  let inflate (tbl, max_bits, max) k inflater =
+    let mask_bits = (1 lsl max_bits) - 1 in
+
+    let rec get next inflater =
+      if inflater.bits < max_bits
+      then peek_bits max_bits (get next) inflater
+      else let (len, v) = Array.get tbl (inflater.hold land mask_bits) in
+           drop_bits len (next v) inflater
     in
 
     let state = make max in
@@ -306,7 +289,7 @@ let rec put_chr window chr next inflater =
     next inflater
   end else (inflater.k <- put_chr window chr next; Flush)
 
-let rec put_bytes window buff off len next inflater =
+let rec put_bytes ?(incr = (+)) window buff off len next inflater =
   let safe_window_add_ro window buff off len =
     let size = RO.length buff in
 
@@ -358,9 +341,9 @@ let rec put_bytes window buff off len next inflater =
     inflater.outpos <- inflater.outpos + n;
 
     if len - n > 0
-    then put_bytes window buff (off + n) (len - n) next inflater
+    then put_bytes ~incr window buff (incr off n) (len - n) next inflater
     else next inflater
-  end else (inflater.k <- put_bytes window buff off len next; Flush)
+  end else (inflater.k <- put_bytes ~incr window buff off len next; Flush)
 
 let rec fill_byte window chr len next inflater =
   if inflater.outpos < inflater.needed
@@ -386,19 +369,18 @@ and crc window inflater =
   let check b a inflater =
     [%debug Logs.debug @@ fun m -> m "state: crc [%d:%d]" a b];
 
-    (*
-    if Adler32.neq (Adler32.make a b) (Window.checksum window)
+    (* if Adler32.neq (Adler32.make a b) (Window.checksum window)
     then raise Invalid_crc; *)
 
     ok inflater
   in
 
   let read_a2b a1a a1b a2a a2b = check ((a1a lsl 8) lor a1b) ((a2a lsl 8) lor a2b) in
-  let read_a2a a1a a1b a2a     = get_byte' (read_a2b a1a a1b a2a) in
-  let read_a1b a1a a1b         = get_byte' (read_a2a a1a a1b) in
-  let read_a1a a1a             = get_byte' (read_a1b a1a) in
+  let read_a2a a1a a1b a2a     = safe_get_byte (read_a2b a1a a1b a2a) in
+  let read_a1b a1a a1b         = safe_get_byte (read_a2a a1a a1b) in
+  let read_a1a a1a             = safe_get_byte (read_a1b a1a) in
 
-  get_byte' read_a1a inflater
+  safe_get_byte read_a1a inflater
 
 and flat window inflater =
   let rec loop len inflater =
@@ -461,7 +443,9 @@ and inflate window get_chr get_dst inflater =
 
           [%debug Logs.debug @@ fun m -> m "we will put a bytes"];
 
-          put_bytes window (to_ro window.window.buffer)
+          put_bytes
+            ~incr:(fun off n -> RingBuffer.(window.window % (off + n)))
+            window (to_ro window.window.buffer)
             (window.window % (window.window.wpos - dist))
             length
             (get_chr loop)
@@ -484,9 +468,14 @@ and inflate window get_chr get_dst inflater =
   get_chr loop inflater
 
 and fixed window inflater =
-  let get_chr next inflater =
-    huffman_read_and_find_get_bit_get_bits
-      fixed_huffman next inflater
+  let tbl, max = fixed_huffman in
+  let mask = (1 lsl max) - 1 in
+
+  let rec get_chr next inflater =
+    if inflater.bits < max
+    then peek_bits max (get_chr next) inflater
+    else let (len, v) = Array.get tbl (inflater.hold land mask) in
+         drop_bits len (next v) inflater
   in
 
   let get_dst next =
@@ -514,20 +503,29 @@ and dynamic window inflater =
 
      Logs.debug @@ fun m -> m "state: make_table [%a]" (print_arr ~sep:"; " print_int) buf];
 
-    Dictionary.inflate
-      (Huffman.make buf 0 19 7, hlit + hdist)
-      (fun dict inflater ->
-       let huffman_chr = Huffman.make dict 0 hlit 15 in
-       let huffman_dst = Huffman.make dict hlit hdist 15 in
+    let tbl, max = Huffman.make buf 0 19 7 in
 
-       let get_chr next inflater =
-         huffman_read_and_find_get_bit_get_bits
-           huffman_chr next inflater
+    Dictionary.inflate
+      (tbl, max, hlit + hdist)
+      (fun dict inflater ->
+       let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
+       let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
+
+       let mask_chr = (1 lsl max_chr) - 1 in
+       let mask_dst = (1 lsl max_dst) - 1 in
+
+       let rec get_chr next inflater =
+         if inflater.bits < max_chr
+         then peek_bits max_chr (get_chr next) inflater
+         else let (len, v) = Array.get tbl_chr (inflater.hold land mask_chr) in
+              drop_bits len (next v) inflater
        in
 
-       let get_dst next inflater =
-         huffman_read_and_find_get_bit_get_bits
-           huffman_dst next inflater
+       let rec get_dst next inflater =
+         if inflater.bits < max_dst
+         then peek_bits max_dst (get_dst next) inflater
+         else let (len, v) = Array.get tbl_dst (inflater.hold land mask_dst) in
+              drop_bits len (next v) inflater
        in
 
        inflate window get_chr get_dst inflater)
@@ -653,3 +651,246 @@ let bigstring input output refill flush =
     | RW.Bigstring v -> flush v in
 
   decompress input output refill flush
+
+(*
+module Inffast =
+struct
+  module ExtBytes =
+  struct
+    type elt = char
+
+    include Bytes
+  end
+
+  module RingBuffer = Decompress_window
+
+  type t =
+    { mutable hold      : int
+    ; mutable bits      : int
+    ; mutable outpos    : int
+    ; mutable needed    : int
+    ; mutable inpos     : int
+    ; mutable available : int
+    ; len_bits          : int
+    ; dst_bits          : int
+    ; lcode             : (int * int * int) array
+    (* XXX: we can store (int * int * int) in a int32 *)
+    ; dcode             : (int * int * int) array
+    (* XXX: we can store (int * int * int) in a int32 *)
+    ; src               : String.t
+    ; dst               : Bytes.t
+    ; window            : RingBuffer.t }
+
+  exception Dolen
+  exception Dodist
+  exception Break
+
+  let inffast state =
+    let lmask = (1 lsl state.len_bits) - 1 in
+    let dmask = (1 lsl state.dst_bits) - 1 in
+
+    let fst (a, b, c) = a in
+    let snd (a, b, c) = b in
+    let thd (a, b, c) = c in
+
+    (* avoid the barrier of caml_modify *)
+    let hold  = ref state.hold in
+    let bits  = ref state.bits in
+    let inpos = ref state.inpos in
+    let outpos = ref state.outpos in
+    let here  = ref (0, 0, 0) in
+    let op    = ref 0 in
+    let len   = ref 0 in
+    let dist  = ref 0 in
+
+    let dolen () =
+      here := Array.get state.lcode (!hold land lmask);
+      op   := fst !here;
+      hold := !hold lsr (snd !here);
+      bits := !bits - (snd !here);
+
+      if !op = 0 (* is literal *)
+      then begin
+        Bytes.set state.dst !outpos (Char.chr (thd !here));
+        outpos := !outpos + 1;
+      end else if (!op land 16) <> 0 then begin (* length base *)
+        len := (thd !here);
+        op  := !op land 15; (* number of extra bits *)
+
+        if !op <> 0
+        then begin
+          if !bits < !op (* read the needed data to have the extra-bits *)
+          then begin
+            hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+            bits  := !bits + 8;
+            inpos := !inpos + 1;
+          end;
+
+          len  := !len + (!hold land ((1 lsl !op) - 1));
+          hold := !hold lsr !op;
+          bits := !bits - !op;
+        end;
+
+        if !bits < 15
+        then begin
+          hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+          bits  := !bits + 8;
+          inpos := !inpos + 1;
+          hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+          bits  := !bits + 8;
+          inpos := !inpos + 1;
+        end;
+
+        here := Array.get state.dcode (!hold land dmask);
+
+        raise Dodist
+      end else if (!op land 64) = 0 then begin (* 2nd level length code *)
+        raise Dolen
+      end else if (!op land 32) <> 0 then begin (* end of block *)
+        raise Break
+      end else begin
+        raise Break
+      end
+    in
+
+    let dodist () =
+      op   := fst !here;
+      hold := !hold lsr (snd !here);
+      bits := !bits - (snd !here);
+
+      if !op land 16 <> 0 (* distance base *)
+      then begin
+        dist := (thd !here);
+        op   := !op land 15; (* number of extra bits *)
+
+        if !bits < !op
+        then begin
+          hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+          bits  := !bits + 8;
+          inpos := !inpos + 1;
+
+          if !bits < !op
+          then begin
+            hold  := !hold + ((Char.code @@ String.get state.src !inpos) lsl !bits);
+            bits  := !bits + 8;
+            inpos := !inpos + 1;
+          end
+        end;
+
+        dist := !dist + (!hold land ((1 lsl !op) - 1));
+        hold := !hold lsr !op;
+        bits := !bits - !op;
+
+        op := !out - beg; (* max distance in output *)
+
+        if !dist > !op (* see if copy from window *)
+        then begin
+          op := !dist - !op; (* distance back in window *)
+
+          if !op > whave
+          then begin
+            raise (Invalid_argument "Distance too far back")
+          end;
+
+          let from = ref 0 in
+
+          if wnext = 0
+          then begin
+            from := !from + (wsize - !op);
+
+            if !op < !len
+            then begin
+              len := !len - !op;
+
+              while !op > 0
+              do
+                String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                incr from;
+                descr op;
+              done;
+
+              from := !out - !dist;
+            end
+          end else if wnext < !op
+          then begin
+            from := !from + (wisze + wnext - !op);
+            op := !op - wnext;
+
+            if !op < !len
+            then begin
+              len := !len - !op;
+
+              while !op > 0
+              do
+                String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                incr from;
+                decr op;
+              done;
+
+              from := 0;
+
+              if !wnext < !len
+              then begin
+                op := !wnext;
+                len := !len - !op;
+
+                while !op > 0
+                do
+                  String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                  incr from;
+                  decr op;
+                done;
+
+                from := !out - !dist;
+              end
+            end
+          end else begin
+            from := !wnext + !op;
+
+            if !op < !len
+            then begin
+              len := !len - !op;
+
+              while !op > 0 do
+                String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+                incr from;
+                decr op;
+              done;
+
+              from := !out - !dist;
+            end;
+          end;
+
+          while !len > 2 do
+            String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+            incr from;
+            decr len;
+            String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+            incr from;
+            decr len;
+            String.set state.dst !out (RingBuffer.unsafe_get state.ringbuffer !from);
+            incr from;
+            decr len;
+          done;
+
+          if !len <> 0
+          then begin
+            if !len > 1
+            then begin
+              ()
+            end
+          end
+        end else begin
+          ()
+        end
+      end else if !op land 64 = 0
+      then begin
+
+      end else begin
+        raise (Invalid_argument "Invalid distance code")
+      end
+    in
+
+    ()
+end
+*)
