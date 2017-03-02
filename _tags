@@ -4,4 +4,5 @@ true: safe_string, bin_annot, debug
 <lib>: include
 
 <test/*>: use_bigarray, package(re.str), package(camlzip), package(alcotest)
-<bin/*>: use_bigarray, use_unix, package(cmdliner), linkdep(bin/bs.o)
+<bin/dpipe.{native,byte,ml}>: use_bigarray, use_unix, package(cmdliner), linkdep(bin/bs.o)
+<bin/easy.{native,byte,ml}>: use_bigarray
