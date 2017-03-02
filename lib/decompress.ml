@@ -904,6 +904,10 @@ sig
   val sync_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
   val full_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
 
+  type meth = PARTIAL | SYNC | FULL
+
+  val flush_of_meth   : meth -> (int -> int -> ('i, 'o) t -> ('i, 'o) t)
+
   val flush           : int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   val eval            : 'a B.t -> 'a B.t -> ('a, 'a) t ->
@@ -917,16 +921,16 @@ sig
 
   val default         : proof:'o B.t -> ?wbits:int -> int -> ('i, 'o) t
 
-  val to_result : 'a B.t -> 'a B.t ->
-                  ('a B.t -> int) ->
+  val to_result : 'a B.t -> 'a B.t -> ?meth:(meth * int) ->
+                  ('a B.t -> int option -> int) ->
                   ('a B.t -> int -> int) ->
                   ('a, 'a) t -> (('a, 'a) t, error) result
-  val bytes     : Bytes.t -> Bytes.t ->
-                  (Bytes.t -> int) ->
+  val bytes     : Bytes.t -> Bytes.t -> ?meth:(meth * int) ->
+                  (Bytes.t -> int option -> int) ->
                   (Bytes.t -> int -> int) ->
                   (B.st, B.st) t -> ((B.st, B.st) t, error) result
-  val bigstring : B.Bigstring.t -> B.Bigstring.t ->
-                  (B.Bigstring.t -> int) ->
+  val bigstring : B.Bigstring.t -> B.Bigstring.t -> ?meth:(meth * int) ->
+                  (B.Bigstring.t -> int option -> int) ->
                   (B.Bigstring.t -> int -> int) ->
                   (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
@@ -1014,6 +1018,7 @@ struct
     | ExtLength
     | Dist
     | ExtDist
+  and meth = PARTIAL | SYNC | FULL
 
   let pp_error fmt = function
     | Lz77_error lz -> Format.fprintf fmt "(Lz77_error %a)" L.pp_error lz
@@ -1750,7 +1755,7 @@ struct
                  ; i_off = off
                  ; i_len = len
                  ; i_pos = 0 }
-        | Flat _ -> assert false (* TODO *)
+        | Flat len -> { t with state = WriteBlock (flat 0 0 len false) }
       else raise (Invalid_argument (Format.sprintf "Z.partial_flush: you lost \
                                                     something (pos: %d, \
                                                                len: %d)"
@@ -1779,7 +1784,7 @@ struct
                  ; i_off = off
                  ; i_len = len
                  ; i_pos = 0 }
-        | Flat _ -> assert false (* TODO *)
+        | Flat len -> { t with state = WriteBlock (flat 0 0 len false) }
       else raise (Invalid_argument (Format.sprintf "Z.sync_flush: you lost \
                                                     something (pos: %d, \
                                                                len: %d)"
@@ -1808,12 +1813,17 @@ struct
                  ; i_off = off
                  ; i_len = len
                  ; i_pos = 0 }
-        | Flat _ -> assert false (* TODO *)
+        | Flat len -> { t with state = WriteBlock (flat 0 0 len false) }
       else raise (Invalid_argument (Format.sprintf "Z.full_flush: you lost \
                                                     something (pos: %d, \
                                                                len: %d)"
                                       t.i_pos t.i_len))
     | _ -> raise (Invalid_argument "Z.full_flush: bad state")
+
+  let flush_of_meth = function
+    | PARTIAL -> partial_flush
+    | SYNC -> sync_flush
+    | FULL -> full_flush
 
   let header wbits mode src dst t =
     let header = (8 + ((wbits - 8) lsl 4)) lsl 8 in
@@ -1883,36 +1893,47 @@ struct
     ; adler = 1l
     ; state = Header (header wbits (block_of_level ~wbits level))}
 
-  let to_result src dst refiller flusher t =
-    let rec aux t = match eval src dst t with
-      | `Await t ->
-        let n = refiller src in
+  let to_result src dst ?meth refiller flusher t =
+    let rec aux acc t = match eval src dst t, meth with
+      | `Await t, None ->
+        let n = refiller src None in
         let t =
           if n = 0
           then finish t
           else no_flush 0 n t
         in
 
-        aux t
-      | `Flush t ->
+        aux (acc + n) t
+      | `Await t, Some (meth, max) ->
+        let n = refiller src (Some (max - acc)) in
+        let t, acc' =
+          if n = 0 && (max - acc) <> 0
+          then finish t, acc
+          else if max = acc
+               then flush_of_meth meth 0 n t, 0
+               else no_flush 0 n t, acc + n
+        in
+
+        aux acc' t
+      | `Flush t, _ ->
         let n = used_out t in
         let n = flusher dst n in
-        aux (flush 0 n t)
-      | `End t ->
+        aux acc (flush 0 n t)
+      | `End t, _ ->
         if used_out t = 0
         then Pervasives.Ok t
         else let n = flusher dst (used_out t) in
              Pervasives.Ok (flush 0 n t)
-      | `Error (_, exn) -> Pervasives.Error exn
-    in aux t
+      | `Error (_, exn), _ -> Pervasives.Error exn
+    in aux 0 t
 
-  let bytes src dst refiller flusher t =
-    to_result (B.from_bytes src) (B.from_bytes dst)
+  let bytes src dst ?meth refiller flusher t =
+    to_result (B.from_bytes src) (B.from_bytes dst) ?meth
       (function B.Bytes v -> refiller v)
       (function B.Bytes v -> flusher v) t
 
-  let bigstring src dst refiller flusher t =
-    to_result (B.from_bigstring src) (B.from_bigstring dst)
+  let bigstring src dst ?meth refiller flusher t =
+    to_result (B.from_bigstring src) (B.from_bigstring dst) ?meth
       (function B.Bigstring v -> refiller v)
       (function B.Bigstring v -> flusher v) t
 end

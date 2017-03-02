@@ -39,7 +39,7 @@ module type COMMON =
 sig
   type t
 
-  val compress   : ?level:int -> ?wbits:int -> (t -> int) -> (t -> int -> unit) -> unit
+  val compress   : ?level:int -> ?wbits:int -> ?meth:(Decompress.Deflate.meth * int) -> (t -> int option -> int) -> (t -> int -> unit) -> unit
   val uncompress : (t -> int) -> (t -> int -> unit) -> unit
 end
 
@@ -54,8 +54,8 @@ struct
   let output = Bytes.create 0xFFFF
   let window = Decompress.Window.create ~proof:Decompress.B.proof_bytes
 
-  let compress ?(level = 4) ?(wbits = 15) refill flush =
-    Decompress.Deflate.bytes input output
+  let compress ?(level = 4) ?(wbits = 15) ?meth refill flush =
+    Decompress.Deflate.bytes input output ?meth
       refill
       (fun buf len -> flush buf len; 0xFFFF)
       (Decompress.Deflate.default ~proof:(Decompress.B.from_bytes Bytes.empty) level ~wbits)
@@ -77,8 +77,8 @@ module C : COMMON with type t = Bytes.t =
 struct
   type t = Bytes.t
 
-  let compress ?level ?wbits:_ refill flush =
-    Zlib.compress ?level refill flush
+  let compress ?level ?wbits:_ ?meth:_ refill flush =
+    Zlib.compress ?level (fun n -> refill n None) flush
 
   let uncompress refill flush =
     Zlib.uncompress refill flush
@@ -88,17 +88,23 @@ module Z (I : COMMON with type t = Bytes.t) =
 struct
   module Deflate =
   struct
-    let string ?level ?wbits content =
+    let string ?level ?wbits ?meth content =
       let result = Buffer.create (String.length content) in
 
       let refill input =
         let n = String.length input in
         let to_read = ref n in
-        fun buf ->
-          let m = min !to_read (Bytes.length buf) in
-          String.blit input (n - !to_read) buf 0 m;
-          to_read := !to_read - m;
-          m
+        fun buf -> function
+          | Some max ->
+            let m = min max (min !to_read (Bytes.length buf)) in
+            String.blit input (n - !to_read) buf 0 m;
+            to_read := !to_read - m;
+            m
+          | None ->
+            let m = min !to_read (Bytes.length buf) in
+            String.blit input (n - !to_read) buf 0 m;
+            to_read := !to_read - m;
+            m
       in
 
       let flush output =
@@ -106,7 +112,7 @@ struct
           Buffer.add_subbytes output buf 0 len
       in
 
-      I.compress ?level ?wbits (refill content) (flush result);
+      I.compress ?level ?wbits ?meth (refill content) (flush result);
       Buffer.contents result
   end
 
@@ -135,20 +141,20 @@ struct
   end
 end
 
-module Decompress = Z(D)
-module Camlzip    = Z(C)
+module Decompress' = Z(D)
+module Camlzip     = Z(C)
 
 let c2d ?level ?wbits content =
   Camlzip.Deflate.string ?level ?wbits content
-  |> Decompress.Inflate.string
+  |> Decompress'.Inflate.string
 
 let d2c ?level ?wbits content =
-  Decompress.Deflate.string ?level ?wbits content
+  Decompress'.Deflate.string ?level ?wbits content
   |> Camlzip.Inflate.string
 
 let d2d ?level ?wbits content =
-  Decompress.Deflate.string ?level ?wbits content
-  |> Decompress.Inflate.string
+  Decompress'.Deflate.string ?level ?wbits content
+  |> Decompress'.Inflate.string
 
 let level = [ 0; 1; 2; 3; 4; 5; 6; 7; 8; 9 ]
 let wbits = [ 15 ]
@@ -162,20 +168,17 @@ let make_test filename =
       `Slow,
       (fun () -> let content = string_of_file filename in
                  Alcotest.(check string) content (c2d ~level ~wbits content)
-      content;
-                 Gc.compact ())
+      content)
     ; Printf.sprintf "d2c level:%d wbits:%d %s" level wbits filename,
       `Slow,
       (fun () -> let content = string_of_file filename in
                  Alcotest.(check string) content (d2c ~level ~wbits content)
-      content;
-                 Gc.compact ())
+      content)
     ; Printf.sprintf "d2d level:%d wbits:%d %s" level wbits filename,
       `Slow,
       (fun () -> let content = string_of_file filename in
                  Alcotest.(check string) content (d2d ~level ~wbits content)
-      content;
-                 Gc.compact ()) ]
+      content) ]
   in
 
   List.map make level

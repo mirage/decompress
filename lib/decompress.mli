@@ -181,6 +181,14 @@ sig
   val sync_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
   val full_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
 
+  type meth = PARTIAL | SYNC | FULL
+
+  (** [flush_of_meth meth] returns the function depending to the method. Like,
+      [flush_of_meth SYNC] returns [sync_flush]. It's a convenience function,
+      nothing else.
+  *)
+  val flush_of_meth   : meth -> (int -> int -> ('i, 'o) t -> ('i, 'o) t)
+
   (** [flush off len t] allows the state [t] to use an output at [off] on [len]
       byte(s).
    *)
@@ -214,6 +222,9 @@ sig
       [?wbits] (by default, [wbits = 15]) it's the size of the window used by
       the Lz77 algorithm (see {!L.default}).
 
+      [?meth] can be specified to flush the internal buffer of the compression
+      and create a new zlib block at [n] bytes specified.
+
       [level] is level compression:
       - 0: a stored compression (no compression)
       - 1 .. 3: a fixed compression (compression with a static huffman tree)
@@ -229,20 +240,20 @@ sig
       If the compute catch an error, we returns [Error exn]
       (see {!DEFLATE.error}). Otherwise, we returns the state {i useless} [t].
    *)
-  val to_result : 'a B.t -> 'a B.t ->
-                  ('a B.t -> int) ->
+  val to_result : 'a B.t -> 'a B.t -> ?meth:(meth * int) ->
+                  ('a B.t -> int option -> int) ->
                   ('a B.t -> int -> int) ->
                   ('a, 'a) t -> (('a, 'a) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bytes.t}. *)
-  val bytes     : Bytes.t -> Bytes.t ->
-                  (Bytes.t -> int) ->
+  val bytes     : Bytes.t -> Bytes.t -> ?meth:(meth * int) ->
+                  (Bytes.t -> int option -> int) ->
                   (Bytes.t -> int -> int) ->
                   (B.st, B.st) t -> ((B.st, B.st) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bigstring.t}. *)
-  val bigstring : B.Bigstring.t -> B.Bigstring.t ->
-                  (B.Bigstring.t -> int) ->
+  val bigstring : B.Bigstring.t -> B.Bigstring.t -> ?meth:(meth * int) ->
+                  (B.Bigstring.t -> int option -> int) ->
                   (B.Bigstring.t -> int -> int) ->
                   (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end

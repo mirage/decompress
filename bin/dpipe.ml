@@ -27,7 +27,9 @@ let do_command mode level wbits =
     let t = Decompress.Deflate.default ~proof:src ~wbits level in
     let r = Decompress.Deflate.to_result
       src dst
-      (fun src -> unix_read Unix.stdin src 0 _chunk)
+      (fun src -> function
+       | Some max -> unix_read Unix.stdin src 0 (min max _chunk)
+       | None -> unix_read Unix.stdin src 0 _chunk)
       (fun dst len -> let _ = unix_write Unix.stdout dst 0 len in _chunk)
       t
     in (match r with
