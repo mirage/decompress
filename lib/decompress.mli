@@ -89,12 +89,15 @@ end
 module L :
 sig
   (** Lz77 error. *)
-  type error = ..
-  type error += Invalid_level of int (** This error appears when you try to
-                                         compute the Lz77 algorithm with a
-                                         wrong level
-                                         ([level >= 0 && level <= 9]).
-                                      *)
+  type error =
+    | Invalid_level of int (** This error appears when you try to
+                               compute the Lz77 algorithm with a
+                               wrong level
+                               ([level >= 0 && level <= 9]).
+                            *)
+    | Invalid_wbits of int (** This error appears when you specify a bad wbits:
+                               [wbits >= 8 && wbits <= 15]
+                            *)
 
   (** The state of the Lz77 algorithm. *)
   type 'i t
@@ -128,11 +131,11 @@ end
 module type DEFLATE =
 sig
   (** Deflate error. *)
-  type error = ..
-  type error += Lz77_error of L.error (** This error appears when the Lz77
-                                          algorithm produces an error, see
-                                          {!L.error}.
-                                        *)
+  type error =
+    | Lz77_error of L.error (** This error appears when the Lz77
+                                algorithm produces an error, see
+                                {!L.error}.
+                             *)
 
   (** Frequencies module.
 
@@ -282,22 +285,22 @@ end
 module type INFLATE =
 sig
   (** Inflate error. *)
-  type error = ..
-  type error += Invalid_kind_of_block (** This error appears when the kind of
-                                          the current block is wrong.
-                                       *)
-  type error += Invalid_complement_of_length (** This error appears when we
-                                                 compute a stored block and
-                                                 length do not correspond with
-                                                 the complement of length.
-                                              *)
-  type error += Invalid_dictionary (** This error appears when we compute a
-                                       dynamic block and we catch an error when
-                                       we try to decode the dictionary.
-                                     *)
-  type error += Invalid_crc (** The checksum of the output produced does not
-                                equal with the checksum of the stream.
-                              *)
+  type error =
+    | Invalid_kind_of_block (** This error appears when the kind of
+                                the current block is wrong.
+                             *)
+    | Invalid_complement_of_length (** This error appears when we
+                                       compute a stored block and
+                                       length do not correspond with
+                                       the complement of length.
+                                    *)
+    | Invalid_dictionary (** This error appears when we compute a
+                             dynamic block and we catch an error when
+                             we try to decode the dictionary.
+                           *)
+    | Invalid_crc (** The checksum of the output produced does not
+                                   equal with the checksum of the stream.
+                                 *)
 
   (** The state of the inflate algorithm. ['i] and ['o] are the implementation
       used respectively for the input and the output, see {!B.st} and {!B.bs}.

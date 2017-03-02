@@ -315,12 +315,13 @@ end
 (** non-blocking and functionnal implementation of Lz77 *)
 module L =
 struct
-  type error = ..
-  type error += Invalid_level of int
-  type error += Invalid_wbits of int
+  type error =
+    | Invalid_level of int
+    | Invalid_wbits of int
 
   let pp_error fmt = function
     | Invalid_level level -> Format.fprintf fmt "(Invalid_level %d)" level
+    | Invalid_wbits wbits -> Format.fprintf fmt "(Invalid_wbits %d)" wbits
 
   exception Match   of int * int
   exception Literal of char
@@ -885,8 +886,8 @@ end
 (** non-blocking and functionnal implementation of Deflate *)
 module type DEFLATE =
 sig
-  type error = ..
-  type error += Lz77_error of L.error
+  type error =
+    | Lz77_error of L.error
 
   module F : sig type t = int array * int array end
 
@@ -937,8 +938,8 @@ end
 
 module Deflate : DEFLATE =
 struct
-  type error = ..
-  type error += Lz77_error of L.error
+  type error =
+    | Lz77_error of L.error
 
   module F =
   struct
@@ -2052,11 +2053,11 @@ end
 (** non-blocking and functionnal implementation of Inflate *)
 module type INFLATE =
 sig
-  type error = ..
-  type error += Invalid_kind_of_block
-  type error += Invalid_complement_of_length
-  type error += Invalid_dictionary
-  type error += Invalid_crc
+  type error =
+    | Invalid_kind_of_block
+    | Invalid_complement_of_length
+    | Invalid_dictionary
+    | Invalid_crc
 
   type ('i, 'o) t
 
@@ -2194,11 +2195,11 @@ struct
       prefix !ordered !max, !max
   end
 
-  type error = ..
-  type error += Invalid_kind_of_block
-  type error += Invalid_complement_of_length
-  type error += Invalid_dictionary
-  type error += Invalid_crc
+  type error =
+    | Invalid_kind_of_block
+    | Invalid_complement_of_length
+    | Invalid_dictionary
+    | Invalid_crc
 
   let pp_error fmt = function
     | Invalid_kind_of_block ->
@@ -2209,8 +2210,6 @@ struct
       Format.fprintf fmt "Invalid_dictionary"
     | Invalid_crc ->
       Format.fprintf fmt "Invalid_crc"
-    | _ ->
-      Format.fprintf fmt "<error>"
 
   let reverse_bits =
     let t =
