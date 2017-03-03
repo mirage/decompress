@@ -1,4 +1,4 @@
-Decompress - Pur OCaml implementation of Zlib
+Decompress - Pure OCaml implementation of Zlib
 =============================================
 
 [![Build Status](https://travis-ci.org/oklm-wsh/Decompress.svg)](https://travis-ci.org/oklm-wsh/Decompress)
