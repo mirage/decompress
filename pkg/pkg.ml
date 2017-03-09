@@ -1,17 +1,14 @@
 #!/usr/bin/env ocaml
-
-#directory "pkg";;
 #use       "topfind";;
 #require   "topkg";;
 
 open Topkg
 
 let unix = Conf.with_pkg "unix"
-let cmdliner = Conf.with_pkg "cmdliner"
-let opam = Pkg.opam_file ~lint_deps_excluding:None "opam"
+let cmdliner = Conf.with_pkg ~default:false "cmdliner"
 
 let () =
-  Pkg.describe ~opams:[opam] "decompress" @@ fun c ->
+  Pkg.describe "decompress" @@ fun c ->
 
   let unix = Conf.value c unix in
   let cmdliner = Conf.value c cmdliner in
