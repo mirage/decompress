@@ -8,10 +8,15 @@ bug-reports:  "https://github.com/oklm-wsh/Decompress/issues"
 dev-repo:     "https://github.com/oklm-wsh/Decompress.git"
 license:      "MIT"
 
-build: [ "ocaml" "pkg/pkg.ml" "build" "--pinned" pinned ]
+build: [
+  "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false"
+  "--with-cmdliner" "%{cmdliner:installed}%"
+]
 
-build-test: [ [ "ocaml" "pkg/pkg.ml" "build" "--pinned" pinned "--tests" "true" ]
-              [ "ocaml" "pkg/pkg.ml" "test" ] ]
+build-test: [
+  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ]
+  [ "ocaml" "pkg/pkg.ml" "test" ]
+]
 
 depends: [
   "ocamlbuild"     {build}
@@ -21,6 +26,10 @@ depends: [
   "camlzip"        {test}
   "re"             {test}
   "alcotest"       {test}
+]
+
+depopts: [
+  "cmdliner"
 ]
 
 available: [ocaml-version >= "4.03.0"]
