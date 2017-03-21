@@ -1989,7 +1989,7 @@ struct
     end else
       Safe.blit buf off t.buffer t.wpos len;
 
-    move len { t with crc = Adler32.adler32 buf t.crc off len }
+    move len { t with crc = Safe.adler32 buf t.crc off len }
 
   let write_rw buf off len t =
     let t = if len > available_to_write t
@@ -2006,7 +2006,7 @@ struct
       Safe.blit buf off t.buffer t.wpos len;
     end;
 
-    move len { t with crc = Adler32.adler32 buf t.crc off len }
+    move len { t with crc = Safe.adler32 buf t.crc off len }
 
   let write_char chr t =
     let t = if 1 > available_to_write t

@@ -6,9 +6,9 @@ type write = [ `Write ]
 
 type ('a, 'i) t = 'i B.t constraint 'a = [< `Read | `Write ]
 
-let read_and_write : 'i B.t -> ([ read | write ], 'i) t = fun x -> x
-let read_only      : 'i B.t -> (read, 'i) t             = fun x -> x
-let write_only     : 'i B.t -> (write, 'i) t            = fun x -> x
+external read_and_write : 'i B.t -> ([ read | write ], 'i) t = "%identity"
+external read_only      : 'i B.t -> (read, 'i) t             = "%identity"
+external write_only     : 'i B.t -> (write, 'i) t            = "%identity"
 
 let length    = B.length
 let get       = B.get
