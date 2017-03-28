@@ -85,6 +85,13 @@ end
 
     A functionnal non-blocking implementation of Lz77 algorithm. This algorithm
     produces a [Hunk.t list] of an input.
+
+    This algorithm is the same as {{:blosclz}https://github.com/Blosc/c-blosc}.
+    So the implementation is an imperative hack in OCaml. May be it's not the
+    best in the functionnal world but it works. The interface was thinked to be
+    replaced by your implemenation by a functor.
+
+    The functor was not done now but may be soonly. So, TODO!
 *)
 module L :
 sig
@@ -120,6 +127,9 @@ sig
       Usually, [wbits = 15] for a window of 32K. If [wbits] is lower, you
       constraint the distance of a [Match] produced by the Lz77 algorithm to
       the window size.
+
+      [on] is a function to interact fastly with your data-structure and keep
+      the frequencies of the [Literal] and [Match].
   *)
   val default  : ?level:int -> ?on:(Hunk.t -> unit) -> int -> 'i t
 end
@@ -165,7 +175,7 @@ sig
       The paranoid mode (if [paranoid = true]) checks if the frequencies
       can be used with the internal [Hunk.t list]. That means, for all
       characters and patterns (see {!Hunk.t}), the binding
-      frequencie must be [> 0].
+      frequencie must be [> 0] (however, this check takes a long time).
 
       eg. if we have a [Literal 'a'], [(fst f).(Char.code 'a') > 0].
    *)
@@ -180,8 +190,25 @@ sig
       [off] on [len] byte(s).
    *)
   val no_flush        : int -> int -> ('i, 'o) t -> ('i, 'o) t
+
+  (** [partial_flush off len t] finishes the current block, then the encoder
+      writes a fixed empty block. So, the output is not aligned. We keep the
+      current frequencies to compute the new Huffman tree for the new next
+      block.
+   *)
   val partial_flush   : int -> int -> ('i, 'o) t -> ('i, 'o) t
+
+  (** [sync_flush off len t] finishes the current block, then the encoder writes
+      a stored empty block and the output is aligned. We keep the current
+      frequencies to compute the new Huffman tree for the new next block.
+   *)
   val sync_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
+
+  (** [full_flush off len t] finishes the current block, then the encoder writes
+      a stored empty block and the output is aligned. We delete the current
+      frequencies to compute a new frequencies from your input and write a new
+      Huffman tree for the new next block.
+   *)
   val full_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   type meth = PARTIAL | SYNC | FULL
@@ -218,8 +245,8 @@ sig
   (** [used_out t] returns how many byte(s) was used by [t] in the output. *)
   val used_out        : ('i, 'o) t -> int
 
-  (** [default ~proof ?wbits level] makes a new state [t]. [~proof] is an
-      ['a B.t] specialized with an implementation (see {!B.st} or {!B.bs}) to
+  (** [default ~proof ?wbits level] makes a new state [t]. [~proof] is an ['a
+      B.t] specialized with an implementation (see {!B.st} or {!B.bs}) to
       informs the state wich implementation you use.
 
       [?wbits] (by default, [wbits = 15]) it's the size of the window used by
@@ -241,7 +268,7 @@ sig
       internal output is full (and need to flush).
 
       If the compute catch an error, we returns [Error exn]
-      (see {!DEFLATE.error}). Otherwise, we returns the state {i useless} [t].
+      (see {!DEFLATE.error}). Otherwise, we returns the {i useless} state [t].
    *)
   val to_result : 'a B.t -> 'a B.t -> ?meth:(meth * int) ->
                   ('a B.t -> int option -> int) ->
@@ -271,10 +298,16 @@ module Deflate : DEFLATE
 *)
 module Window :
 sig
+  (** The Window specialized by ['o] (see {!B.st} and {!B.bs}). *)
   type 'o t
 
+  (** [create ~proof] creates a new window. *)
   val create : proof:'o B.t -> 'o t
+
+  (** [reset window] resets a window to be reused by an Inflate algorithm. *)
   val reset  : 'o t -> 'o t
+
+  (** [crc window] returns the checksum computed by the window. *)
   val crc    : 'o t -> Int32.t
 end
 
@@ -299,8 +332,8 @@ sig
                              we try to decode the dictionary.
                            *)
     | Invalid_crc (** The checksum of the output produced does not
-                                   equal with the checksum of the stream.
-                                 *)
+                      equal with the checksum of the stream.
+                    *)
 
   (** The state of the inflate algorithm. ['i] and ['o] are the implementation
       used respectively for the input and the output, see {!B.st} and {!B.bs}.
