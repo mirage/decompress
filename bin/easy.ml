@@ -15,9 +15,9 @@ let compress ?(level = 4) data =
      chance to find many patterns.
 
      If it is big, the algorithm can find a far pattern and keep this pattern
-     as long as it tries to compress. The optimal size seems to be (1 << 15)
+     as long as it tries to compress. The optimal size seems to be [1 << 15]
      bytes (a bigger buffer is not necessary because the distance can be upper
-     than (1 << 15))
+     than [1 << 15]).
   *)
   let output_buffer = Bytes.create 0xFFFF in
   (* We need to allocate an output buffer, is like you can. it's depends your
@@ -32,8 +32,8 @@ let compress ?(level = 4) data =
      behaviour).
   *)
 
-  (* This is the same interface as `caml-zip`. A refiller and a flusher. The
-     refiller send you the maximum byte than you can `blit` inside the input
+  (* This is the same interface as [caml-zip]. A refiller and a flusher. The
+     refiller send you the maximum byte than you can [blit] inside the input
      buffer.
 
      So, if the second argument is [Some max], it's mandatory to respect that,
@@ -43,7 +43,7 @@ let compress ?(level = 4) data =
      The flusher send you the output buffer and how many byte Decompress wrote
      inside. The offset for this buffer is always [0]. Then, you need to send
      how many bytes are free in the output buffer (and the common is that all
-     is free)
+     is free).
 
      One argument (optionnal) is missing, it's the [meth]. This argument is
      used to limit the memory used by the state internally. In fact, Decompress
