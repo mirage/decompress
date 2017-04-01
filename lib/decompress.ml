@@ -2330,17 +2330,17 @@ struct
              ; o_off; o_pos; o_len
              ; i_off; i_pos; i_len; write
              ; state } =
-    Format.fprintf fmt "{@[<hov>last = %b;@ \
-                                hold = %d;@ \
-                                bits = %d;@ \
-                                o_off = %d;@ \
-                                o_pos = %d;@ \
-                                o_len = %d;@ \
-                                i_off = %d;@ \
-                                i_pos = %d;@ \
-                                i_len = %d;@ \
-                                write = %d;@ \
-                                state = %a@]}"
+    Format.fprintf fmt "{ @[<hov>last = %b;@ \
+                                 hold = %d;@ \
+                                 bits = %d;@ \
+                                 o_off = %d;@ \
+                                 o_pos = %d;@ \
+                                 o_len = %d;@ \
+                                 i_off = %d;@ \
+                                 i_pos = %d;@ \
+                                 i_len = %d;@ \
+                                 write = %d;@ \
+                                 state = %a@] }"
       last hold bits
       o_off o_pos o_len i_off i_pos i_len write
       pp_state state
@@ -2734,7 +2734,7 @@ struct
        let b2 = Int32.of_int b2 in
 
        let crc' = let open Adler32.I in
-         (a1 << 24) || (a2 << 16) || (b1 << 8) || b2
+         (a1 << 24) || (a2 << 16) || (b1 << 8) || b2 (* >> (tuareg) *)
        in
 
        if crc <> crc'
