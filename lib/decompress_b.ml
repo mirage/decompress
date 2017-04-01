@@ -15,11 +15,46 @@ struct
     Array1.blit v v'; v'
 
   external get_u16 : t -> int -> int     = "%caml_bigstring_get16u"
+
+  let get_u16 t i =
+    if i < 0 || i > length t - 2
+    then raise (Invalid_argument "Bytes.get_u16")
+    else get_u16 t i
+
   external get_u32 : t -> int -> Int32.t = "%caml_bigstring_get32u"
+
+  let get_u32 t i =
+    if i < 0 || i > length t - 4
+    then raise (Invalid_argument "Bytes.get_u32")
+    else get_u32 t i
+
   external get_u64 : t -> int -> Int64.t = "%caml_bigstring_get64u"
+
+  let get_u64 t i =
+    if i < 0 || i > length t - 8
+    then raise (Invalid_argument "Bytes.get_u64")
+    else get_u64 t i
+
   external set_u16 : t -> int -> int -> unit     = "%caml_bigstring_set16u"
+
+  let set_u16 t i =
+    if i < 0 || i > length t - 2
+    then raise (Invalid_argument "Bytes.set_u16")
+    else set_u16 t i
+
   external set_u32 : t -> int -> Int32.t -> unit = "%caml_bigstring_set32u"
+
+  let set_u32 t i =
+    if i < 0 || i > length t - 4
+    then raise (Invalid_argument "Bytes.set_u32")
+    else set_u32 t i
+
   external set_u64 : t -> int -> Int64.t -> unit = "%caml_bigstring_set64u"
+
+  let set_u64 t i =
+    if i < 0 || i > length t - 8
+    then raise (Invalid_argument "Bytes.set_u64")
+    else set_u64 t i
 
   let to_string v =
     let buf = Bytes.create (length v) in
@@ -56,11 +91,46 @@ struct
   include Bytes
 
   external get_u16 : t -> int -> int     = "%caml_string_get16u"
+
+  let get_u16 t i =
+    if i < 0 || i > length t - 2
+    then raise (Invalid_argument "Bytes.get_u16")
+    else get_u16 t i
+
   external get_u32 : t -> int -> Int32.t = "%caml_string_get32u"
+
+  let get_u32 t i =
+    if i < 0 || i > length t - 4
+    then raise (Invalid_argument "Bytes.get_u32")
+    else get_u32 t i
+
   external get_u64 : t -> int -> Int64.t = "%caml_string_get64u"
+
+  let get_u64 t i =
+    if i < 0 || i > length t - 8
+    then raise (Invalid_argument "Bytes.get_u64")
+    else get_u64 t i
+
   external set_u16 : t -> int -> int -> unit     = "%caml_string_set16u"
+
+  let set_u16 t i =
+    if i < 0 || i > length t - 2
+    then raise (Invalid_argument "Bytes.set_u16")
+    else set_u16 t i
+
   external set_u32 : t -> int -> Int32.t -> unit = "%caml_string_set32u"
+
+  let set_u32 t i =
+    if i < 0 || i > length t - 4
+    then raise (Invalid_argument "Bytes.set_u32")
+    else set_u32 t i
+
   external set_u64 : t -> int -> Int64.t -> unit = "%caml_string_set64u"
+
+  let set_u64 t i =
+    if i < 0 || i > length t - 8
+    then raise (Invalid_argument "Bytes.set_u64")
+    else set_u64 t i
 
   let pp fmt bs =
     for i = 0 to length bs - 1
