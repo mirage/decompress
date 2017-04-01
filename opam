@@ -5,6 +5,7 @@ authors:      "Romain Calascibetta <romain.calascibetta@gmail.com>"
 homepage:     "https://github.com/oklm-wsh/Decompress"
 bug-reports:  "https://github.com/oklm-wsh/Decompress/issues"
 dev-repo:     "https://github.com/oklm-wsh/Decompress.git"
+doc:          "https://oklm-wsh.github.io/Decompress/"
 license:      "MIT"
 
 build: [
