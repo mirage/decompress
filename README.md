@@ -17,7 +17,7 @@ The interface proposed is a non-blocking interface.
 
 Home page: http://din.osau.re/
 
-Documentation: https://oklm-wsh.github.io/api/api.docdir/
+Documentation: https://oklm-wsh.github.io/Decompress/api.docdir/
 
 Contact: Romain Calascibetta `<romain.calascibet ta@gmail.com>`
 
@@ -48,8 +48,9 @@ And you can compile this program with:
 But keep in your mind, it's an easy example and it's not optimized for a
 productive environment - so, don't copy/paste and think.
 
-The documentation is available [online](https://oklm-wsh.github.io/api.docdir/)
-to understand how to use Decompress.
+The documentation is
+available [online](https://oklm-wsh.github.io/Decompress/api.docdir/) to
+understand how to use Decompress.
 
 ## Build Requirements
 
