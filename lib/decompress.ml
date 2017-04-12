@@ -2046,8 +2046,6 @@ struct
     if n < t.size
     then sanitize n t
     else raise (Failure "Window.( % )")
-
-  let checksum { crc; _ } = crc
 end
 
 (** non-blocking and functionnal implementation of Inflate *)
@@ -2720,7 +2718,7 @@ struct
     Ok { t with state = Crc ok }
 
   let crc window src dst t =
-    let crc = Window.checksum window in
+    let crc = Window.crc window in
 
     (KCrc.drop_bits (t.bits mod 8)
      @@ KCrc.get_byte
