@@ -2057,7 +2057,7 @@ sig
     | Invalid_kind_of_block
     | Invalid_complement_of_length
     | Invalid_dictionary
-    | Invalid_crc
+    | Invalid_crc of int32 * int32
 
   type ('i, 'o) t
 
@@ -2199,7 +2199,7 @@ struct
     | Invalid_kind_of_block
     | Invalid_complement_of_length
     | Invalid_dictionary
-    | Invalid_crc
+    | Invalid_crc of int32 * int32
 
   let pp_error fmt = function
     | Invalid_kind_of_block ->
@@ -2208,8 +2208,8 @@ struct
       Format.fprintf fmt "Invalid_complement_of_length"
     | Invalid_dictionary ->
       Format.fprintf fmt "Invalid_dictionary"
-    | Invalid_crc ->
-      Format.fprintf fmt "Invalid_crc"
+    | Invalid_crc (expect, has) ->
+      Format.fprintf fmt "(Invalid_crc (expect:%04lx, has:%04lx))" expect has
 
   let reverse_bits =
     let t =
@@ -2738,7 +2738,7 @@ struct
        in
 
        if crc <> crc'
-       then error t Invalid_crc
+       then error t (Invalid_crc (crc', crc))
        else ok src dst t) src dst t
 
   let switch _ _ t window =

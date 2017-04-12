@@ -331,9 +331,9 @@ sig
                              dynamic block and we catch an error when
                              we try to decode the dictionary.
                            *)
-    | Invalid_crc (** The checksum of the output produced does not
-                      equal with the checksum of the stream.
-                    *)
+    | Invalid_crc of int32 * int32 (** The checksum of the output produced does not
+                                       equal with the checksum of the stream.
+                                     *)
 
   (** The state of the inflate algorithm. ['i] and ['o] are the implementation
       used respectively for the input and the output, see {!B.st} and {!B.bs}.
