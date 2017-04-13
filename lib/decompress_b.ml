@@ -78,6 +78,24 @@ struct
                                     len))
     else blit src src_off dst dst_off len
 
+  let blit2 src src_off dst0 dst_off0 dst1 dst_off1 len =
+    if len < 0 || src_off < 0  || src_off > length src - len
+               || dst_off0 < 0 || dst_off0 > length dst0 - len
+               || dst_off1 < 0 || dst_off1 > length dst1 - len
+    then raise (Invalid_argument (Format.sprintf "Bigstring.blit2 (src: %d:%d, \
+                                                                   dst0: %d:%d, \
+                                                                   dst1 %d:%d, \
+                                                                   len: %d)"
+                                    src_off (length src)
+                                    dst_off0 (length dst0)
+                                    dst_off1 (length dst1)
+                                    len))
+    else for i = 0 to len - 1
+      do
+        set dst0 (dst_off0 + i) (get src (src_off + i));
+        set dst1 (dst_off1 + i) (get src (src_off + i));
+      done
+
   let pp fmt ba =
     for i = 0 to length ba - 1
     do Format.pp_print_char fmt (get ba i) done
@@ -151,6 +169,24 @@ struct
                                     dst_off (length dst)
                                     len))
     else blit src src_off dst dst_off len
+
+  let blit2 src src_off dst0 dst_off0 dst1 dst_off1 len =
+    if len < 0 || src_off < 0  || src_off > length src - len
+               || dst_off0 < 0 || dst_off0 > length dst0 - len
+               || dst_off1 < 0 || dst_off1 > length dst1 - len
+    then raise (Invalid_argument (Format.sprintf "Bytes.blit2 (src: %d:%d, \
+                                                               dst0: %d:%d, \
+                                                               dst1 %d:%d, \
+                                                               len: %d)"
+                                    src_off (length src)
+                                    dst_off0 (length dst0)
+                                    dst_off1 (length dst1)
+                                    len))
+    else for i = 0 to len - 1
+      do
+        set dst0 (dst_off0 + i) (get src (src_off + i));
+        set dst1 (dst_off1 + i) (get src (src_off + i));
+      done
 end
 
 (* mandatory for a GADT *)
@@ -243,6 +279,14 @@ let blit
     Bytes.blit src src_idx dst dst_idx len
   | Bigstring src, Bigstring dst ->
     Bigstring.blit src src_idx dst dst_idx len
+
+let blit2
+  : type a. a t -> int -> a t -> int -> a t -> int -> int -> unit
+  = fun src src_idx dst0 dst_idx0 dst1 dst_idx1  len -> match src, dst0, dst1 with
+  | Bytes src, Bytes dst0, Bytes dst1 ->
+    Bytes.blit2 src src_idx dst0 dst_idx0 dst1 dst_idx1 len
+  | Bigstring src, Bigstring dst0, Bigstring dst1 ->
+    Bigstring.blit2 src src_idx dst0 dst_idx0 dst1 dst_idx1 len
 
 let pp
   : type a. Format.formatter -> a t -> unit
