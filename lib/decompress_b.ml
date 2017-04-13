@@ -170,6 +170,26 @@ struct
                                     len))
     else blit src src_off dst dst_off len
 
+  (* XXX(dinosaure): Consider than [src] and [dst] it's the same buffer (the window).
+                     We need to use the [blit2] function when we have a match. Indeed,
+                     previously, we have to case:
+
+                     * update the window, then update the dst
+
+                       This is wrong because for a large distance we write on
+                       the old bytes of the window and but these old bytes are
+                       not yet saved in the output.
+
+                     * update the dst, then update the output
+
+                       This is wrong too because may be you need the new bytes
+                       of the window (for a short distance or close to the write
+                       position of the window) and [blit] unbehaviour bytes to
+                       dst.
+
+                     So, per byte, we update firstly the window and, then the output.
+
+   *)
   let blit2 src src_off dst0 dst_off0 dst1 dst_off1 len =
     if len < 0 || src_off < 0  || src_off > length src - len
                || dst_off0 < 0 || dst_off0 > length dst0 - len
@@ -184,8 +204,8 @@ struct
                                     len))
     else for i = 0 to len - 1
       do
-        set dst0 (dst_off0 + i) (get src (src_off + i));
-        set dst1 (dst_off1 + i) (get src (src_off + i));
+        set dst0 (dst_off0 + i) (get src (src_off + i)); (* write the character in the window *)
+        set dst1 (dst_off1 + i) (get src (src_off + i)); (* write the character in the output *)
       done
 end
 

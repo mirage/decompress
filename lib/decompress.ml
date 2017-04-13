@@ -1975,7 +1975,10 @@ struct
     { t with wpos = if wpos + n < size then wpos + n
                     else wpos + n - size }
 
-  let write buf off len t =
+  external hack : ('a, 'i) Safe.t -> (Safe.read, 'i) Safe.t = "%identity"
+
+  (* consider than [buf] is the window. *)
+  let write buf off dst dst_off len t =
     let t = if len > available_to_write t
             then drop (len - (available_to_write t)) t
             else t in
@@ -1984,13 +1987,14 @@ struct
     let extra = len - pre in
 
     if extra > 0 then begin
-      Safe.blit buf off t.buffer t.wpos pre;
-      Safe.blit buf (off + pre) t.buffer 0 extra;
+      Safe.blit2 buf off t.buffer t.wpos dst dst_off pre;
+      Safe.blit2 buf (off + pre) t.buffer 0 dst (dst_off + pre) extra;
     end else begin
-      Safe.blit buf off t.buffer t.wpos len;
+      Safe.blit2 buf off t.buffer t.wpos dst dst_off len;
     end;
 
-    move len { t with crc = Safe.adler32 buf t.crc off len }
+    move len { t with crc = Safe.adler32 (hack dst) t.crc dst_off len }
+      (* XXX(dinosaure): [dst] is more reliable than [buf] because [buf] is the [window]. *)
 
   let write_char chr t =
     let t = if 1 > available_to_write t
@@ -2462,6 +2466,7 @@ struct
       | distance ->
         let len = min (t.o_len - t.o_pos) length in
         let off = Window.((window.wpos - distance) % window) in
+
         let sze = window.Window.size in
 
         let pre = sze - off in
@@ -2470,17 +2475,11 @@ struct
         let window =
           if ext > 0
           then begin
-            let window0 =
-              Window.write window.Window.buffer off pre window in
-            Safe.blit window0.Window.buffer off dst (t.o_off + t.o_pos) pre;
-            let window1 =
-              Window.write window0.Window.buffer 0 ext window0 in
-            Safe.blit window1.Window.buffer 0 dst (t.o_off + t.o_pos + pre) ext;
+            let window0 = Window.write window.Window.buffer off dst (t.o_off + t.o_pos) pre window in
+            let window1 = Window.write window0.Window.buffer 0 dst (t.o_off + t.o_pos + pre) ext window0 in
             window1
           end else begin
-            let window0 =
-              Window.write window.Window.buffer off len window in
-            Safe.blit window0.Window.buffer off dst (t.o_off + t.o_pos) len;
+            let window0 = Window.write window.Window.buffer off dst (t.o_off + t.o_pos) len window in
             window0
           end
         in
@@ -2732,8 +2731,7 @@ struct
     let rec loop window length src dst t =
       let n = min length (min (t.i_len - t.i_pos) (t.o_len - t.o_pos)) in
 
-      let window = Window.write src (t.i_off + t.i_pos) n window in
-      Safe.blit src (t.i_off + t.i_pos) dst (t.o_off + t.o_pos) n;
+      let window = Window.write src (t.i_off + t.i_pos) dst (t.o_off + t.o_pos) n window in
 
       if length - n = 0
       then Cont  { t with i_pos = t.i_pos + n
@@ -2930,17 +2928,11 @@ struct
 
            window := if ext > 0
              then begin
-               let window0 =
-                 Window.write !window.Window.buffer off pre !window in
-               Safe.blit window0.Window.buffer off dst (t.o_off + !o_pos) pre;
-               let window1 =
-                 Window.write window0.Window.buffer 0 ext window0 in
-               Safe.blit window1.Window.buffer 0 dst (t.o_off + !o_pos + pre) ext;
+               let window0 = Window.write !window.Window.buffer off dst (t.o_off + !o_pos) pre !window in
+               let window1 = Window.write window0.Window.buffer 0 dst (t.o_off + !o_pos + pre) ext window0 in
                window1
              end else begin
-               let window0 =
-                 Window.write !window.Window.buffer off n !window in
-               Safe.blit window0.Window.buffer off dst (t.o_off + !o_pos) n;
+               let window0 = Window.write !window.Window.buffer off dst (t.o_off + !o_pos) n !window in
                window0
              end;
 
