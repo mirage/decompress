@@ -1975,23 +1975,7 @@ struct
     { t with wpos = if wpos + n < size then wpos + n
                     else wpos + n - size }
 
-  let write_ro buf off len t =
-    let t = if len > available_to_write t
-            then drop (len - (available_to_write t)) t
-            else t in
-
-    let pre = t.size - t.wpos in
-    let extra = len - pre in
-
-    if extra > 0 then begin
-      Safe.blit buf off t.buffer t.wpos pre;
-      Safe.blit buf (off + pre) t.buffer 0 extra;
-    end else
-      Safe.blit buf off t.buffer t.wpos len;
-
-    move len { t with crc = Safe.adler32 buf t.crc off len }
-
-  let write_rw buf off len t =
+  let write buf off len t =
     let t = if len > available_to_write t
             then drop (len - (available_to_write t)) t
             else t in
@@ -2487,15 +2471,15 @@ struct
           if ext > 0
           then begin
             let window0 =
-              Window.write_rw window.Window.buffer off pre window in
+              Window.write window.Window.buffer off pre window in
             Safe.blit window0.Window.buffer off dst (t.o_off + t.o_pos) pre;
             let window1 =
-              Window.write_rw window0.Window.buffer 0 ext window0 in
+              Window.write window0.Window.buffer 0 ext window0 in
             Safe.blit window1.Window.buffer 0 dst (t.o_off + t.o_pos + pre) ext;
             window1
           end else begin
             let window0 =
-              Window.write_rw window.Window.buffer off len window in
+              Window.write window.Window.buffer off len window in
             Safe.blit window0.Window.buffer off dst (t.o_off + t.o_pos) len;
             window0
           end
@@ -2748,7 +2732,7 @@ struct
     let rec loop window length src dst t =
       let n = min length (min (t.i_len - t.i_pos) (t.o_len - t.o_pos)) in
 
-      let window = Window.write_ro src (t.i_off + t.i_pos) n window in
+      let window = Window.write src (t.i_off + t.i_pos) n window in
       Safe.blit src (t.i_off + t.i_pos) dst (t.o_off + t.o_pos) n;
 
       if length - n = 0
@@ -2947,15 +2931,15 @@ struct
            window := if ext > 0
              then begin
                let window0 =
-                 Window.write_rw !window.Window.buffer off pre !window in
+                 Window.write !window.Window.buffer off pre !window in
                Safe.blit window0.Window.buffer off dst (t.o_off + !o_pos) pre;
                let window1 =
-                 Window.write_rw window0.Window.buffer 0 ext window0 in
+                 Window.write window0.Window.buffer 0 ext window0 in
                Safe.blit window1.Window.buffer 0 dst (t.o_off + !o_pos + pre) ext;
                window1
              end else begin
                let window0 =
-                 Window.write_rw !window.Window.buffer off n !window in
+                 Window.write !window.Window.buffer off n !window in
                Safe.blit window0.Window.buffer off dst (t.o_off + !o_pos) n;
                window0
              end;
