@@ -537,16 +537,11 @@ struct
            || c src_ref src_idx = false
         then raise (Literal (Safe.get src anchor));
 
-        (* TODO: fix that! bug with
-                 deflate ~(level >= 5) -> inflate
-                 only with decompress, with camlzip, all is fine
-
         if t.level >= 5 && distance >= _max_distance
         then if c src_ref src_idx = false
              || c src_ref src_idx = false
              then raise (Literal (Safe.get src anchor))
              else raise (Match (2, distance - 1)) (* (+3, +1) *);
-        *)
 
         raise (Match (!src_idx - anchor - 3, distance - 1))
       with Match (len, 0) ->
