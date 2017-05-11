@@ -4,6 +4,7 @@ v0.6 2017-05-11 Cao Lãnh (Vietnam)
 - Fixed bug #29
 - Produce far pattern (Lz77 compression)
 - Optimize memory consumption of the Inflate module
+- Learn topkg-release
 
 v0.5 2017-02-17 Essaouira (Maroc)
 ------------------------------------
