@@ -2114,7 +2114,9 @@ struct
     exception Invalid_huffman
 
     let prefix heap max =
-      let tbl = Array.make (1 lsl max) (0, 0) in
+      assert (max <= 15); (* lol *)
+
+      let tbl = Array.make (1 lsl max) 0 in
 
       let rec backward huff incr =
         if huff land incr <> 0
@@ -2125,7 +2127,7 @@ struct
       let rec aux huff heap = match Heap.take heap with
         | _, (len, value), heap ->
           let rec loop decr fill =
-            Array.set tbl (huff + fill) (len, value);
+            Array.set tbl (huff + fill) ((len lsl 15) lor value);
             if fill <> 0 then loop decr (fill - decr)
           in
 
@@ -2222,9 +2224,11 @@ struct
   module Lookup =
   struct
     type t =
-      { table : (int * int) array
+      { table : int array
       ; max   : int
       ; mask  : int }
+
+    let max_mask = (1 lsl 15) - 1
 
     let make table max =
       { table; max; mask = (1 lsl max) - 1; }
@@ -2241,9 +2245,13 @@ struct
       make tbl max
 
     let fixed_dst =
-      let tbl = Array.make (1 lsl 5) (0, 0) in
-      Array.iteri (fun i _ -> Array.set tbl i (5, reverse_bits (i lsl 3))) tbl;
+      let tbl = Array.make (1 lsl 5) 0 in
+      Array.iteri (fun i _ -> Array.set tbl i ((5 lsl 15) lor (reverse_bits (i lsl 3)))) tbl;
       make tbl 5
+
+    let get t idx =
+      let shadow = Array.get t.table idx in
+      (shadow lsr 15, shadow land max_mask)
   end
 
   type ('i, 'o) t =
@@ -2422,8 +2430,8 @@ struct
                       ; hold  = t.hold lor (byte lsl t.bits)
                       ; bits  = t.bits + 8 }
         else Wait { t with state = Inflate (get lookup k) }
-      else let (len, v) = Array.get
-             lookup.Lookup.table (t.hold land lookup.Lookup.mask) in
+      else let (len, v) = Lookup.get
+             lookup (t.hold land lookup.Lookup.mask) in
            k v src dst { t with hold = t.hold lsr len
                               ; bits = t.bits - len }
 
@@ -2575,7 +2583,8 @@ struct
         if t.bits < max_bits
         then KDictionary.peek_bits max_bits
                (fun src dst t -> (get[@tailcall]) k src dst t) src dst t
-        else let (len, v) = Array.get tbl (t.hold land mask_bits) in
+        else let (len, v) = Array.get tbl (t.hold land mask_bits) lsr 15,
+                            Array.get tbl (t.hold land mask_bits) land Lookup.max_mask in
              KDictionary.drop_bits len (k v) src dst t
       in
 
@@ -2822,8 +2831,8 @@ struct
              incr i_pos;
            end;
 
-           let (len, value) = Array.get
-             lookup_chr.Lookup.table
+           let (len, value) = Lookup.get
+             lookup_chr
              (!hold land lookup_chr.Lookup.mask)
            in
 
@@ -2871,8 +2880,8 @@ struct
              incr i_pos;
            end;
 
-           let (len, value) = Array.get
-             lookup_dst.Lookup.table
+           let (len, value) = Lookup.get
+             lookup_dst
              (!hold land lookup_dst.Lookup.mask)
            in
 
