@@ -5,6 +5,7 @@ v0.6 2017-05-11 Cao Lãnh (Vietnam)
 - Produce far pattern (Lz77 compression)
 - Optimize memory consumption of the Inflate module
 - Move repository from oklm-wsh to mirage
+- Learn topkg release
 
 v0.5 2017-02-17 Essaouira (Maroc)
 ------------------------------------
