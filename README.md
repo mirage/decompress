@@ -1,7 +1,7 @@
 Decompress - Pure OCaml implementation of Zlib
 ==============================================
 
-[![Build Status](https://travis-ci.org/oklm-wsh/Decompress.svg?branch=master)](https://travis-ci.org/oklm-wsh/Decompress)
+[![Build Status](https://travis-ci.org/mirage/decompress.svg?branch=master)](https://travis-ci.org/mirage/decompress)
 
 Decompress is a pure implementation of `zlib`. The goal is to create an
 available package for Mirage OS for `zlib` in OCaml (instead a C code).
@@ -17,7 +17,7 @@ The interface proposed is a non-blocking interface.
 
 Home page: http://din.osau.re/
 
-Documentation: https://oklm-wsh.github.io/Decompress/api.docdir/
+Documentation: https://mirage.github.io/decompress/api.docdir/
 
 Contact: Romain Calascibetta `<romain.calascibet ta@gmail.com>`
 
@@ -49,7 +49,7 @@ But keep in your mind, it's an easy example and it's not optimized for a
 productive environment - so, don't copy/paste and think.
 
 The documentation is
-available [online](https://oklm-wsh.github.io/Decompress/api.docdir/) to
+available [online](https://mirage.github.io/decompress/api.docdir/) to
 understand how to use Decompress.
 
 ## Build Requirements
