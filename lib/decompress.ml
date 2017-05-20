@@ -973,6 +973,7 @@ struct
     ; i_len       : int
     ; level       : int
     ; wbits       : int
+    ; write       : int
     ; adler       : Int32.t
     ; state       : ('i, 'o) state }
   and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
@@ -1108,7 +1109,8 @@ struct
       if (t.o_len - t.o_pos) > 0
       then begin
         Safe.set dst (t.o_off + t.o_pos) (Char.unsafe_chr chr);
-        k src dst { t with o_pos = t.o_pos + 1 }
+        k src dst { t with o_pos = t.o_pos + 1
+                         ; write = t.write + 1 }
       end else Flush { t with state = Header (put_byte chr k) }
   end
 
@@ -1118,7 +1120,8 @@ struct
       if (t.o_len - t.o_pos) > 0
       then begin
         Safe.set dst (t.o_off + t.o_pos) (Char.chr chr);
-        k src dst { t with o_pos = t.o_pos + 1 }
+        k src dst { t with o_pos = t.o_pos + 1
+                         ; write = t.write + 1 }
       end else Flush { t with state = WriteBlock (put_byte chr k) }
 
     let put_short short k src dst t =
@@ -1454,9 +1457,11 @@ struct
 
       if t.o_len - (t.o_pos + n) = 0
       then Flush { t with state = WriteBlock (write_flat 0 (pos + n) len final)
-                        ; o_pos = t.o_pos + n }
+                        ; o_pos = t.o_pos + n
+                        ; write = t.write + n }
       else Cont { t with state = WriteBlock (write_flat 0 (pos + n) len final)
-                       ; o_pos = t.o_pos + n }
+                       ; o_pos = t.o_pos + n
+                       ; write = t.write + n }
     end
 
   let flat off pos len final src dst t =
@@ -1549,6 +1554,7 @@ struct
     let hold  = ref t.hold in
     let bits  = ref t.bits in
     let o_pos = ref t.o_pos in
+    let write = ref t.write in
     let goto  = ref code in
 
     while Q.is_empty !q = false && t.o_len - !o_pos > 1
@@ -1584,6 +1590,7 @@ struct
          hold  := code lsr (16 - !bits);
          bits  := !bits + len - 16;
          o_pos := !o_pos + 2;
+         write := !write + 2;
        end else begin
          hold  := !hold lor (code lsl !bits);
          bits  := !bits + len;
@@ -1647,6 +1654,7 @@ struct
      Cont { t with hold = !hold
                  ; bits = !bits
                  ; o_pos = !o_pos
+                 ; write = !write
                  ; state }
 
   let flush off len t =
@@ -1884,6 +1892,7 @@ struct
     ; i_off = 0
     ; i_pos = 0
     ; i_len = 0
+    ; write = 0
     ; level
     ; wbits
     ; adler = 1l
@@ -2441,7 +2450,8 @@ struct
         let window = Window.write_char chr window in
         Safe.set dst (t.o_off + t.o_pos) chr;
 
-        k window src dst { t with o_pos = t.o_pos + 1 }
+        k window src dst { t with o_pos = t.o_pos + 1
+                                ; write = t.write + 1 }
       end else Flush { t with state = Inflate (put_chr window chr k) }
 
     let rec fill_chr window length chr k src dst t =
@@ -2454,9 +2464,11 @@ struct
 
         if length - len > 0
         then Flush
-          { t with o_pos = t.o_pos + len
-                 ; state = Inflate (fill_chr window (length - len) chr k) }
-        else k window src dst { t with o_pos = t.o_pos + len }
+            { t with o_pos = t.o_pos + len
+                   ; write = t.write + len
+                   ; state = Inflate (fill_chr window (length - len) chr k) }
+        else k window src dst { t with o_pos = t.o_pos + len
+                                     ; write = t.write + len }
       end else Flush { t with state = Inflate (fill_chr window length chr k) }
 
     let rec write window lookup_chr lookup_dst length distance k src dst t =
@@ -2740,19 +2752,23 @@ struct
       if length - n = 0
       then Cont  { t with i_pos = t.i_pos + n
                         ; o_pos = t.o_pos + n
+                        ; write = t.write + n
                         ; state = Switch window }
       else match t.i_len - (t.i_pos + n), t.o_len - (t.o_pos + n) with
       | 0, _ ->
         Wait  { t with i_pos = t.i_pos + n
                      ; o_pos = t.o_pos + n
+                     ; write = t.write + n
                      ; state = Flat (loop window (length - n)) }
       | _, 0 ->
         Flush { t with i_pos = t.i_pos + n
                      ; o_pos = t.o_pos + n
+                     ; write = t.write + n
                      ; state = Flat (loop window (length - n)) }
       | _, _ ->
         Cont { t with i_pos = t.i_pos + n
                     ; o_pos = t.o_pos + n
+                    ; write = t.write + n
                     ; state = Flat (loop window (length - n)) }
     in
 
