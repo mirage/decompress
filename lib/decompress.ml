@@ -2290,6 +2290,7 @@ struct
     | Inflate    of ('i, 'o) k
     | Switch     of 'o Window.t
     | Crc        of ('i, 'o) k
+    | Finish
     | Exception  of error
   and ('i, 'o) res =
     | Cont  of ('i, 'o) t
@@ -2322,6 +2323,7 @@ struct
     | Inflate _            -> Format.fprintf fmt "(Inflate #fun)"
     | Switch _             -> Format.fprintf fmt "(Switch #window)"
     | Crc _                -> Format.fprintf fmt "(Crc #window)"
+    | Finish               -> Format.fprintf fmt "Finish"
     | Exception e          -> Format.fprintf fmt "(Exception %a)" pp_error e
 
   let pp fmt { last; hold; bits
@@ -2713,8 +2715,8 @@ struct
 
     read_hlit src dst t
 
-  let rec ok _ _ t =
-    Ok { t with state = Crc ok }
+  let ok _ _ t =
+    Ok { t with state = Finish }
 
   let crc window src dst t =
     let crc = Window.crc window in
@@ -3088,6 +3090,7 @@ struct
       | Inflate k -> k safe_src safe_dst t
       | Switch window -> switch safe_src safe_dst t window
       | Crc k -> k safe_src safe_dst t
+      | Finish -> ok safe_src safe_dst t
       | Exception exn -> error t exn
     in
 
@@ -3117,6 +3120,10 @@ struct
 
   let refill off len t =
     if t.i_pos = t.i_len
+    then { t with i_off = off
+                ; i_len = len
+                ; i_pos = 0 }
+    else if t.state = Finish (* XXX(dinosaure): when the inflate compute is done, we don't care if we lost something. *)
     then { t with i_off = off
                 ; i_len = len
                 ; i_pos = 0 }
