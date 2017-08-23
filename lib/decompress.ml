@@ -2793,7 +2793,7 @@ struct
       | literal when literal < 256 ->
         KInflate.put_chr window (Char.chr literal)
           (fun window src dst t -> KInflate.get lookup_chr
-            (fun length src dst t -> (loop[@tailcall]) window length src dst t)
+            (fun length _ _ t -> Cont { t with state = Inflate (fun src dst t -> (loop[@tailcall]) window length src dst t) })
             src dst t)
           src dst t
       | 256 ->
@@ -2805,8 +2805,7 @@ struct
             (fun distance src dst t -> KInflate.read_extra_dist distance
               (fun distance src dst t -> KInflate.write
                 window lookup_chr lookup_dst length distance
-                (fun window src dst t -> (inflate[@tailcall])
-                  window lookup_chr lookup_dst src dst t)
+                (fun window _ _ t -> Cont { t with state = Inflate (fun src dst t -> (inflate[@tailcall]) window lookup_chr lookup_dst src dst t) })
                 src dst t)
               src dst t)
             src dst t)
@@ -2815,7 +2814,7 @@ struct
 
     KInflate.get
       lookup_chr
-      (fun length src dst t -> (loop[@tailcall]) window length src dst t)
+      (fun length _ _ t -> Cont { t with state = Inflate (fun src dst t -> (loop[@tailcall]) window length src dst t) })
       src dst t
 
   exception End
