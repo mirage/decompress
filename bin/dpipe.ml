@@ -18,9 +18,9 @@ let unix_write (type a) ch (tmp : a B.t) off len = match tmp with
 
 let _chunk = 0xFFFF
 
-let do_command mode level wbits =
-  let src = B.from ~proof:B.proof_bigstring _chunk in
-  let dst = B.from ~proof:B.proof_bigstring _chunk in
+let do_command input_size output_size mode level wbits =
+  let src = B.from ~proof:B.proof_bigstring input_size in
+  let dst = B.from ~proof:B.proof_bigstring output_size in
 
   match mode with
   | `Compression ->
@@ -28,9 +28,9 @@ let do_command mode level wbits =
     let r = Decompress.Deflate.to_result
       src dst
       (fun src -> function
-       | Some max -> unix_read Unix.stdin src 0 (min max _chunk)
-       | None -> unix_read Unix.stdin src 0 _chunk)
-      (fun dst len -> let _ = unix_write Unix.stdout dst 0 len in _chunk)
+       | Some max -> unix_read Unix.stdin src 0 (min max input_size)
+       | None -> unix_read Unix.stdin src 0 input_size)
+      (fun dst len -> let _ = unix_write Unix.stdout dst 0 len in output_size)
       t
     in (match r with
         | Ok _ -> ()
@@ -40,9 +40,9 @@ let do_command mode level wbits =
     let t = Decompress.Inflate.default w in
     let r = Decompress.Inflate.to_result
       src dst
-      (fun src -> unix_read Unix.stdin src 0 _chunk)
+      (fun src -> unix_read Unix.stdin src 0 input_size)
       (fun dst len ->
-       let _ = unix_write Unix.stdout dst 0 len in _chunk)
+       let _ = unix_write Unix.stdout dst 0 len in output_size)
       t
     in (match r with
         | Ok _ -> ()
@@ -70,8 +70,8 @@ let nat a b =
 
 let mode =
   let parse = function
-    | "compression" -> `Ok `Compression
-    | "decompression" -> `Ok `Decompression
+    | "deflate" -> `Ok `Compression
+    | "inflate" -> `Ok `Decompression
     | _ -> `Error "Invalid mode"
   in
   parse, (fun fmt -> function
@@ -90,6 +90,14 @@ let level =
   let doc = "Level of compression" in
   Arg.(value & opt (nat (Some 0) (Some 9)) 4 & info ["level"] ~doc)
 
+let input_size =
+  let doc = "Size of the input buffer" in
+  Arg.(value & opt (nat (Some 2) None) 0xFFFF & info ["i"] ~doc)
+
+let output_size =
+  let doc = "Size of the output buffer" in
+  Arg.(value & opt (nat (Some 2) None) 0xFFFF & info ["o"] ~doc)
+
 let command =
   let doc = "Deflate and inflate any document." in
   let man =
@@ -97,7 +105,7 @@ let command =
   ; `P "$(tname) takes a standard input and write in standard output the \
         compressed/uncompressed data." ]
   in
-  Term.(pure do_command $ mode $ level $ wbits),
+  Term.(pure do_command $ input_size $ output_size $ mode $ level $ wbits),
   Term.info "dpipe" ~doc ~man
 
 let () = match Term.eval command with
