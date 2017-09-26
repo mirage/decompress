@@ -415,9 +415,9 @@ struct
     let flush_last () =
       if !last <> 0 then begin
         for i = 0 to !last - 1
-        do t.on (Hunk.Literal (Safe.get src (t.i_off + t.i_pos + i)));
+        do t.on (Hunk.Literal (Safe.get src (!src_idx - !last + i)));
            Queue.push
-             (Hunk.Literal (Safe.get src (t.i_off + t.i_pos + i)))
+             (Hunk.Literal (Safe.get src (!src_idx - !last + i)))
              results;
         done;
 
