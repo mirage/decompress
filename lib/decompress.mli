@@ -59,6 +59,13 @@ sig
   val proof_bigstring : bs t
 end
 
+module Adler32 :
+sig
+  type t = int32
+
+  val adler32 : 'a B.t -> t -> int -> int -> t
+end
+
 (** Decompress, functionnal implementation of Zlib in OCaml. *)
 
 (** Hunk definition.
