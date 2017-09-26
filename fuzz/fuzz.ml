@@ -100,11 +100,15 @@ let pp_scalar : type buffer. get:(buffer -> int -> char) -> length:(buffer -> in
 
 let pp = pp_scalar ~get:String.get ~length:String.length
 
+let () = Printexc.register_printer
+    (function
+      | Inflate_error err -> Some (Fmt.strf "(Inflate_error %a)" (Fmt.hvbox Decompress.Inflate.pp_error) err)
+      | Deflate_error err -> Some (Fmt.strf "(Deflate_error %a)" (Fmt.hvbox Decompress.Deflate.pp_error) err)
+      | _ -> None)
+
 let () =
   add_test ~name:"decompress" [bytes] @@ fun raw ->
   let deflate = compress raw in
   let inflate = decompress deflate in
-
-  Format.printf "> @[<hov>%a@].\n%!" pp raw;
 
   check_eq ~pp ~cmp:String.compare ~eq:String.equal raw inflate
