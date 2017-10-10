@@ -6,7 +6,7 @@ open Crowbar
 exception Deflate_error of Decompress.Deflate.error
 exception Inflate_error of Decompress.Inflate.error
 
-let compress ?(level = 4) data =
+let compress ?(level = 4) ?(wbits = 15) data =
   let open Decompress in
 
   let input_buffer = Bytes.create 0xFFFF in
@@ -30,7 +30,7 @@ let compress ?(level = 4) data =
     (fun output_buffer len ->
       Buffer.add_subbytes res output_buffer 0 len;
       0xFFFF)
-    (Deflate.default ~proof:B.proof_bytes level)
+    (Deflate.default ~proof:B.proof_bytes ~wbits level)
   |> function
      | Ok _ -> Buffer.contents res
      | Error exn -> raise (Deflate_error exn)
@@ -107,8 +107,8 @@ let () = Printexc.register_printer
       | _ -> None)
 
 let () =
-  add_test ~name:"decompress" [bytes] @@ fun raw ->
-  let deflate = compress raw in
+  add_test ~name:"decompress" [bytes; range 9; range 7] @@ fun raw level wbits ->
+  let deflate = compress ~level ~wbits:(wbits + 8) raw in
   let inflate = decompress deflate in
 
   check_eq ~pp ~cmp:String.compare ~eq:String.equal raw inflate
