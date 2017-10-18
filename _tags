@@ -7,4 +7,4 @@ true: safe_string, bin_annot, debug
 <bin/dpipe.{native,byte,ml}>: use_bigarray, use_unix, package(cmdliner), linkdep(bin/bs.o)
 <bin/easy.{native,byte,ml}>: use_bigarray
 <bin/adler32sum.{native,byte,ml}>: use_bigarray
-<fuzz/*>: use_bigarray, package(crowbar), package(fmt)
+<fuzz/*>: use_bigarray, package(crowbar), package(fmt), package(afl-persistent), use_afl
