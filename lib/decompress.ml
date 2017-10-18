@@ -2613,7 +2613,7 @@ struct
                      src dst t) src dst t
           else k state.dictionary src dst t
         | 16 ->
-          let aux n src dst t =
+          let aux state n src dst t =
             if state.idx + n + 3 > state.max
             then error t Invalid_dictionary
             else begin
@@ -2628,9 +2628,9 @@ struct
             end
           in
 
-          KDictionary.get_bits 2 aux src dst t
+          KDictionary.get_bits 2 (aux state) src dst t
         | 17 ->
-          let aux n src dst t =
+          let aux state n src dst t =
             if state.idx + n + 3 > state.max
             then error t Invalid_dictionary
             else begin
@@ -2642,7 +2642,7 @@ struct
             end
           in
 
-          KDictionary.get_bits 3 aux src dst t
+          KDictionary.get_bits 3 (aux state) src dst t
         | 18 ->
           let aux state n src dst t =
             if state.idx + n + 11 > state.max
