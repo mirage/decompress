@@ -2,6 +2,7 @@ Decompress - Pure OCaml implementation of Zlib
 ==============================================
 
 [![Build Status](https://travis-ci.org/mirage/decompress.svg?branch=master)](https://travis-ci.org/mirage/decompress)
+![MirageOS](https://img.shields.io/badge/MirageOS-%F0%9F%90%AB-red.svg)
 
 Decompress is a pure implementation of `zlib`. The goal is to create an
 available package for Mirage OS for `zlib` in OCaml (instead a C code).
@@ -54,7 +55,7 @@ understand how to use Decompress.
 
 ## Build Requirements
 
- * OCaml >= 4.02.0
+ * OCaml >= 4.03.0
  * `base-bytes` meta-package
  * Bigarray module (provided by the standard library of OCaml)
  * `topkg`, `ocamlfind` and `ocamlbuild` to build the project
@@ -62,5 +63,5 @@ understand how to use Decompress.
 If you want to compile the test program, you need:
 
  * `camlzip` to compare `decompress` with `zlib`
- * `re`
+ * `re.1.7.1`
  * `alcotest`
