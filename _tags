@@ -1,5 +1,5 @@
 true: safe_string, bin_annot, debug
-<*/*>: warn_error(+1..49), warn(A-4-41-44)
+<lib/*>: warn_error(+1..49), warn(A-4-41-44)
 
 <lib>: include
 
