@@ -1,5 +1,5 @@
 let walk directory pattern =
-  let select str = Re_str.string_match (Re_str.regexp pattern) str 0 in
+  let select str = Re.Str.string_match (Re.Str.regexp pattern) str 0 in
   let rec aux acc = function
     | [] -> acc
     | dir :: rest ->
