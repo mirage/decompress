@@ -2607,9 +2607,9 @@ struct
           Array.set state.dictionary state.idx n;
 
           if state.idx + 1 < state.max
-          then get (fun src dst t -> (loop[@tailcall])
+          then get (fun v src dst t -> (loop[@tailcall])
                      { state with idx = state.idx + 1
-                                ; prv = n }
+                                ; prv = n } v
                      src dst t) src dst t
           else k state.dictionary src dst t
         | 16 ->
@@ -2621,8 +2621,8 @@ struct
               do Array.set state.dictionary (state.idx + j) state.prv done;
 
               if state.idx + n + 3 < state.max
-              then get (fun src dst t -> (loop[@tailcall])
-                         { state with idx = state.idx + n + 3 }
+              then get (fun v src dst t -> (loop[@tailcall])
+                         { state with idx = state.idx + n + 3 } v
                          src dst t) src dst t
               else k state.dictionary src dst t
             end
@@ -2635,8 +2635,8 @@ struct
             then error t Invalid_dictionary
             else begin
               if state.idx + n + 3 < state.max
-              then get (fun src dst t -> (loop[@tailcall])
-                         { state with idx = state.idx + n + 3 }
+              then get (fun v src dst t -> (loop[@tailcall])
+                         { state with idx = state.idx + n + 3 } v
                          src dst t) src dst t
               else k state.dictionary src dst t
             end
@@ -2649,8 +2649,9 @@ struct
             then error t Invalid_dictionary
             else begin
               if state.idx + n + 11 < state.max
-              then get ((loop[@tailclal])
-                        { state with idx = state.idx + n + 11 }) src dst t
+              then get (fun v src dst t -> (loop[@tailclal])
+                                             { state with idx = state.idx + n + 11 } v
+                                             src dst t) src dst t
               else k state.dictionary src dst t
             end
           in
@@ -2659,7 +2660,7 @@ struct
         | _ -> error t Invalid_dictionary
       in
 
-      get (fun src dst t -> (loop[@tailcall]) (make max) src dst t) src dst t
+      get (fun v src dst t -> (loop[@tailcall]) (make max) v src dst t) src dst t
   end
 
   let fixed _ _ t window =
