@@ -37,8 +37,8 @@ let do_command input_size output_size mode level wbits =
         | Error exn -> Format.eprintf "%a\n%!" Decompress.Deflate.pp_error exn)
   | `Decompression ->
     let w = Decompress.Window.create ~proof:dst in
-    let t = Decompress.Inflate.default w in
-    let r = Decompress.Inflate.to_result
+    let t = Decompress.Z.default w in
+    let r = Decompress.Z.to_result
       src dst
       (fun src -> unix_read Unix.stdin src 0 input_size)
       (fun dst len ->
@@ -46,7 +46,7 @@ let do_command input_size output_size mode level wbits =
       t
     in (match r with
         | Ok _ -> ()
-        | Error exn -> Format.eprintf "%a\n%!" Decompress.Inflate.pp_error exn)
+        | Error exn -> Format.eprintf "%a\n%!" Decompress.Z.pp_error exn)
 
 open Cmdliner
 

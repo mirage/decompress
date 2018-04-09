@@ -47,8 +47,14 @@ module D : COMMON with type t = Bytes.t =
 struct
   type t = Bytes.t
 
-  exception Decompress_inflate of Decompress.Inflate.error
+  exception Decompress_inflate of Decompress.Z.error
   exception Decompress_deflate of Decompress.Deflate.error
+
+  let () = Printexc.register_printer
+      (function
+        | Decompress_inflate err -> Some (Format.asprintf "%a" Decompress.Z.pp_error err)
+        | Decompress_deflate err -> Some (Format.asprintf "%a" Decompress.Deflate.pp_error err)
+        | _ -> None)
 
   let input  = Bytes.create 0xFFFF
   let output = Bytes.create 0xFFFF
@@ -64,10 +70,10 @@ struct
        | Error exn -> raise (Decompress_deflate exn)
 
   let uncompress refill flush =
-    Decompress.Inflate.bytes input output
+    Decompress.Z.bytes input output
       refill
       (fun buf len -> flush buf len; 0xFFFF)
-      (Decompress.Inflate.default (Decompress.Window.reset window))
+      (Decompress.Z.default (Decompress.Window.reset window))
     |> function
        | Ok _ -> ()
        | Error exn -> raise (Decompress_inflate exn)
@@ -158,8 +164,8 @@ let d2d ?level ?wbits content =
 
 let level = [ 0; 1; 2; 3; 4; 5; 6; 7; 8; 9 ]
 let wbits = [ 15 ]
-  (* XXX(dinosaure): we need to avoid alcotest to write a file output, otherwise
-                     we have an I/O error. *)
+(* XXX(dinosaure): we need to avoid alcotest to write a file output, otherwise
+   we have an I/O error. *)
 
 let make_test filename =
 
