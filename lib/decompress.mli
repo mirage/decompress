@@ -325,27 +325,11 @@ end
 module type INFLATE =
 sig
   (** Inflate error. *)
-  type error =
-    | Invalid_kind_of_block (** This error appears when the kind of
-                                the current block is wrong.
-                             *)
-    | Invalid_complement_of_length (** This error appears when we
-                                       compute a stored block and
-                                       length do not correspond with
-                                       the complement of length.
-                                    *)
-    | Invalid_dictionary (** This error appears when we compute a
-                             dynamic block and we catch an error when
-                             we try to decode the dictionary.
-                           *)
-    | Invalid_crc of int32 * int32 (** The checksum of the output produced does not
-                                       equal with the checksum of the stream.
-                                     *)
+  type error
 
   (** The state of the inflate algorithm. ['i] and ['o] are the implementation
-      used respectively for the input and the output, see {!B.st} and {!B.bs}.
-      The typer considers than ['i = 'o].
-  *)
+     used respectively for the input and the output, see {!B.st} and {!B.bs}.
+     The typer considers than ['i = 'o]. *)
   type ('i, 'o) t
 
   (** Pretty-printer of inflate error. *)
@@ -354,29 +338,28 @@ sig
   (** Pretty-printer of inflate state. *)
   val pp       : Format.formatter -> ('i, 'o) t -> unit
 
-  (** [eval i o t] computes the state [t] with the input [i] and the output
-      [o]. This function returns:
-      - [`Await t]: the state [t] waits a new input, may be you use {!refill}.
-      - [`Flush t]: the state [t] completes the output, may be you use
-        {!flush}.
-      - [`End t]: means that the deflate algorithm is done in your input. May
-        be [t] writes something in your output. You can check with {!used_out}.
-      - [`Error (t, exn)]: the algorithm catches an error [exn].
-    *)
+  (** [eval i o t] computes the state [t] with the input [i] and the output [o].
+     This function returns:
+
+      {ul
+      {- [`Await t]: the state [t] waits a new input, may be you use {!refill}.}
+      {- [`Flush t]: the state [t] completes the output, may be you use
+     {!flush}.}
+      {- [`End t]: means that the deflate algorithm is done in your input. May
+     be [t] writes something in your output. You can check with {!used_out}.}
+      {- [`Error (t, exn)]: the algorithm catches an error [exn].}} *)
   val eval     : 'a B.t -> 'a B.t -> ('a, 'a) t ->
     [ `Await of ('a, 'a) t
     | `Flush of ('a, 'a) t
     | `End   of ('a, 'a) t
     | `Error of ('a, 'a) t * error ]
 
-  (** [refill off len t] allows the state [t] to use an output at [off] on
-      [len] byte(s).
-    *)
+  (** [refill off len t] allows the state [t] to use an output at [off] on [len]
+     byte(s). *)
   val refill   : int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   (** [flush off len t] allows the state [t] to use an output at [off] on [len]
-      byte(s).
-    *)
+     byte(s). *)
   val flush    : int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   (** [used_in t] returns how many byte(s) was used by [t] in the input. *)
@@ -392,28 +375,42 @@ sig
   val default  : 'o Window.t -> ('i, 'o) t
 
   (** [to_result i o refill flush t] is a convenience function to apply the
-      inflate algorithm on the stream [refill] and call [flush] when the
-      internal output is full (and need to flush).
+     inflate algorithm on the stream [refill] and call [flush] when the internal
+     output is full (and need to flush).
 
-      If the compute catch an error, we returns [Error exn]
-      (see {!INFLATE.error}). Otherwise, we returns the state {i useless} [t].
-  *)
-  val to_result : 'a B.t -> 'a B.t ->
-                  ('a B.t -> int) ->
-                  ('a B.t -> int -> int) ->
-                  ('a, 'a) t -> (('a, 'a) t, error) result
+      If the compute catch an error, we returns [Error exn] (see
+     {!INFLATE.error}). Otherwise, we returns the state {i useless} [t]. *)
+  val to_result :
+    'a B.t -> 'a B.t ->
+    ('a B.t -> int) ->
+    ('a B.t -> int -> int) ->
+    ('a, 'a) t -> (('a, 'a) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bytes.t}. *)
-  val bytes     : Bytes.t -> Bytes.t ->
-                  (Bytes.t -> int) ->
-                  (Bytes.t -> int -> int) ->
-                  (B.st, B.st) t -> ((B.st, B.st) t, error) result
+  val bytes     :
+    Bytes.t -> Bytes.t ->
+    (Bytes.t -> int) ->
+    (Bytes.t -> int -> int) ->
+    (B.st, B.st) t -> ((B.st, B.st) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bigstring.t}. *)
-  val bigstring : B.Bigstring.t -> B.Bigstring.t ->
-                  (B.Bigstring.t -> int) ->
-                  (B.Bigstring.t -> int -> int) ->
-                  (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
+  val bigstring :
+    B.Bigstring.t -> B.Bigstring.t ->
+    (B.Bigstring.t -> int) ->
+    (B.Bigstring.t -> int -> int) ->
+    (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
-module Inflate : INFLATE
+type error_rfc1951 =
+  | Invalid_kind_of_block
+  | Invalid_complement_of_length
+  | Invalid_dictionary
+
+module RFC1951: INFLATE with type error = error_rfc1951
+
+type error_z =
+  | RFC1951 of RFC1951.error
+  | Invalid_header
+  | Invalid_checksum of { have: Adler32.t; expect: Adler32.t; }
+
+module Z: INFLATE with type error = error_z

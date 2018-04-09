@@ -2043,11 +2043,7 @@ end
 (** non-blocking and functionnal implementation of Inflate *)
 module type INFLATE =
 sig
-  type error =
-    | Invalid_kind_of_block
-    | Invalid_complement_of_length
-    | Invalid_dictionary
-    | Invalid_crc of int32 * int32
+  type error
 
   type ('i, 'o) t
 
@@ -2083,38 +2079,86 @@ sig
                   (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
+module type S =
+sig
+  type ('i, 'o) t
+  type error
 
+  val eval: 'x B.t -> 'x B.t -> ('x, 'x) t -> [ `Await of ('x, 'x) t | `Flush of ('x, 'x) t | `End of ('x, 'x) t | `Error of (('x, 'x) t * error) ]
+  val refill: int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val flush: int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val used_out: ('i, 'o) t -> int
+end
 
-module Inflate : INFLATE =
+module Convenience (X: S) =
+struct
+  let to_result src dst refiller flusher t =
+    let rec go t = match X.eval src dst t with
+      | `Await t ->
+        let n = refiller src in
+        go (X.refill 0 n t)
+      | `Flush t ->
+        let n = X.used_out t in
+        let n = flusher dst n in
+        go (X.flush 0 n t)
+      | `End t ->
+        if X.used_out t = 0
+        then Ok t
+        else
+          let n = X.used_out t in
+          let n = flusher dst n in
+          Ok (X.flush 0 n t)
+      | `Error (_, exn) -> Error exn in
+    go t
+
+  let bytes src dst refiller flusher t =
+    to_result (B.from_bytes src) (B.from_bytes dst)
+      (function B.Bytes v -> refiller v)
+      (function B.Bytes v -> flusher v)
+      t
+
+  let bigstring src dst refiller flusher t =
+    to_result (B.from_bigstring src) (B.from_bigstring dst)
+      (function B.Bigstring v -> refiller v)
+      (function B.Bigstring v -> flusher v)
+      t
+end
+
+type error_rfc1951 =
+  | Invalid_kind_of_block
+  | Invalid_complement_of_length
+  | Invalid_dictionary
+
+module RFC1951 =
 struct
   (* functionnal implementation of Heap, bisoux @c-cube *)
   module Heap =
   struct
     type priority = int
-    type 'a queue = Empty | Node of priority * 'a * 'a queue * 'a queue
+    type 'a queue = None | Node of priority * 'a * 'a queue * 'a queue
 
     let rec push queue priority elt =
       match queue with
-      | Empty -> Node (priority, elt, Empty, Empty)
+      | None -> Node (priority, elt, None, None)
       | Node (p, e, left, right) ->
         if priority <= p
         then Node (priority, elt, push right p e, left)
         else Node (p, e, push right priority elt, left)
 
-    exception Empty_heap
+    exception Empty
 
     let rec remove = function
-      | Empty -> raise Empty_heap
-      | Node (_, _, left, Empty)  -> left
-      | Node (_, _, Empty, right) -> right
+      | None -> raise Empty
+      | Node (_, _, left, None)  -> left
+      | Node (_, _, None, right) -> right
       | Node (_, _, (Node (lp, le, _, _) as left),
-                    (Node (rp, re, _, _) as right)) ->
+              (Node (rp, re, _, _) as right)) ->
         if lp <= rp
         then Node (lp, le, remove left, right)
         else Node (rp, re, left, remove right)
 
     let take = function
-      | Empty -> raise Empty_heap
+      | None -> raise Empty
       | Node (p, e, _, _) as queue -> (p, e, remove queue)
   end
 
@@ -2130,15 +2174,13 @@ struct
       let rec backward huff incr =
         if huff land incr <> 0
         then backward huff (incr lsr 1)
-        else incr
-      in
+        else incr in
 
       let rec aux huff heap = match Heap.take heap with
         | _, (len, value), heap ->
           let rec loop decr fill =
             Array.set tbl (huff + fill) ((len lsl 15) lor value);
-            if fill <> 0 then loop decr (fill - decr)
-          in
+            if fill <> 0 then loop decr (fill - decr) in
 
           let decr = 1 lsl len in
           loop decr ((1 lsl max) - decr);
@@ -2146,8 +2188,7 @@ struct
           let incr = backward huff (1 lsl (len - 1)) in
 
           aux (if incr <> 0 then (huff land (incr - 1)) + incr else 0) heap
-        | exception Heap.Empty_heap -> ()
-      in
+        | exception Heap.Empty -> () in
 
       aux 0 heap; tbl
 
@@ -2170,8 +2211,8 @@ struct
         Array.set next_code i !code;
       done;
 
-      let ordered = ref Heap.Empty in
-      let max  = ref 0 in
+      let ordered = ref Heap.None in
+      let max = ref 0 in
 
       for i = 0 to size - 1 do
         let l = Array.get table (i + position) in
@@ -2186,22 +2227,6 @@ struct
 
       prefix !ordered !max, !max
   end
-
-  type error =
-    | Invalid_kind_of_block
-    | Invalid_complement_of_length
-    | Invalid_dictionary
-    | Invalid_crc of int32 * int32
-
-  let pp_error fmt = function
-    | Invalid_kind_of_block ->
-      Format.fprintf fmt "Invalid_kind_of_block"
-    | Invalid_complement_of_length ->
-      Format.fprintf fmt "Invalid_complement_of_length"
-    | Invalid_dictionary ->
-      Format.fprintf fmt "Invalid_dictionary"
-    | Invalid_crc (expect, has) ->
-      Format.fprintf fmt "(Invalid_crc (expect:%04lx, has:%04lx))" expect has
 
   let reverse_bits =
     let t =
@@ -2226,8 +2251,7 @@ struct
          0x1B; 0x9B; 0x5B; 0xDB; 0x3B; 0xBB; 0x7B; 0xFB; 0x07; 0x87; 0x47; 0xC7;
          0x27; 0xA7; 0x67; 0xE7; 0x17; 0x97; 0x57; 0xD7; 0x37; 0xB7; 0x77; 0xF7;
          0x0F; 0x8F; 0x4F; 0xCF; 0x2F; 0xAF; 0x6F; 0xEF; 0x1F; 0x9F; 0x5F; 0xDF;
-         0x3F; 0xBF; 0x7F; 0xFF |]
-    in
+         0x3F; 0xBF; 0x7F; 0xFF |] in
     fun bits -> t.(bits)
 
   module Lookup =
@@ -2246,10 +2270,9 @@ struct
       let tbl =
         Array.init 288
           (fun n -> if n < 144 then 8
-                    else if n < 256 then 9
-                    else if n < 280 then 7
-                    else 8)
-      in
+            else if n < 256 then 9
+            else if n < 280 then 7
+            else 8) in
       let tbl, max = Huffman.make tbl 0 288 9 in
       make tbl max
 
@@ -2274,22 +2297,21 @@ struct
     ; i_pos : int
     ; i_len : int
     ; write : int
-    ; state : ('i, 'o) state }
+    ; state : ('i, 'o) state
+    ; window : 'o Window.t }
   and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
-                   (Safe.write, 'o) Safe.t ->
-                   ('i, 'o) t ->
-                   ('i, 'o) res
+    (Safe.write, 'o) Safe.t ->
+    ('i, 'o) t ->
+    ('i, 'o) res
   and ('i, 'o) state =
-    | Header     of ('i, 'o) k
-    | Last       of 'o Window.t
-    | Block      of 'o Window.t
+    | Last
+    | Block
     | Flat       of ('i, 'o) k
-    | Fixed      of 'o Window.t
+    | Fixed
     | Dictionary of ('i, 'o) k
-    | Inffast    of ('o Window.t * Lookup.t * Lookup.t * code)
+    | Inffast    of (Lookup.t * Lookup.t * code)
     | Inflate    of ('i, 'o) k
-    | Switch     of 'o Window.t
-    | Crc        of ('i, 'o) k
+    | Switch
     | Finish
     | Exception  of error
   and ('i, 'o) res =
@@ -2304,6 +2326,12 @@ struct
     | Dist      of int
     | ExtDist   of int * int
     | Write     of int * int
+  and error = error_rfc1951
+
+  let pp_error fmt = function
+    | Invalid_kind_of_block        -> Format.fprintf fmt "Invalid_kind_of_block"
+    | Invalid_complement_of_length -> Format.fprintf fmt "Invalid_complement_of_length"
+    | Invalid_dictionary           -> Format.fprintf fmt "Invalid_dictionary"
 
   let pp_code fmt = function
     | Length         -> Format.fprintf fmt "Length"
@@ -2313,34 +2341,34 @@ struct
     | Write (a, b)   -> Format.fprintf fmt "(Write (%d, %d))" a b
 
   let pp_state fmt = function
-    | Header _             -> Format.fprintf fmt "(Header #fun)"
-    | Last _               -> Format.fprintf fmt "(Last #window)"
-    | Block _              -> Format.fprintf fmt "(Block #fun)"
+    | Last                 -> Format.fprintf fmt "Last"
+    | Block                -> Format.fprintf fmt "Block"
     | Flat _               -> Format.fprintf fmt "(Flat #fun)"
-    | Fixed _              -> Format.fprintf fmt "(Fixed #window)"
+    | Fixed                -> Format.fprintf fmt "Fixed"
     | Dictionary _         -> Format.fprintf fmt "(Dictionary #fun)"
-    | Inffast (_, _, _, c) -> Format.fprintf fmt "(Inffast %a)" pp_code c
+    | Inffast (_, _, c)    -> Format.fprintf fmt "(Inffast %a)" pp_code c
     | Inflate _            -> Format.fprintf fmt "(Inflate #fun)"
-    | Switch _             -> Format.fprintf fmt "(Switch #window)"
-    | Crc _                -> Format.fprintf fmt "(Crc #window)"
+    | Switch               -> Format.fprintf fmt "Switch"
     | Finish               -> Format.fprintf fmt "Finish"
     | Exception e          -> Format.fprintf fmt "(Exception %a)" pp_error e
 
   let pp fmt { last; hold; bits
              ; o_off; o_pos; o_len
              ; i_off; i_pos; i_len; write
-             ; state } =
+             ; state
+             ; _ } =
     Format.fprintf fmt "{ @[<hov>last = %b;@ \
-                                 hold = %d;@ \
-                                 bits = %d;@ \
-                                 o_off = %d;@ \
-                                 o_pos = %d;@ \
-                                 o_len = %d;@ \
-                                 i_off = %d;@ \
-                                 i_pos = %d;@ \
-                                 i_len = %d;@ \
-                                 write = %d;@ \
-                                 state = %a@] }"
+                        hold = %d;@ \
+                        bits = %d;@ \
+                        o_off = %d;@ \
+                        o_pos = %d;@ \
+                        o_len = %d;@ \
+                        i_off = %d;@ \
+                        i_pos = %d;@ \
+                        i_len = %d;@ \
+                        write = %d;@ \
+                        state = %a;@ \
+                        window = #window;@] }"
       last hold bits
       o_off o_pos o_len i_off i_pos i_len write
       pp_state state
@@ -2348,234 +2376,187 @@ struct
   let error t exn =
     Error ({ t with state = Exception exn }, exn)
 
-  module KHeader =
-  struct
-    let rec get_byte k src dst t =
-      if (t.i_len - t.i_pos) > 0
-      then let byte = Char.code @@ Safe.get src (t.i_off + t.i_pos) in
-           k byte src dst
-             { t with i_pos = t.i_pos + 1 }
-      else Wait { t with state = Header (get_byte k) }
-  end
+  let ok t =
+    Ok { t with state = Finish }
 
-  (* Continuation passing-style stored in [Dictionary] *)
-  module KDictionary =
-  struct
-    let rec get_byte k src dst t =
-      if (t.i_len - t.i_pos) > 0
-      then let byte = Char.code @@ Safe.get src (t.i_off + t.i_pos) in
-           k byte src dst
-             { t with i_pos = t.i_pos + 1 }
-      else Wait { t with state = Dictionary (get_byte k) }
+  (* Basics operations. *)
 
-    let peek_bits n k src dst t =
-      let rec loop src dst t =
-        if t.bits < n
-        then get_byte (fun byte src dst t ->
-                         (loop[@tailcall])
-                         src dst
-                         { t with hold = t.hold lor (byte lsl t.bits)
-                                ; bits = t.bits + 8 })
-                      src dst t
-        else k src dst t
-      in (loop[@tailcall]) src dst t
+  let rec get_byte ~ctor k src dst t =
+    if (t.i_len - t.i_pos) > 0
+    then let byte = Char.code (Safe.get src (t.i_off + t.i_pos)) in
+      k byte src dst { t with i_pos = t.i_pos + 1 }
+    else Wait { t with state = ctor (fun src dst t -> (get_byte[@tailcall]) ~ctor k src dst t) }
 
-    let drop_bits n k src dst t =
-      k src dst
-        { t with hold = t.hold lsr n
-               ; bits = t.bits - n }
-
-    let get_bits n k src dst t =
-      let catch src dst t =
-        let value = t.hold land ((1 lsl n) - 1) in
-
-        k value src dst { t with hold = t.hold lsr n
-                               ; bits = t.bits - n }
-      in
-      let rec loop src dst t =
-        if t.bits < n
-        then get_byte (fun byte src dst t ->
-                         (loop[@tailcall])
-                         src dst
-                         { t with hold = t.hold lor (byte lsl t.bits)
-                                ; bits = t.bits + 8 })
-                      src dst t
-        else catch src dst t
-      in (loop[@tailcall]) src dst t
-  end
-
-  (* Continuation passing-style stored in [Flat] *)
-  module KFlat =
-  struct
-    let drop_bits n k src dst t =
-      k src dst { t with hold = t.hold lsr n
-                       ; bits = t.bits - n }
-
-    let rec get_byte k src dst t =
-      if t.bits / 8 > 0
-      then let byte = t.hold land 255 in
-           k byte src dst { t with hold = t.hold lsr 8
-                                 ; bits = t.bits - 8 }
-      else if (t.i_len - t.i_pos) > 0
-      then let byte = Char.code @@ Safe.get src (t.i_off + t.i_pos) in
-            k byte src dst
-              { t with i_pos = t.i_pos + 1 }
-      else Wait { t with state = Flat (get_byte k) }
-
-    let get_ui16 k =
-      get_byte
-      @@ fun byte0 -> get_byte
-      @@ fun byte1 -> k (byte0 lor (byte1 lsl 8))
-  end
-
-  (* Continuation passing-style stored in [Inflate] *)
-  module KInflate =
-  struct
-    let rec get lookup k src dst t =
-      if t.bits < lookup.Lookup.max
-      then
-        if (t.i_len - t.i_pos) > 0
-        then let byte = Char.code @@ Safe.get src (t.i_off + t.i_pos) in
-             (get[@tailcall]) lookup k src dst
-               { t with i_pos = t.i_pos + 1
-                      ; hold  = t.hold lor (byte lsl t.bits)
-                      ; bits  = t.bits + 8 }
-        else Wait { t with state = Inflate (get lookup k) }
-      else let (len, v) = Lookup.get
-             lookup (t.hold land lookup.Lookup.mask) in
-           k v src dst { t with hold = t.hold lsr len
-                              ; bits = t.bits - len }
-
-    let rec put_chr window chr k src dst t =
-      if t.o_len - t.o_pos > 0
-      then begin
-        let window = Window.write_char chr window in
+  let rec put_byte ~ctor byte k src dst t =
+    if (t.o_len - t.o_pos) > 0
+    then
+      begin
+        let chr = Char.unsafe_chr byte in
+        let window = Window.write_char chr t.window in
         Safe.set dst (t.o_off + t.o_pos) chr;
+        k src dst { t with o_pos = t.o_pos + 1
+                         ; write = t.write + 1
+                         ; window = window }
+      end
+    else Flush { t with state = ctor (fun src dst t -> (put_byte[@tailcall]) ~ctor byte k src dst t) }
 
-        k window src dst { t with o_pos = t.o_pos + 1
-                                ; write = t.write + 1 }
-      end else Flush { t with state = Inflate (put_chr window chr k) }
-
-    let rec fill_chr window length chr k src dst t =
-      if t.o_len - t.o_pos > 0
-      then begin
+  let rec fill_byte ~ctor byte length k src dst t =
+    if (t.o_len - t.o_pos) > 0
+    then
+      begin
+        let chr = Char.unsafe_chr byte in
         let len = min length (t.o_len - t.o_pos) in
-
-        let window = Window.fill_char chr len window in
+        let window = Window.fill_char chr len t.window in
         Safe.fill dst (t.o_off + t.o_pos) len chr;
 
         if length - len > 0
-        then Flush
-            { t with o_pos = t.o_pos + len
-                   ; write = t.write + len
-                   ; state = Inflate (fill_chr window (length - len) chr k) }
-        else k window src dst { t with o_pos = t.o_pos + len
-                                     ; write = t.write + len }
-      end else Flush { t with state = Inflate (fill_chr window length chr k) }
+        then Flush { t with state = ctor (fun src dst t -> (fill_byte[@tailcall]) ~ctor byte (length - len) k src dst t)
+                          ; o_pos = t.o_pos + len
+                          ; write = t.write + len
+                          ; window = window }
+        else k src dst { t with o_pos = t.o_pos + len
+                              ; write = t.write + len
+                              ; window = window }
+      end
+    else Flush { t with state = ctor (fun src dst t -> (fill_byte[@tailcall]) ~ctor byte length k src dst t) }
 
-    let rec write window lookup_chr lookup_dst length distance k src dst t =
+  let peek_bits ~ctor n k src dst t =
+    let get_byte = get_byte ~ctor in
+    let rec go src dst t =
+      if t.bits < n
+      then get_byte (fun byte src dst t -> (go[@tailcall]) src dst { t with hold = t.hold lor (byte lsl t.bits)
+                                                                          ; bits = t.bits + 8 })
+          src dst t
+      else k src dst t
+    in go src dst t
+
+  let drop_bits ~ctor n k src dst t =
+    let go src dst t =
+      k src dst { t with hold = t.hold lsr n
+                       ; bits = t.bits - n } in
+    if t.bits < n
+    then peek_bits ~ctor n go src dst t
+    else go src dst t
+
+  let get_bits ~ctor n k src dst t =
+    let go src dst t =
+      let v = t.hold land ((1 lsl n) - 1) in
+      k v src dst { t with hold = t.hold lsr n
+                         ; bits = t.bits - n } in
+    if t.bits < n
+    then peek_bits ~ctor n go src dst t
+    else go src dst t
+
+  let get_with_holding ~ctor k src dst t =
+    (* XXX: [hold] contains one already read byte. *)
+    if t.bits >= 8
+    then let byte = t.hold land 0xFF in
+      k byte src dst
+        { t with hold = t.hold lsr 8
+               ; bits = t.bits - 8 }
+    else get_byte ~ctor k src dst t
+
+  let get_int16 ~ctor k src dst t =
+    let get_byte = get_with_holding ~ctor in
+    let k byte0 src dst t =
+      let k byte1 src dst t =
+        k (byte0 lor (byte1 lsl 8)) src dst t in
+      get_byte k src dst t in
+    get_byte k src dst t
+
+  module KLast =
+  struct
+    let ctor _k = Last
+    let peek_bits n k src dst t = peek_bits ~ctor n k src dst t
+  end
+
+  module KBlock =
+  struct
+    let ctor _k = Block
+    let peek_bits n k src dst t = peek_bits ~ctor n k src dst t
+  end
+
+  module KDictionary =
+  struct
+    let ctor k = Dictionary k
+    let peek_bits n k src dst t = peek_bits ~ctor n k src dst t
+    let drop_bits n k src dst t = drop_bits ~ctor n k src dst t
+    let get_bits n k src dst t = get_bits ~ctor n k src dst t
+  end
+
+  module KFlat =
+  struct
+    let ctor k = Flat k
+    let get_int16 k src dst t = get_int16 ~ctor k src dst t
+    let drop_bits n k src dst t = drop_bits ~ctor n k src dst t
+  end
+
+  module KInflate =
+  struct
+    let ctor k = Inflate k
+    let peek_bits n k src dst t = peek_bits ~ctor n k src dst t
+    let put_byte byte k src dst t = put_byte ~ctor byte k src dst t
+    let fill_byte byte length k src dst t = fill_byte ~ctor byte length k src dst t
+
+    let get lookup k src dst t =
+      let safe src dst t =
+        let len, v = Lookup.get lookup (t.hold land lookup.Lookup.mask) in
+        k v src dst { t with hold = t.hold lsr len
+                           ; bits = t.bits - len } in
+      peek_bits lookup.Lookup.max safe src dst t
+
+    let rec put lookup_chr lookup_dst length distance k src dst t =
       match distance with
       | 1 ->
-        let chr = Safe.get window.Window.buffer
-          Window.((window.wpos - 1) % window) in
-
-        fill_chr window length chr k src dst t
+        let chr = Safe.get t.window.Window.buffer Window.((t.window.wpos - 1) % t.window) in
+        let byte = Char.code chr in
+        fill_byte byte length k src dst t
       | distance ->
         let len = min (t.o_len - t.o_pos) length in
-        let off = Window.((window.wpos - distance) % window) in
-
-        let sze = window.Window.size in
-
+        let off = Window.((t.window.wpos - distance) % t.window) in
+        let sze = t.window.Window.size in
         let pre = sze - off in
         let ext = len - pre in
 
         let window =
           if ext > 0
-          then begin
-            let window0 = Window.write window.Window.buffer off dst (t.o_off + t.o_pos) pre window in
-            let window1 = Window.write window0.Window.buffer 0 dst (t.o_off + t.o_pos + pre) ext window0 in
-            window1
-          end else begin
-            let window0 = Window.write window.Window.buffer off dst (t.o_off + t.o_pos) len window in
-            window0
-          end
-        in
+          then
+            let window = Window.write t.window.Window.buffer off dst (t.o_off + t.o_pos) pre t.window in
+            Window.write window.Window.buffer 0 dst (t.o_off + t.o_pos + pre) ext window
+          else
+            Window.write t.window.Window.buffer off dst (t.o_off + t.o_pos) len t.window in
 
         if length - len > 0
-        then Flush
-          { t with o_pos = t.o_pos + len
-                 ; write = t.write + len
-                 ; state = Inflate (write
-                                      window
-                                      lookup_chr
-                                      lookup_dst
-                                      (length - len)
-                                      distance
-                                      k) }
-        else Cont
-          { t with o_pos = t.o_pos + len
-                 ; write = t.write + len
-                 ; state = Inffast (window, lookup_chr, lookup_dst, Length) }
+        then Flush { t with o_pos = t.o_pos + len
+                          ; write = t.write + len
+                          ; state = Inflate (put lookup_chr lookup_dst (length - len) distance k)
+                          ; window = window }
+        else Cont { t with o_pos = t.o_pos + len
+                         ; write = t.write + len
+                         ; state = Inffast (lookup_chr, lookup_dst, Length)
+                         ; window = window }
 
-    let rec read_extra_dist distance k src dst t =
+    let read_extra_dist distance k src dst t =
       let len = Array.get Table._extra_dbits distance in
 
-      if t.bits < len
-      then if (t.i_len - t.i_pos) > 0
-           then let byte = Char.code @@ Safe.get src (t.i_off + t.i_pos) in
-                read_extra_dist
-                  distance k
-                  src dst
-                  { t with hold = t.hold lor (byte lsl t.bits)
-                         ; bits = t.bits + 8
-                         ; i_pos = t.i_pos + 1 }
-           else Wait
-             { t with state = Inflate (read_extra_dist distance k) }
-      else let extra = t.hold land ((1 lsl len) - 1) in
-           k (Array.get Table._base_dist distance + 1 + extra) src dst
-             { t with hold = t.hold lsr len
-                    ; bits = t.bits - len }
+      let safe src dst t =
+        let extra = t.hold land ((1 lsl len) - 1) in
+        k (Array.get Table._base_dist distance + 1 + extra) src dst
+          { t with hold = t.hold lsr len
+                 ; bits = t.bits - len } in
+      peek_bits len safe src dst t
 
-    let rec read_extra_length length k src dst t =
+    let read_extra_length length k src dst t =
       let len = Array.get Table._extra_lbits length in
 
-      if t.bits < len
-      then if (t.i_len - t.i_pos) > 0
-           then let byte = Char.code @@ Safe.get src (t.i_off + t.i_pos) in
-                read_extra_length
-                  length k
-                  src dst
-                  { t with hold = t.hold lor (byte lsl t.bits)
-                         ; bits = t.bits + 8
-                         ; i_pos = t.i_pos + 1 }
-           else Wait
-             { t with state = Inflate (read_extra_length length k) }
-      else let extra = t.hold land ((1 lsl len) - 1) in
-           k ((Array.get Table._base_length length) + 3 + extra) src dst
-             { t with hold = t.hold lsr len
-                    ; bits = t.bits - len }
+      let safe src dst t =
+        let extra = t.hold land ((1 lsl len) - 1) in
+        k (Array.get Table._base_length length + 3 + extra) src dst
+          { t with hold = t.hold lsr len
+                 ; bits = t.bits - len } in
+      peek_bits len safe src dst t
   end
 
-  (* Continuation passing-style stored in [Crc] *)
-  module KCrc =
-  struct
-    let drop_bits n k src dst t =
-      k src dst { t with hold = t.hold lsr n
-                       ; bits = t.bits - n }
-
-    let rec get_byte k src dst t =
-      if t.bits / 8 > 0
-      then let byte = t.hold land 255 in
-           k byte src dst { t with hold = t.hold lsr 8
-                                 ; bits = t.bits - 8 }
-      else if (t.i_len - t.i_pos) > 0
-      then let byte = Char.code @@ Safe.get src (t.i_off + t.i_pos) in
-            k byte src dst
-              { t with i_pos = t.i_pos + 1 }
-      else Wait { t with state = Crc (get_byte k) }
-  end
-
-  (* Dictionary *)
   module Dictionary =
   struct
     type t =
@@ -2593,521 +2574,405 @@ struct
     let inflate (tbl, max_bits, max) k src dst t =
       let mask_bits = (1 lsl max_bits) - 1 in
 
-      let rec get k src dst t =
-        if t.bits < max_bits
-        then KDictionary.peek_bits max_bits
-               (fun src dst t -> (get[@tailcall]) k src dst t) src dst t
-        else let (len, v) = Array.get tbl (t.hold land mask_bits) lsr 15,
-                            Array.get tbl (t.hold land mask_bits) land Lookup.max_mask in
-             KDictionary.drop_bits len (k v) src dst t
-      in
+      let get k src dst t =
+        let k src dst t =
+          (* safe-zone
 
-      let rec loop state value src dst t = match value with
-        | n when n <= 15 ->
-          Array.set state.dictionary state.idx n;
+             optimization: tbl is an integer array which integer is split in
+             two parts. As we know about RFC1951, [v] should not be more
+             than 32767. So, [len] is stored as [len << 15] and [v] is
+             masked on [(1 << 15) - 1] - TODO it could not be necessary to
+             mask 2 times to get [v]. *)
+          let (len, v) = Array.get tbl (t.hold land mask_bits) lsr 15,
+                         Array.get tbl (t.hold land mask_bits) land Lookup.max_mask in
+          let k src dst t = k v src dst t in
+          KDictionary.drop_bits len k src dst t in
+        KDictionary.peek_bits max_bits k src dst t in
 
-          if state.idx + 1 < state.max
-          then get (fun src dst t -> (loop[@tailcall])
-                     { state with idx = state.idx + 1
-                                ; prv = n }
-                     src dst t) src dst t
-          else k state.dictionary src dst t
+      let rec go state value src dst t = match value with
         | 16 ->
-          let aux state n src dst t =
+          let k state n src dst t =
             if state.idx + n + 3 > state.max
             then error t Invalid_dictionary
-            else begin
-              for j = 0 to n + 3 - 1
-              do Array.set state.dictionary (state.idx + j) state.prv done;
+            else
+              begin
+                for j = 0 to n + 3 - 1
+                do Array.set state.dictionary (state.idx + j) state.prv done;
 
-              if state.idx + n + 3 < state.max
-              then get (fun src dst t -> (loop[@tailcall])
-                         { state with idx = state.idx + n + 3 }
-                         src dst t) src dst t
-              else k state.dictionary src dst t
-            end
-          in
-
-          KDictionary.get_bits 2 (aux state) src dst t
+                if state.idx + n + 3 < state.max
+                then
+                  let k v src dst t = (go[@tailcall]) { state with idx = state.idx + n + 3 } v src dst t in
+                  get k src dst t
+                else k state.dictionary src dst t
+              end in
+          KDictionary.get_bits 2 (k state) src dst t
         | 17 ->
-          let aux state n src dst t =
+          let k state n src dst t =
             if state.idx + n + 3 > state.max
             then error t Invalid_dictionary
-            else begin
-              if state.idx + n + 3 < state.max
-              then get (fun src dst t -> (loop[@tailcall])
-                         { state with idx = state.idx + n + 3 }
-                         src dst t) src dst t
-              else k state.dictionary src dst t
-            end
-          in
-
-          KDictionary.get_bits 3 (aux state) src dst t
+            else
+            if state.idx + n + 3 < state.max
+            then let k v src dst t = (go[@tailcall]) { state with idx = state.idx + n + 3 } v src dst t in
+              get k src dst t
+            else k state.dictionary src dst t in
+          KDictionary.get_bits 3 (k state) src dst t
         | 18 ->
-          let aux state n src dst t =
+          let k state n src dst t =
             if state.idx + n + 11 > state.max
             then error t Invalid_dictionary
-            else begin
-              if state.idx + n + 11 < state.max
-              then get ((loop[@tailclal])
-                        { state with idx = state.idx + n + 11 }) src dst t
+            else
+            if state.idx + n + 11 < state.max
+            then let k v src dst t = (go[@tailcall]) { state with idx = state.idx + n + 11 } v src dst t in
+              get k src dst t
+            else k state.dictionary src dst t in
+          KDictionary.get_bits 7 (k state) src dst t
+        | n ->
+          if n <= 15
+          then
+            begin
+              Array.set state.dictionary state.idx n;
+
+              if state.idx + 1 < state.max
+              then let k v src dst t = (go[@tailcall]) { state with idx = state.idx + 1
+                                                                  ; prv = n } v src dst t in
+                get k src dst t
               else k state.dictionary src dst t
-            end
-          in
-
-          KDictionary.get_bits 7 (aux state) src dst t
-        | _ -> error t Invalid_dictionary
-      in
-
-      get (fun src dst t -> (loop[@tailcall]) (make max) src dst t) src dst t
+            end else error t Invalid_dictionary in
+      let state = make max in
+      let k v src dst t = go state v src dst t in
+      get k src dst t
   end
 
-  let fixed _ _ t window =
-    Cont { t with state = Inffast (window,
-                                   Lookup.fixed_chr,
-                                   Lookup.fixed_dst,
-                                   Length) }
+  let fixed _src _dst t =
+    Cont { t with state = Inffast (Lookup.fixed_chr, Lookup.fixed_dst, Length) }
 
-  let dictionary window src dst t =
-    let make_table hlit hdist _ buf src dst t =
+  let dictionary src dst t =
+    let make_table hlit hdist _hclen buf src dst t =
       let tbl, max = Huffman.make buf 0 19 7 in
 
-      Dictionary.inflate (tbl, max, hlit + hdist)
-        (fun dict _ _ t ->
-         let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
-         let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
+      let k dict _src _dst t =
+        let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
+        let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
 
-         Cont { t with state = Inffast (window,
-                                        Lookup.make tbl_chr max_chr,
-                                        Lookup.make tbl_dst max_dst,
-                                        Length) })
-        src dst t
-    in
+        Cont { t with state = Inffast (Lookup.make tbl_chr max_chr,
+                                       Lookup.make tbl_dst max_dst,
+                                       Length) } in
+      Dictionary.inflate (tbl, max, hlit + hdist) k src dst t in
 
     let read_table hlit hdist hclen src dst t =
       let buf = Array.make 19 0 in
 
-      let rec loop idx code src dst t =
+      let rec go idx code src dst t =
         Array.set buf (Array.get Table._hclen_order idx) code;
 
         if idx + 1 = hclen
-        then begin
-          for i = hclen to 18
-          do Array.set buf (Array.get Table._hclen_order i) 0 done;
+        then
+          begin
+            for i = hclen to 18
+            do Array.unsafe_set buf (Array.unsafe_get Table._hclen_order i) 0 done;
 
-          make_table hlit hdist hclen buf src dst t
-        end else
-          KDictionary.get_bits 3
-            (fun src dst t -> (loop[@tailcall]) (idx + 1) src dst t) src dst t
-      in
+            make_table hlit hdist hclen buf src dst t
+          end
+        else
+          let k src dst t = (go[@tailcall]) (idx + 1) src dst t in
+          KDictionary.get_bits 3 k src dst t in
+      let k code src dst t = go 0 code src dst t in
+      KDictionary.get_bits 3 k src dst t in
 
-      KDictionary.get_bits 3
-        (fun src dst t -> (loop[@tailcall]) 0 src dst t)
-        src dst t
-    in
-
-    let read_hclen hlit hdist = KDictionary.get_bits 4
-      (fun hclen -> read_table hlit hdist (hclen + 4)) in
-    let read_hdist hlit       = KDictionary.get_bits 5
-      (fun hdist -> read_hclen hlit (hdist + 1)) in
-    let read_hlit             = KDictionary.get_bits 5
-      (fun hlit  -> read_hdist (hlit + 257)) in
+    let read_hclen hlit hdist src dst t =
+      let k hclen src dst t = read_table hlit hdist (hclen + 4) src dst t in
+      KDictionary.get_bits 4 k src dst t in
+    let read_hdist hlit       src dst t =
+      let k hdist src dst t = read_hclen hlit (hdist + 1) src dst t in
+      KDictionary.get_bits 5 k src dst t in
+    let read_hlit             src dst t =
+      let k hlit src dst t = read_hdist (hlit + 257) src dst t in
+      KDictionary.get_bits 5 k src dst t in
 
     read_hlit src dst t
 
-  let ok _ _ t =
-    Ok { t with state = Finish }
-
-  let crc window src dst t =
-    let crc = Window.crc window in
-
-    (KCrc.drop_bits (t.bits mod 8)
-     @@ KCrc.get_byte
-     @@ fun a1 -> KCrc.get_byte
-     @@ fun a2 -> KCrc.get_byte
-     @@ fun b1 -> KCrc.get_byte
-     @@ fun b2 src dst t ->
-       let a1 = Int32.of_int a1 in
-       let a2 = Int32.of_int a2 in
-       let b1 = Int32.of_int b1 in
-       let b2 = Int32.of_int b2 in
-
-       let crc' = let open Adler32.I in
-         (a1 << 24) || (a2 << 16) || (b1 << 8) || b2 (* >> (tuareg) *)
-       in
-
-       if crc <> crc'
-       then error t (Invalid_crc (crc', crc))
-       else ok src dst t) src dst t
-
-  let switch _ _ t window =
+  let switch _src _dst t =
     if t.last
-    then Cont { t with state = Crc (crc window) }
-    else Cont { t with state = Last window }
+    then ok t
+    else Cont { t with state = Last }
 
-  let flat window src dst t =
-    let rec loop window length src dst t =
+  let flat src dst t =
+    let rec go length src dst t =
       let n = min length (min (t.i_len - t.i_pos) (t.o_len - t.o_pos)) in
-
-      let window = Window.write src (t.i_off + t.i_pos) dst (t.o_off + t.o_pos) n window in
+      let window = Window.write src (t.i_off + t.i_pos) dst (t.o_off + t.o_pos) n t.window in
 
       if length - n = 0
-      then Cont  { t with i_pos = t.i_pos + n
-                        ; o_pos = t.o_pos + n
-                        ; write = t.write + n
-                        ; state = Switch window }
+      then Cont { t with i_pos = t.i_pos + n
+                       ; o_pos = t.o_pos + n
+                       ; write = t.write + n
+                       ; state = Switch
+                       ; window = window }
       else match t.i_len - (t.i_pos + n), t.o_len - (t.o_pos + n) with
-      | 0, _ ->
-        Wait  { t with i_pos = t.i_pos + n
-                     ; o_pos = t.o_pos + n
-                     ; write = t.write + n
-                     ; state = Flat (loop window (length - n)) }
-      | _, 0 ->
-        Flush { t with i_pos = t.i_pos + n
-                     ; o_pos = t.o_pos + n
-                     ; write = t.write + n
-                     ; state = Flat (loop window (length - n)) }
-      | _, _ ->
-        Cont { t with i_pos = t.i_pos + n
-                    ; o_pos = t.o_pos + n
-                    ; write = t.write + n
-                    ; state = Flat (loop window (length - n)) }
-    in
-
-    let header window len nlen _ _ t =
+        | 0, _ ->
+          Wait { t with i_pos = t.i_pos + n
+                      ; o_pos = t.o_pos + n
+                      ; write = t.write + n
+                      ; state = Flat (go (length - n))
+                      ; window = window }
+        | _, 0 ->
+          Flush { t with i_pos = t.i_pos + n
+                       ; o_pos = t.o_pos + n
+                       ; write = t.write + n
+                       ; state = Flat (go (length - n))
+                       ; window = window }
+        | _, _ ->
+          Cont { t with i_pos = t.i_pos + n
+                      ; o_pos = t.o_pos + n
+                      ; write = t.write + n
+                      ; state = Flat (go (length - n))
+                      ; window = window } in
+    let header len nlen _src _dst t =
       if nlen <> 0xFFFF - len
-      then Cont { t with state = Exception Invalid_complement_of_length }
-      else Cont { t with hold  = 0
-                       ; bits  = 0
-                       ; state = Flat (loop window len) }
-    in
+      then error t Invalid_complement_of_length
+      else Cont { t with hold = 0
+                       ; bits = 0
+                       ; state = Flat (go len) } in
 
+    (* XXX: not sure about that, may be a part of [int16] is in [hold]. *)
     (KFlat.drop_bits (t.bits mod 8)
-     @@ KFlat.get_ui16
-     @@ fun len -> KFlat.get_ui16
-     @@ fun nlen -> header window len nlen)
-    src dst t
-
-  let rec inflate window lookup_chr lookup_dst src dst t =
-    let rec loop window length src dst t = match length with
-      | literal when literal < 256 ->
-        KInflate.put_chr window (Char.chr literal)
-          (fun window src dst t -> KInflate.get lookup_chr
-            (fun length _ _ t -> Cont { t with state = Inflate (fun src dst t -> (loop[@tailcall]) window length src dst t) })
-            src dst t)
-          src dst t
-      | 256 ->
-        Cont { t with state = Switch window }
-      | length ->
-        (* Party-hard *)
-        KInflate.read_extra_length (length - 257)
-          (fun length src dst t -> KInflate.get lookup_dst
-            (fun distance src dst t -> KInflate.read_extra_dist distance
-              (fun distance src dst t -> KInflate.write
-                window lookup_chr lookup_dst length distance
-                (fun window _ _ t -> Cont { t with state = Inflate (fun src dst t -> (inflate[@tailcall]) window lookup_chr lookup_dst src dst t) })
-                src dst t)
-              src dst t)
-            src dst t)
-          src dst t
-    in
-
-    KInflate.get
-      lookup_chr
-      (fun length _ _ t -> Cont { t with state = Inflate (fun src dst t -> (loop[@tailcall]) window length src dst t) })
+     @@ KFlat.get_int16
+     @@ fun len -> KFlat.get_int16
+     @@ fun nlen -> header len nlen)
       src dst t
 
-  exception End
+  let inflate lookup_chr lookup_dst src dst t =
+    let rec go length src dst t =
+      (* XXX: recursion. *)
+      let k length _src _dst t = Cont { t with state = Inflate (fun src dst t -> (go[@tailcall]) length src dst t) } in
+      let k src dst t = KInflate.get lookup_chr k src dst t in
 
-  let inffast src dst t window lookup_chr lookup_dst goto =
+      match length with
+      | 256 ->
+        Cont { t with state = Switch }
+      | length ->
+        if length < 256
+        then
+          KInflate.put_byte length k src dst t
+        else
+          let k length distance src dst t = KInflate.put lookup_chr lookup_dst length distance k src dst t in
+          let k length distance src dst t = KInflate.read_extra_dist distance (k length) src dst t in
+          let k length src dst t = KInflate.get lookup_dst (k length) src dst t in
+          KInflate.read_extra_length (length - 257) k src dst t in
+
+    KInflate.get lookup_chr go src dst t
+
+  exception End (* this is the end, beautiful friend. *)
+
+  let inffast src dst t lookup_chr lookup_dst goto =
     let hold = ref t.hold in
     let bits = ref t.bits in
 
-    let goto = ref goto   in
+    let goto = ref goto in
 
     let i_pos = ref t.i_pos in
-
     let o_pos = ref t.o_pos in
     let write = ref t.write in
 
-    let window = ref window in
+    let window = ref t.window in
 
     try
-      while (t.i_len - !i_pos) > 1 && t.o_len - !o_pos > 0
+      while (t.i_len - !i_pos) > 1 && (t.o_len - !o_pos) > 0
       do match !goto with
-         | Length ->
-           if !bits < lookup_chr.Lookup.max
-           then begin
-             hold := !hold lor ((Char.code
-                                 @@ Safe.get src (t.i_off + !i_pos)) lsl !bits);
-             bits := !bits + 8;
-             incr i_pos;
-             hold := !hold lor ((Char.code
-                                 @@ Safe.get src (t.i_off + !i_pos)) lsl !bits);
-             bits := !bits + 8;
-             incr i_pos;
-           end;
+        | Length ->
+          if !bits < lookup_chr.Lookup.max
+          then
+            begin
+              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              bits := !bits + 8;
+              incr i_pos;
 
-           let (len, value) = Lookup.get
-             lookup_chr
-             (!hold land lookup_chr.Lookup.mask)
-           in
+              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              bits := !bits + 8;
+              incr i_pos;
+            end;
 
-           hold := !hold lsr len;
-           bits := !bits - len;
+          let (len, value) = Lookup.get lookup_chr (!hold land lookup_chr.Lookup.mask) in
 
-           if value < 256
-           then begin
-             Safe.set dst (t.o_off + !o_pos) (Char.chr value);
-             window := Window.write_char (Char.chr value) !window;
-             incr o_pos;
-             incr write;
+          hold := !hold lsr len;
+          bits := !bits - len;
 
-             goto := Length;
-           end else if value = 256 then begin raise End
-           end else begin
-             goto := ExtLength (value - 257)
-           end
-         | ExtLength length ->
-           let len = Array.get Table._extra_lbits length in
+          if value < 256
+          then
+            begin
+              Safe.set dst (t.o_off + !o_pos) (Char.chr value);
+              window := Window.write_char (Char.chr value) !window;
+              incr o_pos;
+              incr write;
 
-           if !bits < len
-           then begin
-             hold := !hold lor ((Char.code
-                                 @@ Safe.get src (t.i_off + !i_pos)) lsl !bits);
-             bits := !bits + 8;
-             incr i_pos;
-           end;
+              goto := Length;
+            end
+          else if value = 256 then raise End
+          else goto := ExtLength (value - 257)
+        | ExtLength length ->
+          let len = Array.get Table._extra_lbits length in
 
-           let extra = !hold land ((1 lsl len) - 1) in
+          if !bits < len
+          then
+            begin
+              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              bits := !bits + 8;
+              incr i_pos;
+            end;
 
-           hold := !hold lsr len;
-           bits := !bits - len;
-           goto := Dist ((Array.get Table._base_length length) + 3 + extra)
-         | Dist length ->
-           if !bits < lookup_dst.Lookup.max
-           then begin
-             hold := !hold lor ((Char.code
-                                 @@ Safe.get src (t.i_off + !i_pos)) lsl !bits);
-             bits := !bits + 8;
-             incr i_pos;
-             hold := !hold lor ((Char.code
-                                 @@ Safe.get src (t.i_off + !i_pos)) lsl !bits);
-             bits := !bits + 8;
-             incr i_pos;
-           end;
+          let extra = !hold land ((1 lsl len) - 1) in
 
-           let (len, value) = Lookup.get
-             lookup_dst
-             (!hold land lookup_dst.Lookup.mask)
-           in
+          hold := !hold lsr len;
+          bits := !bits - len;
+          goto := Dist ((Array.get Table._base_length length) + 3 + extra)
+        | Dist length ->
+          if !bits < lookup_dst.Lookup.max
+          then
+            begin
+              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              bits := !bits + 8;
+              incr i_pos;
 
-           hold := !hold lsr len;
-           bits := !bits - len;
-           goto := ExtDist (length, value)
-         | ExtDist (length, dist) ->
-           let len = Array.get Table._extra_dbits dist in
+              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              bits := !bits + 8;
+              incr i_pos;
+            end;
 
-           if !bits < len
-           then begin
-             hold := !hold lor ((Char.code
-                                 @@ Safe.get src (t.i_off + !i_pos)) lsl !bits);
-             bits := !bits + 8;
-             incr i_pos;
-             hold := !hold lor ((Char.code
-                                 @@ Safe.get src (t.i_off + !i_pos)) lsl !bits);
-             bits := !bits + 8;
-             incr i_pos;
-           end;
+          let (len, value) = Lookup.get lookup_dst (!hold land lookup_dst.Lookup.mask) in
 
-           let extra = !hold land ((1 lsl len) - 1) in
+          hold := !hold lsr len;
+          bits := !bits - len;
+          goto := ExtDist (length, value)
+        | ExtDist (length, dist) ->
+          let len = Array.get Table._extra_dbits dist in
 
-           hold := !hold lsr len;
-           bits := !bits - len;
-           goto := Write (length,
-                          (Array.get Table._base_dist dist) + 1 + extra)
-         | Write (length, 1) ->
-           let chr = Safe.get !window.Window.buffer
-             Window.((!window.wpos - 1) % !window) in
+          if !bits < len
+          then
+            begin
+              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              bits := !bits + 8;
+              incr i_pos;
 
-           let n = min length (t.o_len - !o_pos) in
+              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              bits := !bits + 8;
+              incr i_pos;
+            end;
 
-           window := Window.fill_char chr n !window;
-           Safe.fill dst (t.o_off + !o_pos) n chr;
+          let extra = !hold land ((1 lsl len) - 1) in
 
-           o_pos := !o_pos + n;
-           write := !write + n;
-           goto  := if length - n = 0 then Length else Write (length - n, 1)
-         | Write (length, dist) ->
-           let n = min length (t.o_len - !o_pos) in
+          hold := !hold lsr len;
+          bits := !bits - len;
+          goto := Write (length, (Array.get Table._base_dist dist) + 1 + extra)
+        | Write (length, 1) ->
+          let chr = Safe.get !window.Window.buffer Window.((!window.wpos - 1) % !window) in
+          let n = min length (t.o_len - !o_pos) in
 
-           let off = Window.((!window.Window.wpos - dist) % !window) in
-           let len = !window.Window.size in
+          window := Window.fill_char chr n !window;
+          Safe.fill dst (t.o_off + !o_pos) n chr;
 
-           let pre = len - off in
-           let ext = n - pre in
+          o_pos := !o_pos + n;
+          write := !write + n;
+          goto := if length - n = 0 then Length else Write (length - n, 1)
+        | Write (length, dist) ->
+          let n = min length (t.o_len - !o_pos) in
 
-           window := if ext > 0
-             then begin
-               let window0 = Window.write !window.Window.buffer off dst (t.o_off + !o_pos) pre !window in
-               let window1 = Window.write window0.Window.buffer 0 dst (t.o_off + !o_pos + pre) ext window0 in
-               window1
-             end else begin
-               let window0 = Window.write !window.Window.buffer off dst (t.o_off + !o_pos) n !window in
-               window0
-             end;
+          let off = Window.((!window.wpos - dist) % !window) in
+          let len = !window.Window.size in
+          let pre = len - off in
+          let ext = n - pre in
 
-           o_pos := !o_pos + n;
-           write := !write + n;
-           goto  := if length - n = 0 then Length else Write (length - n, dist)
+          window :=
+            if ext > 0
+            then
+              let window = Window.write !window.Window.buffer off dst (t.o_off + !o_pos) pre !window in
+              Window.write window.Window.buffer 0 dst (t.o_off + !o_pos + pre) ext window
+            else
+              Window.write !window.Window.buffer off dst (t.o_off + !o_pos) n !window;
+
+          o_pos := !o_pos + n;
+          write := !write + n;
+          goto := if length - n = 0 then Length else Write (length - n, dist)
       done;
 
-      let write_fn length distance src dst t =
-        KInflate.write !window lookup_chr lookup_dst length distance
-          (fun window src dst t ->
-            inflate window lookup_chr lookup_dst src dst t)
-          src dst t
-      in
+      let k0 src dst t = inflate lookup_chr lookup_dst src dst t in
+      let k1 length distance src dst t = KInflate.put lookup_chr lookup_dst length distance k0 src dst t in
+      let k2 length distance src dst t = KInflate.read_extra_dist distance (k1 length) src dst t in
+      let k3 length src dst t = KInflate.get lookup_dst (k2 length) src dst t in
+      let k4 length src dst t = KInflate.read_extra_length length k3 src dst t in
 
       let state = match !goto with
-        | Length ->
-          Inflate (inflate !window lookup_chr lookup_dst)
-        | ExtLength length ->
-          let fn length src dst t =
-            KInflate.read_extra_length length
-              (fun length src dst t -> KInflate.get lookup_dst
-                (fun distance src dst t -> KInflate.read_extra_dist distance
-                   (fun distance src dst t ->
-                     write_fn length distance src dst t)
-                   src dst t)
-                src dst t)
-              src dst t
-          in
-
-          Inflate (fn length)
-        | Dist length ->
-          let fn length src dst t =
-            KInflate.get lookup_dst
-              (fun distance src dst t -> KInflate.read_extra_dist distance
-                (fun distance src dst t -> write_fn length distance src dst t)
-                src dst t)
-              src dst t
-          in
-
-          Inflate (fn length)
-        | ExtDist (length, distance) ->
-          let fn length distance src dst t =
-            KInflate.read_extra_dist distance
-              (fun distance src dst t -> write_fn length distance src dst t)
-              src dst t
-          in
-
-          Inflate (fn length distance)
-        | Write (length, distance) ->
-          let fn length distance src dst t =
-            write_fn length distance src dst t in
-
-          Inflate (fn length distance)
-      in
+        | Length -> Inflate (inflate lookup_chr lookup_dst)
+        | ExtLength length -> Inflate (k4 length)
+        | Dist length -> Inflate (k3 length)
+        | ExtDist (length, distance) -> Inflate (k2 length distance)
+        | Write (length, distance) -> Inflate (k1 length distance) in
 
       Cont { t with hold = !hold
                   ; bits = !bits
                   ; i_pos = !i_pos
                   ; o_pos = !o_pos
                   ; write = !write
-                  ; state = state }
+                  ; state = state
+                  ; window = !window }
     with End ->
       Cont { t with hold = !hold
                   ; bits = !bits
                   ; i_pos = !i_pos
                   ; o_pos = !o_pos
                   ; write = !write
-                  ; state = Switch !window }
+                  ; state = Switch
+                  ; window = !window }
 
-  let block src _ t window =
-    if t.bits > 1
-    then let state = match t.hold land 0x3 with
-           | 0 -> Flat (flat window)
-           | 1 -> Fixed window
-           | 2 -> Dictionary (dictionary window)
-           | _ -> Exception Invalid_kind_of_block
-         in
+  let block src dst t =
+    let safe _src _dst t =
+      let state = match t.hold land 0x3 with
+        | 0 -> Flat flat
+        | 1 -> Fixed
+        | 2 -> Dictionary dictionary
+        | _ -> Exception Invalid_kind_of_block in
+      Cont { t with hold = t.hold lsr 2
+                  ; bits = t.bits - 2
+                  ; state } in
+    KBlock.peek_bits 2 safe src dst t
 
-         Cont { t with hold = t.hold lsr 2
-                     ; bits = t.bits - 2
-                     ; state }
-    else if (t.i_len - t.i_pos) > 0
-    then let byte = Char.code @@ Safe.get src (t.i_off + t.i_pos) in
+  let last src dst t =
+    let safe _src _dst t =
+      let last = t.hold land 1 = 1 in
+      Cont { t with last = last
+                  ; hold = t.hold lsr 1
+                  ; bits = t.bits - 1
+                  ; state = Block } in
+    KLast.peek_bits 1 safe src dst t
 
-         Cont { t with i_pos = t.i_pos + 1
-                     ; hold  = (t.hold lor (byte lsl t.bits))
-                     ; bits  = t.bits + 8 }
-    else Wait t
-
-  let last src _ t window =
-    if t.bits > 0
-    then let last = t.hold land 1 = 1 in
-
-         Cont { t with last  = last
-                     ; hold  = t.hold lsr 1
-                     ; bits  = t.bits - 1
-                     ; state = Block window }
-    else if (t.i_len - t.i_pos) > 0
-    then let byte = Char.code @@ Safe.get src (t.i_off + t.i_pos) in
-
-         Cont { t with i_pos = t.i_pos + 1
-                     ; hold  = (t.hold lor (byte lsl t.bits))
-                     ; bits  = t.bits + 8 }
-    else Wait t
-
-  let header window src dst t =
-    (KHeader.get_byte
-     @@ fun _ -> KHeader.get_byte
-     @@ fun _ _ _ t ->
-          (* XXX(dinosaure): need to fix the size of the window.
-                             in fact, it's depending by the header. I don't
-                             know why so we need to understand deeply what is
-                             going on because, w.t.f. *)
-
-          Cont { t with state = Last window })
-    src dst t
+  let eval0 safe_src safe_dst t = match t.state with
+    | Last -> last safe_src safe_dst t
+    | Block -> block safe_src safe_dst t
+    | Flat k -> k safe_src safe_dst t
+    | Fixed -> fixed safe_src safe_dst t
+    | Dictionary k -> k safe_src safe_dst t
+    | Inffast (lookup_chr, lookup_dst, code) -> inffast safe_src safe_dst t lookup_chr lookup_dst code
+    | Inflate k -> k safe_src safe_dst t
+    | Switch -> switch safe_src safe_dst t
+    | Finish -> ok t
+    | Exception exn -> error t exn
 
   let eval src dst t =
     let safe_src = Safe.read_only src in
     let safe_dst = Safe.write_only dst in
 
-    let eval0 t =
-      match t.state with
-      | Header k -> k safe_src safe_dst t
-      | Last window -> last safe_src safe_dst t window
-      | Block window -> block safe_src safe_dst t window
-      | Flat k -> k safe_src safe_dst t
-      | Fixed window -> fixed safe_src safe_dst t window
-      | Dictionary k -> k safe_src safe_dst t
-      | Inffast (window, lookup_chr, lookup_dst, code) ->
-        inffast safe_src safe_dst t window lookup_chr lookup_dst code
-      | Inflate k -> k safe_src safe_dst t
-      | Switch window -> switch safe_src safe_dst t window
-      | Crc k -> k safe_src safe_dst t
-      | Finish -> ok safe_src safe_dst t
-      | Exception exn -> error t exn
-    in
-
     let rec loop t =
-      match eval0 t with
+      match eval0 safe_src safe_dst t with
       | Cont t -> loop t
       | Wait t -> `Await t
       | Flush t -> `Flush t
       | Ok t -> `End t
-      | Error (t, exn) -> `Error (t, exn)
-    in
+      | Error (t, exn) -> `Error (t, exn) in
 
     loop t
 
   let default window =
-    { last  = false
-    ; hold  = 0
-    ; bits  = 0
+    { last = false
+    ; hold = 0
+    ; bits = 0
     ; i_off = 0
     ; i_pos = 0
     ; i_len = 0
@@ -3115,55 +2980,216 @@ struct
     ; o_pos = 0
     ; o_len = 0
     ; write = 0
-    ; state = Header (header window) }
+    ; state = Last
+    ; window }
 
   let refill off len t =
     if t.i_pos = t.i_len
     then { t with i_off = off
                 ; i_len = len
                 ; i_pos = 0 }
-    else if t.state = Finish (* XXX(dinosaure): when the inflate compute is done, we don't care if we lost something. *)
+    else if t.state = Finish (* XXX(dinosaure): when inflation computation is
+                                done, we don care if we lost something. *)
     then { t with i_off = off
                 ; i_len = len
                 ; i_pos = 0 }
-    else raise (Invalid_argument (Format.sprintf "Z.refill: you lost something \
-                                                  (pos: %d, len: %d)"
-                                    t.i_pos t.i_len))
+    else invalid_arg (Format.sprintf "refill: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
 
   let flush off len t =
     { t with o_off = off
            ; o_len = len
            ; o_pos = 0 }
 
-  let used_in t  = t.i_pos
+  let used_in t = t.i_pos
   let used_out t = t.o_pos
-
   let write t = t.write
 
-  let to_result src dst refiller flusher t =
-    let rec aux t = match eval src dst t with
-      | `Await t ->
-        let n = refiller src in
-        aux (refill 0 n t)
-      | `Flush t ->
-        let n = used_out t in
-        let n = flusher dst n in
-        aux (flush 0 n t)
-      | `End t ->
-        if used_out t = 0
-        then Pervasives.Ok t
-        else let n = flusher dst (used_out t) in
-             Pervasives.Ok (flush 0 n t)
-      | `Error (_, exn) -> Pervasives.Error exn
-    in aux t
 
-  let bytes src dst refiller flusher t =
-    to_result (B.from_bytes src) (B.from_bytes dst)
-      (function B.Bytes v -> refiller v)
-      (function B.Bytes v -> flusher v) t
+  include Convenience
+      (struct
+        type nonrec ('i, 'o) t = ('i, 'o) t
+        type nonrec error = error
 
-  let bigstring src dst refiller flusher t =
-    to_result (B.from_bigstring src) (B.from_bigstring dst)
-      (function B.Bigstring v -> refiller v)
-      (function B.Bigstring v -> flusher v) t
+        let eval = eval
+        let refill = refill
+        let flush = flush
+        let used_out = used_out
+      end)
+end
+
+type error_z =
+  | RFC1951 of RFC1951.error
+  | Invalid_header
+  | Invalid_checksum of { have: Adler32.t; expect: Adler32.t }
+
+module Z =
+struct
+  type ('i, 'o) t =
+    { d : ('i, 'o) RFC1951.t
+    ; z : ('i, 'o) state }
+  and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
+    (Safe.write, 'o) Safe.t ->
+    ('i, 'o) t ->
+    ('i, 'o) res
+  and ('i, 'o) state =
+    | Header of ('i, 'o) k
+    | Inflate
+    | Adler32 of ('i, 'o) k
+    | Finish
+    | Exception of error
+  and ('i, 'o) res =
+    | Cont  of ('i, 'o) t
+    | Wait  of ('i, 'o) t
+    | Flush of ('i, 'o) t
+    | Ok    of ('i, 'o) t
+    | Error of ('i, 'o) t * error
+  and error = error_z
+
+  let pp_error fmt = function
+    | RFC1951 err                        -> Format.fprintf fmt "(RFC1951 %a)" RFC1951.pp_error err
+    | Invalid_header                     -> Format.fprintf fmt "Invalid_header"
+    | Invalid_checksum { have; expect; } -> Format.fprintf fmt "(Invalid_check (have:%a, expect:%a))" Adler32.pp have Adler32.pp expect
+
+  let pp_state fmt = function
+    | Header _    -> Format.fprintf fmt "(Header #fun)"
+    | Inflate     -> Format.fprintf fmt "Inflate"
+    | Adler32 _   -> Format.fprintf fmt "(Adler32 #fun)"
+    | Finish      -> Format.fprintf fmt "Finish"
+    | Exception e -> Format.fprintf fmt "(Exception %a)" pp_error e
+
+  let pp fmt { d; z; } =
+    Format.fprintf fmt "{@[<hov>d = @[<hov>%a@];@ \
+                        z = %a;@]}"
+      RFC1951.pp d
+      pp_state z
+
+  let error t exn =
+    Error ({ t with z = Exception exn }, exn)
+
+  let ok t =
+    Ok { t with z = Finish }
+
+  let rec get_byte ~ctor k src dst t =
+    if (t.d.RFC1951.i_len - t.d.RFC1951.i_pos) > 0
+    then let byte = Char.code (Safe.get src (t.d.RFC1951.i_off + t.d.RFC1951.i_pos)) in
+      k byte src dst { t with d = { t.d with RFC1951.i_pos = t.d.RFC1951.i_pos + 1 } }
+    else Wait { t with z = ctor (fun src dst t -> (get_byte[@tailcall]) ~ctor k src dst t) }
+
+  let get_with_holding ~ctor k src dst t =
+    (* XXX: [hold] contains one already read byte. *)
+    if t.d.RFC1951.bits >= 8
+    then let byte = t.d.RFC1951.hold land 0xFF in
+      k byte src dst
+        { t with d = { t.d with RFC1951.hold = t.d.RFC1951.hold lsr 8
+                              ; RFC1951.bits = t.d.RFC1951.bits - 8 } }
+    else get_byte ~ctor k src dst t
+
+  let peek_bits ~ctor n k src dst t =
+    let get_byte = get_byte ~ctor in
+    let rec go src dst t =
+      if t.d.RFC1951.bits < n
+      then get_byte (fun byte src dst t -> (go[@tailcall]) src dst
+                        { t with d = { t.d with RFC1951.hold = t.d.RFC1951.hold lor (byte lsl t.d.RFC1951.bits)
+                                              ; RFC1951.bits = t.d.RFC1951.bits + 8 } })
+          src dst t
+      else k src dst t
+    in go src dst t
+
+  let drop_bits ~ctor n k src dst t =
+    let go src dst t =
+      k src dst { t with d = { t.d with RFC1951.hold = t.d.RFC1951.hold lsr n
+                                      ; RFC1951.bits = t.d.RFC1951.bits - n } } in
+    if t.d.RFC1951.bits < n
+    then peek_bits ~ctor n go src dst t
+    else go src dst t
+
+  module KHeader =
+  struct
+    let ctor k = Header k
+    let get_byte k src dst zlib = get_byte ~ctor k src dst zlib
+  end
+
+  module KCrc =
+  struct
+    let ctor k = Adler32 k
+    let get_with_holding k src dst t = get_with_holding ~ctor k src dst t
+    let drop_bits n k src dst t = drop_bits ~ctor n k src dst t
+  end
+
+  let adler32 src dst t =
+    let have = Window.crc t.d.RFC1951.window in
+
+    (KCrc.drop_bits (t.d.RFC1951.bits mod 8)
+     @@ KCrc.get_with_holding
+     @@ fun a1 -> KCrc.get_with_holding
+     @@ fun a2 -> KCrc.get_with_holding
+     @@ fun b1 -> KCrc.get_with_holding
+     @@ fun b2 _src _dst t ->
+     let a1 = Int32.of_int a1 in
+     let a2 = Int32.of_int a2 in
+     let b1 = Int32.of_int b1 in
+     let b2 = Int32.of_int b2 in
+
+     let expect = let open Adler32.I in
+       (a1 << 24) || (a2 << 16) || (b1 << 8) || b2 in
+
+     if have <> expect
+     then error t (Invalid_checksum { have; expect; })
+     else ok t)
+      src dst t
+
+  let inflate src dst t = match RFC1951.eval0 src dst t.d with
+    | RFC1951.Cont d -> Cont { t with d }
+    | RFC1951.Wait d -> Wait { t with d }
+    | RFC1951.Flush d -> Flush { t with d }
+    | RFC1951.Ok d -> Cont { z = Adler32 adler32
+                           ; d }
+    | RFC1951.Error (d, exn) -> error { t with d } (RFC1951 exn)
+
+  let header src dst t =
+    (KHeader.get_byte
+     @@ fun _byte0 -> KHeader.get_byte
+     @@ fun _byte1 _src _dst t -> Cont { t with z = Inflate })
+      src dst t
+
+  let eval src dst t =
+    let safe_src = Safe.read_only src in
+    let safe_dst = Safe.write_only dst in
+
+    let eval0 t = match t.z with
+      | Header k -> k safe_src safe_dst t
+      | Inflate -> inflate safe_src safe_dst t
+      | Adler32 k -> k safe_src safe_dst t
+      | Finish -> ok t
+      | Exception exn -> error t exn in
+
+    let rec loop t = match eval0 t with
+      | Cont t -> loop t
+      | Wait t -> `Await t
+      | Flush t -> `Flush t
+      | Ok t -> `End t
+      | Error (t, exn) -> `Error (t, exn) in
+
+    loop t
+
+  let default window =
+    { d = RFC1951.default window
+    ; z = Header header }
+
+  let refill off len t = { t with d = RFC1951.refill off len t.d }
+  let flush off len t = { t with d = RFC1951.flush off len t.d }
+  let used_in t = RFC1951.used_in t.d
+  let used_out t = RFC1951.used_out t.d
+  let write t = RFC1951.write t.d
+
+  include Convenience
+      (struct
+        type nonrec ('i, 'o) t = ('i, 'o) t
+        type nonrec error = error
+
+        let eval = eval
+        let refill = refill
+        let flush = flush
+        let used_out = used_out
+      end)
 end
