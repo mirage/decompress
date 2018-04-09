@@ -4,7 +4,7 @@
 open Crowbar
 
 exception Deflate_error of Decompress.Deflate.error
-exception Inflate_error of Decompress.Inflate.error
+exception Inflate_error of Decompress.Z.error
 
 let compress ?(level = 4) ?(wbits = 15) data =
   let open Decompress in
@@ -45,7 +45,7 @@ let decompress data =
   let pos = ref 0 in
   let res = Buffer.create (String.length data) in
 
-  Inflate.bytes
+  Z.bytes
     input_buffer output_buffer
     (fun input_buffer ->
      let n = min 0xFFFF (String.length data - !pos) in
@@ -55,7 +55,7 @@ let decompress data =
     (fun output_buffer len ->
      Buffer.add_subbytes res output_buffer 0 len;
      0xFFFF)
-    (Inflate.default window)
+    (Z.default window)
   |> function
      | Ok _ -> Buffer.contents res
      | Error exn -> raise (Inflate_error exn)
@@ -102,7 +102,7 @@ let pp = pp_scalar ~get:String.get ~length:String.length
 
 let () = Printexc.register_printer
     (function
-      | Inflate_error err -> Some (Fmt.strf "(Inflate_error %a)" (Fmt.hvbox Decompress.Inflate.pp_error) err)
+      | Inflate_error err -> Some (Fmt.strf "(Inflate_error %a)" (Fmt.hvbox Decompress.Z.pp_error) err)
       | Deflate_error err -> Some (Fmt.strf "(Deflate_error %a)" (Fmt.hvbox Decompress.Deflate.pp_error) err)
       | _ -> None)
 
