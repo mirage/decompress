@@ -405,7 +405,7 @@ struct
     aux None 0
 
   (* XXX: from ocaml-lz77, no optimized but this algorithm has no constraint.
-          bisoux @samoht. *)
+     bisoux @samoht. *)
   let deflate ?(max_fardistance = (1 lsl 15) - 1) src t =
     let results = Queue.create () in
     let src_idx = ref (t.i_off + t.i_pos) in
@@ -699,10 +699,9 @@ struct
          | _ -> { t with i_off = off
                        ; i_len = len
                        ; i_pos = 0 }
-    else raise (Invalid_argument (Format.sprintf "L.refill: you lost \
-                                                  something (pos: %d, \
-                                                             len: %d)"
-                                    t.i_pos t.i_len))
+    else invalid_arg (Format.sprintf "L.refill: you lost something (pos: %d, \
+                                      len: %d)"
+                                    t.i_pos t.i_len)
 
   let used_in t = t.i_pos
 
@@ -881,29 +880,27 @@ end
 (** non-blocking and functionnal implementation of Deflate *)
 module type DEFLATE =
 sig
-  type error =
-    | Lz77_error of L.error
+  type error
 
   module F : sig type t = int array * int array end
 
   type ('i, 'o) t
 
-  val pp_error : Format.formatter -> error -> unit
+  val pp_error        : Format.formatter -> error -> unit
   val pp              : Format.formatter -> ('i, 'o) t -> unit
 
   val get_frequencies : ('i, 'o) t -> F.t
   val set_frequencies : ?paranoid:bool -> F.t -> ('i, 'o) t -> ('i, 'o) t
 
-  val finish          : ('i, 'o) t -> ('i, 'o) t
-  val no_flush        : int -> int -> ('i, 'o) t -> ('i, 'o) t
-  val partial_flush   : int -> int -> ('i, 'o) t -> ('i, 'o) t
-  val sync_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
-  val full_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val finish          : ('x, 'x) t -> ('x, 'x) t
+  val no_flush        : int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val partial_flush   : int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val sync_flush      : int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val full_flush      : int -> int -> ('x, 'x) t -> ('x, 'x) t
 
   type meth = PARTIAL | SYNC | FULL
 
-  val flush_of_meth   : meth -> (int -> int -> ('i, 'o) t -> ('i, 'o) t)
-
+  val flush_of_meth   : meth -> (int -> int -> ('x, 'x) t -> ('x, 'x) t)
   val flush           : int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   val eval            : 'a B.t -> 'a B.t -> ('a, 'a) t ->
@@ -917,25 +914,82 @@ sig
 
   val default         : proof:'o B.t -> ?wbits:int -> int -> ('i, 'o) t
 
-  val to_result : 'a B.t -> 'a B.t -> ?meth:(meth * int) ->
-                  ('a B.t -> int option -> int) ->
-                  ('a B.t -> int -> int) ->
-                  ('a, 'a) t -> (('a, 'a) t, error) result
-  val bytes     : Bytes.t -> Bytes.t -> ?meth:(meth * int) ->
-                  (Bytes.t -> int option -> int) ->
-                  (Bytes.t -> int -> int) ->
-                  (B.st, B.st) t -> ((B.st, B.st) t, error) result
-  val bigstring : B.Bigstring.t -> B.Bigstring.t -> ?meth:(meth * int) ->
-                  (B.Bigstring.t -> int option -> int) ->
-                  (B.Bigstring.t -> int -> int) ->
-                  (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
+  val to_result       : 'a B.t -> 'a B.t -> ?meth:(meth * int) ->
+                         ('a B.t -> int option -> int) ->
+                         ('a B.t -> int -> int) ->
+                         ('a, 'a) t -> (('a, 'a) t, error) result
+  val bytes           : Bytes.t -> Bytes.t -> ?meth:(meth * int) ->
+                        (Bytes.t -> int option -> int) ->
+                        (Bytes.t -> int -> int) ->
+                        (B.st, B.st) t -> ((B.st, B.st) t, error) result
+  val bigstring       : B.Bigstring.t -> B.Bigstring.t -> ?meth:(meth * int) ->
+                        (B.Bigstring.t -> int option -> int) ->
+                        (B.Bigstring.t -> int -> int) ->
+                        (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
-module Deflate : DEFLATE =
-struct
-  type error =
-    | Lz77_error of L.error
+module type S_deflate =
+sig
+  type ('i, 'o) t
+  type error
+  type meth = PARTIAL | SYNC | FULL
 
+  val eval: 'x B.t -> 'x B.t -> ('x, 'x) t -> [ `Await of ('x, 'x) t | `Flush of ('x, 'x) t | `End of ('x, 'x) t | `Error of (('x, 'x) t * error) ]
+  val finish: ('x, 'x) t -> ('x, 'x) t
+  val no_flush: int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val flush_of_meth: meth -> int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val flush: int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val used_out: ('x, 'x) t -> int
+end
+
+module Convience_deflate (X: S_deflate) =
+struct
+  let to_result src dst ?meth refiller flusher t =
+    let rec go acc t = match X.eval src dst t, meth with
+      | `Await t, None ->
+        let n = refiller src None in
+        let t = if n = 0 then X.finish t else X.no_flush 0 n t in
+        go (acc + n) t
+      | `Await t, Some (meth, max) ->
+        let n = refiller src (Some (max - acc)) in
+        let t, acc' =
+          if n = 0 && (max - acc) <> 0
+          then X.finish t, acc
+          else if max = acc
+          then X.flush_of_meth meth 0 n t, 0
+          else X.no_flush 0 n t, acc + n in
+        go acc' t
+      | `Flush t, _ ->
+        let n = X.used_out t in
+        let n = flusher dst n in
+        go acc (X.flush 0 n t)
+      | `End t, _ ->
+        if X.used_out t = 0
+        then Ok t
+        else
+          let n = X.used_out t in
+          let n = flusher dst n in
+          Ok (X.flush 0 n t)
+      | `Error (_, exn), _ -> Error exn in
+    go 0 t
+
+  let bytes src dst ?meth refiller flusher t =
+    to_result (B.from_bytes src) (B.from_bytes dst) ?meth
+      (function B.Bytes v -> refiller v)
+      (function B.Bytes v -> flusher v)
+      t
+
+  let bigstring src dst ?meth refiller flusher t =
+    to_result (B.from_bigstring src) (B.from_bigstring dst) ?meth
+      (function B.Bigstring v -> refiller v)
+      (function B.Bigstring v -> flusher v)
+      t
+end
+
+type error_rfc1951_deflate = Lz77 of L.error
+
+module RFC1951_deflate =
+struct
   module F =
   struct
     type t = int array * int array
@@ -961,6 +1015,8 @@ struct
     let get_distances (_, dst) = dst
   end
 
+  type error = error_rfc1951_deflate
+
   type ('i, 'o) t =
     { hold        : int
     ; bits        : int
@@ -981,7 +1037,6 @@ struct
                    ('i, 'o) t ->
                    ('i, 'o) res
   and ('i, 'o) state =
-    | Header        of ('i, 'o) k
     | MakeBlock     of ('i, 'o) block
     | WriteBlock    of ('i, 'o) k
     | FastBlock     of (int * int) array *
@@ -991,7 +1046,6 @@ struct
     | FixedBlock    of F.t
     | DynamicHeader of ('i, 'o) k
     | StaticHeader  of ('i, 'o) k
-    | WriteCrc      of ('i, 'o) k
     | End
     | Exception     of error
   and ('i, 'o) res =
@@ -1018,7 +1072,7 @@ struct
   and meth = PARTIAL | SYNC | FULL
 
   let pp_error fmt = function
-    | Lz77_error lz -> Format.fprintf fmt "(Lz77_error %a)" L.pp_error lz
+    | Lz77 lz -> Format.fprintf fmt "(Lz77 %a)" L.pp_error lz
 
   let pp_code fmt = function
     | Length    -> Format.fprintf fmt "Length"
@@ -1033,37 +1087,21 @@ struct
     | Final     -> Format.fprintf fmt "Final"
 
   let pp_block fmt = function
-    | Static { lz; frequencies; _ } ->
-      Format.fprintf fmt "(Static (%a, %a, #deflate))"
-        L.pp lz F.pp frequencies
-    | Dynamic { lz; frequencies; _ } ->
-      Format.fprintf fmt "(Dynamic (%a, %a, #deflate))"
-        L.pp lz F.pp frequencies
-    | Flat pos ->
-      Format.fprintf fmt "(Flat %d)" pos
+    | Static { lz; frequencies; _ }  -> Format.fprintf fmt "(Static (%a, %a, #deflate))" L.pp lz F.pp frequencies
+    | Dynamic { lz; frequencies; _ } -> Format.fprintf fmt "(Dynamic (%a, %a, #deflate))" L.pp lz F.pp frequencies
+    | Flat pos                       -> Format.fprintf fmt "(Flat %d)" pos
 
   let pp_state fmt = function
-    | Header _ -> Format.fprintf fmt "(Header #fun)"
-    | MakeBlock block -> Format.fprintf fmt "(MakeBlock %a)" pp_block block
-    | WriteBlock _ -> Format.fprintf fmt "(WriteBlock #fun)"
-    | FastBlock (_, _, _, code, flush) ->
-      Format.fprintf fmt "(FastBlock (#ltree, #dtree, #deflate, %a, %a))"
-        pp_code code pp_flush flush
-    | AlignBlock (Some f, last) ->
-      Format.fprintf fmt "(AlignBlock (Some %a, last:%b))"
-        F.pp f last
-    | AlignBlock (None, last) ->
-      Format.fprintf fmt "(AlignBlock (None, last:%b))" last
-    | FixedBlock f ->
-      Format.fprintf fmt "(FixedBlock %a)" F.pp f
-    | DynamicHeader _ ->
-      Format.fprintf fmt "(DynamicHeader #fun)"
-    | StaticHeader _ ->
-      Format.fprintf fmt "(StaticHeader #fun)"
-    | WriteCrc _ ->
-      Format.fprintf fmt "(WriteCrc #fun)"
-    | End -> Format.fprintf fmt "End"
-    | Exception exn -> Format.fprintf fmt "(Exception %a)" pp_error exn
+    | MakeBlock block                  -> Format.fprintf fmt "(MakeBlock %a)" pp_block block
+    | WriteBlock _                     -> Format.fprintf fmt "(WriteBlock #fun)"
+    | FastBlock (_, _, _, code, flush) -> Format.fprintf fmt "(FastBlock (#ltree, #dtree, #deflate, %a, %a))" pp_code code pp_flush flush
+    | AlignBlock (Some f, last)        -> Format.fprintf fmt "(AlignBlock (Some %a, last:%b))" F.pp f last
+    | AlignBlock (None, last)          -> Format.fprintf fmt "(AlignBlock (None, last:%b))" last
+    | FixedBlock f                     -> Format.fprintf fmt "(FixedBlock %a)" F.pp f
+    | DynamicHeader _                  -> Format.fprintf fmt "(DynamicHeader #fun)"
+    | StaticHeader _                   -> Format.fprintf fmt "(StaticHeader #fun)"
+    | End                              -> Format.fprintf fmt "End"
+    | Exception exn                    -> Format.fprintf fmt "(Exception %a)" pp_error exn
 
   let pp fmt { hold; bits
              ; o_off; o_pos; o_len
@@ -1074,17 +1112,17 @@ struct
              ; state
              ; _ } =
     Format.fprintf fmt "{@[<hov>hold = %d;@ \
-                                bits = %d;@ \
-                                o_off = %d;@ \
-                                o_pos = %d;@ \
-                                o_len = %d;@ \
-                                i_off = %d;@ \
-                                i_pos = %d;@ \
-                                i_len = %d;@ \
-                                level = %d;@ \
-                                wbits = %d;@ \
-                                adler = %ld;@ \
-                                state = %a@]}"
+                        bits = %d;@ \
+                        o_off = %d;@ \
+                        o_pos = %d;@ \
+                        o_len = %d;@ \
+                        i_off = %d;@ \
+                        i_pos = %d;@ \
+                        i_len = %d;@ \
+                        level = %d;@ \
+                        wbits = %d;@ \
+                        adler = %ld;@ \
+                        state = %a@]}"
     hold bits
     o_off o_pos o_len
     i_off i_pos i_len
@@ -1097,145 +1135,124 @@ struct
   let error t exn = Error ({ t with state = Exception exn }, exn)
   let ok t        = Ok { t with state = End }
 
-  let block_from_flush = function
-    | Partial f -> FixedBlock f
-    | Full      -> AlignBlock (None, false)
-    | Final     -> AlignBlock (None, true)
-    | Sync f    -> AlignBlock (Some f, false)
+  let block_of_flush = function
+    | Partial flush -> FixedBlock flush
+    | Full          -> AlignBlock (None, false)
+    | Final         -> AlignBlock (None, true)
+    | Sync flush    -> AlignBlock (Some flush, false)
 
-  module KHeader =
-  struct
-    let rec put_byte chr k src dst t =
-      if (t.o_len - t.o_pos) > 0
-      then begin
-        Safe.set dst (t.o_off + t.o_pos) (Char.unsafe_chr chr);
-        k src dst { t with o_pos = t.o_pos + 1
-                         ; write = t.write + 1 }
-      end else Flush { t with state = Header (put_byte chr k) }
-  end
+  let rec put_byte ~ctor byte k src dst t =
+    if (t.o_len - t.o_pos) > 0
+    then begin
+      Safe.set dst (t.o_off + t.o_pos) (Char.unsafe_chr byte);
+      k src dst { t with o_pos = t.o_pos + 1
+                       ; write = t.write + 1 }
+    end else Flush { t with state = ctor (fun src dst t -> (put_byte[@tailcall]) ~ctor byte k src dst t) }
+
+  let put_short_lsb ~ctor short k src dst t =
+    let put_byte = put_byte ~ctor in
+    (put_byte (short land 0xFF)
+     @@ put_byte (short lsr 8 land 0xFF) k)
+      src dst t
+
+  let align ~ctor k src dst t =
+    (* XXX: we ensure than [hold] can not store more than 2 bytes. *)
+    if t.bits > 8
+    then let k src dst t = k src dst { t with hold = 0
+                                            ; bits = 0 } in
+      put_short_lsb ~ctor t.hold k src dst t
+    else if t.bits > 0
+    then let k src dst t = k src dst { t with hold = 0
+                                            ; bits = 0 } in
+      put_byte ~ctor t.hold k src dst t
+    else k src dst { t with hold = 0
+                          ; bits = 0 }
+
+  let put_bits ~ctor (code, len) k src dst t =
+    if t.bits + len > 16
+    then let k src dst t = k src dst { t with hold = code lsr (16 - t.bits)
+                                            ; bits = t.bits + len - 16 } in
+      put_short_lsb ~ctor (t.hold lor (code lsl t.bits)) k src dst t
+    else k src dst { t with hold = t.hold lor (code lsl t.bits)
+                          ; bits = t.bits + len }
+
+  let put_bit ~ctor bit k src dst t =
+    if bit
+    then put_bits ~ctor (1, 1) k src dst t
+    else put_bits ~ctor (0, 1) k src dst t
 
   module KWriteBlock =
   struct
-    let rec put_byte chr k src dst t =
-      if (t.o_len - t.o_pos) > 0
-      then begin
-        Safe.set dst (t.o_off + t.o_pos) (Char.chr chr);
-        k src dst { t with o_pos = t.o_pos + 1
-                         ; write = t.write + 1 }
-      end else Flush { t with state = WriteBlock (put_byte chr k) }
-
-    let put_short short k src dst t =
-      (put_byte (short land 0xFF)
-       @@ put_byte (short lsr 8 land 0xFF) k)
-      src dst t
-
-    let align k src dst t =
-      if t.bits > 8
-      then (put_short t.hold
-            @@ fun src dst t ->
-               k src dst { t with hold = 0
-                                ; bits = 0 })
-           src dst t
-      else if t.bits > 0
-      then (put_byte t.hold
-            @@ fun src dst t ->
-               k src dst { t with hold = 0
-                                ; bits = 0 })
-           src dst t
-      else k src dst { t with hold = 0
-                            ; bits = 0 }
-
-    let put_short_msb short k src dst t =
-      (put_byte (short lsr 8 land 0xFF)
-       @@ put_byte (short land 0xFF) k)
-      src dst t
-
-    let put_bits (code, len) k src dst t =
-      if t.bits > 16 - len
-      then
-        put_short (t.hold lor (code lsl t.bits))
-          (fun src dst t ->
-             k src dst
-             { t with hold = code lsr (16 - t.bits)
-                    ; bits = t.bits + len - 16 })
-          src dst t
-      else k src dst
-             { t with hold = t.hold lor (code lsl t.bits)
-                    ; bits = t.bits + len }
-
-    let put_bit bit k src dst t =
-      if bit then put_bits (1, 1) k src dst t
-      else put_bits (0, 1) k src dst t
+    let ctor k = WriteBlock k
+    let put_short_lsb short k src dst t = put_short_lsb ~ctor short k src dst t
+    let put_bits bits k src dst t = put_bits ~ctor bits k src dst t
+    let put_bit bit k src dst t = put_bit ~ctor bit k src dst t
+    let align k src dst t = align ~ctor k src dst t
   end
 
   module KDynamicHeader =
   struct
+    let ctor = KWriteBlock.ctor
+    let put_bits k src dst t = put_bits ~ctor k src dst t
+
     let put_trans trans_length hclen k src dst t =
-      let rec loop i src dst t =
+      let rec go i src dst t =
         if i = hclen
         then k src dst t
-        else KWriteBlock.put_bits
-               (trans_length.(i), 3)
-               (loop (i + 1))
-               src
-               dst
-               t
-      in loop 0 src dst t
+        else put_bits (trans_length.(i), 3) (go (i + 1)) src dst t in
+      go 0 src dst t
 
-    let put_symbols tree_symbol tree_code tree_length k src dst t =
-      let rec loop i src dst t =
+    let put_symbols tree_symbol tree_code tree_length : ('x, 'x) k -> ('x, 'x) k = fun k src dst t ->
+      let rec go i src dst t =
         if i = Array.length tree_symbol
         then k src dst t
-        else let code = tree_symbol.(i) in
-             KWriteBlock.put_bits (tree_code.(code), tree_length.(code))
-               (fun src dst t ->
-                  if code >= 16
-                  then let bitlen = match code with
-                         | 16 -> 2
-                         | 17 -> 3
-                         | 18 -> 7
-                         | _ -> assert false
-                       in
-
-                       KWriteBlock.put_bits
-                         (tree_symbol.(i + 1), bitlen)
-                         (loop (i + 2))
-                         src
-                         dst
-                         t
-                  else loop (i + 1) src dst t)
-               src dst t
-      in loop 0 src dst t
+        else
+          let code = Array.unsafe_get tree_symbol i in
+          let k src dst t =
+            if code >= 16
+            then let bitlen = match code with
+                | 16 -> 2
+                | 17 -> 3
+                | 18 -> 7
+                | _  -> assert false in
+              put_bits (tree_symbol.(i + 1), bitlen) (go (i + 2)) src dst t
+            else go (i + 1) src dst t in
+          put_bits (Array.unsafe_get tree_code code, Array.unsafe_get tree_length code) k src dst t in
+      go 0 src dst t
   end
 
-  let get_tree_symbols hlit lit_len_lengths hdist dist_lengths =
-    let src    = Array.make (hlit + hdist) 0 in
+  let (.%{}) : 'a array -> int -> 'a = Array.unsafe_get
+  let (.%{}<-) : 'a array -> int -> 'a -> unit = Array.unsafe_set
+
+  let get_tree_symbols hlit lit_lengths hdist dist_lengths =
+    let len    = hlit + hdist in
+    let src    = Array.make len 0 in
     let result = Array.make (286 + 30) 0 in
     let freqs  = Array.make 19 0 in
 
-    for i = 0 to hlit - 1 do src.(i) <- lit_len_lengths.(i) done;
-    for i = hlit to hlit + hdist - 1 do src.(i) <- dist_lengths.(i - hlit) done;
+    for i = 0 to hlit - 1 do src.%{i} <- lit_lengths.%{i} done;
+    for i = hlit to hlit + hdist - 1 do src.%{i} <- dist_lengths.%{i - hlit} done;
 
-    let n_result = ref 0 in
+    let n = ref 0 in
     let i = ref 0 in
-    let l = Array.length src in
 
-    while !i < l do
+    while !i < len
+    do
       let j = ref 1 in
 
-      while !i + !j < l && src.(!i + !j) = src.(!i)
+      while !i + !j < len && src.%{!i + !j} = src.%{!i}
       do incr j done;
 
       let run_length = ref !j in
 
-      if src.(!i) = 0
+      if src.%{!i} = 0
       then
         if !run_length < 3
         then
           while !run_length > 0 do
-            result.(!n_result) <- 0;
-            incr n_result;
-            freqs.(0) <- freqs.(0) + 1;
+            result.%{!n} <- 0;
+            incr n;
+            freqs.%{0} <- freqs.%{0} + 1;
             decr run_length;
           done
         else
@@ -1247,34 +1264,34 @@ struct
 
             if !rpt <= 10
             then begin
-              result.(!n_result) <- 17;
-              incr n_result;
-              result.(!n_result) <- !rpt - 3;
-              incr n_result;
-              freqs.(17) <- freqs.(17) + 1;
+              result.%{!n} <- 17;
+              incr n;
+              result.%{!n} <- !rpt - 3;
+              incr n;
+              freqs.%{17} <- freqs.%{17} + 1;
             end else begin
-              result.(!n_result) <- 18;
-              incr n_result;
-              result.(!n_result) <- !rpt - 11;
-              incr n_result;
-              freqs.(18) <- freqs.(18) + 1;
+              result.%{!n} <- 18;
+              incr n;
+              result.%{!n} <- !rpt - 11;
+              incr n;
+              freqs.%{18} <- freqs.%{18} + 1;
             end;
 
             run_length := !run_length - !rpt;
           done
       else
         begin
-          result.(!n_result) <- src.(!i);
-          incr n_result;
-          freqs.(src.(!i)) <- freqs.(src.(!i)) + 1;
+          result.%{!n} <- src.%{!i};
+          incr n;
+          freqs.%{src.%{!i}} <- freqs.%{src.%{!i}} + 1;
           decr run_length;
 
           if !run_length < 3
           then
             while !run_length > 0 do
-              result.(!n_result) <- src.(!i);
-              incr n_result;
-              freqs.(src.(!i)) <- freqs.(src.(!i)) + 1;
+              result.%{!n} <- src.%{!i};
+              incr n;
+              freqs.%{src.%{!i}} <- freqs.%{src.%{!i}} + 1;
               decr run_length;
             done
           else
@@ -1284,11 +1301,11 @@ struct
               if !rpt > !run_length - 3 && !rpt < !run_length
               then rpt := !run_length - 3;
 
-              result.(!n_result) <- 16;
-              incr n_result;
-              result.(!n_result) <- !rpt - 3;
-              incr n_result;
-              freqs.(16) <- freqs.(16) + 1;
+              result.%{!n} <- 16;
+              incr n;
+              result.%{!n} <- (!rpt - 3);
+              incr n;
+              freqs.%{16} <- freqs.%{16} + 1;
 
               run_length := !run_length - !rpt;
             done
@@ -1297,92 +1314,64 @@ struct
       i := !i + !j;
     done;
 
-    Array.sub result 0 !n_result, freqs
+    Array.sub result 0 !n, freqs
 
   let block_of_level ~wbits ?frequencies level =
     match level with
     | 0 -> Flat 0
     | n ->
       let frequencies = match frequencies with
-        | Some f -> f
-        | None -> F.make ()
-      in
+        | Some freqs -> freqs
+        | None -> F.make () in
       let on = function
-        | Hunk.Literal chr ->
-          F.add_literal frequencies chr
-        | Hunk.Match (len, dist) ->
-          F.add_distance frequencies (len, dist)
-      in
+        | Hunk.Literal chr -> F.add_literal frequencies chr
+        | Hunk.Match (len, dist) -> F.add_distance frequencies (len, dist) in
       match n with
-        | 1 -> Static  { lz = L.default ~on ~level wbits
-                       ; frequencies
-                       ; deflate = Seq.empty }
-        | 2 -> Static  { lz = L.default ~on ~level wbits
-                       ; frequencies
-                       ; deflate = Seq.empty }
-        | 3 -> Static  { lz = L.default ~on ~level wbits
-                       ; frequencies
-                       ; deflate = Seq.empty }
-        | 4 -> Dynamic { lz = L.default ~on ~level wbits
-                       ; frequencies
-                       ; deflate = Seq.empty }
-        | 5 -> Dynamic { lz = L.default ~on ~level wbits
-                       ; frequencies
-                       ; deflate = Seq.empty }
-        | 6 -> Dynamic { lz = L.default ~on ~level wbits
-                       ; frequencies
-                       ; deflate = Seq.empty }
-        | 7 -> Dynamic { lz = L.default ~on ~level wbits
-                       ; frequencies
-                       ; deflate = Seq.empty }
-        | 8 -> Dynamic { lz = L.default ~on ~level wbits
-                       ; frequencies
-                       ; deflate = Seq.empty }
-        | 9 -> Dynamic { lz = L.default ~on ~level wbits
-                       ; frequencies
-                       ; deflate = Seq.empty }
-        | _ -> raise (Invalid_argument "Z.block_of_level")
+      | 1 | 2 | 3 ->
+        Static { lz = L.default ~on ~level wbits
+               ; frequencies
+               ; deflate = Seq.empty }
+      | 4 | 5 | 6 | 7 | 8 | 9 ->
+        Dynamic { lz = L.default ~on ~level wbits
+                ; frequencies
+                ; deflate = Seq.empty }
+      | n -> invalid_arg (Format.asprintf "Invalid level: %d" n)
 
   let zip arr1 arr2 =
-    Array.init (Array.length arr1) (fun i -> arr1.(i), arr2.(i))
+    Array.init (Array.length arr1) (fun i -> arr1.%{i}, arr2.%{i})
 
   let write_block ltree dtree queue flush src dst t =
     match Q.take_front_exn queue with
     | Hunk.Literal chr, tl ->
-      (KWriteBlock.put_bits ltree.(Char.code chr)
-       @@ fun _ _ t ->
-          Cont { t with state = FastBlock (ltree, dtree, tl, Length, flush) })
-      src dst t
+      (KWriteBlock.put_bits ltree.%{Char.code chr}
+       @@ fun _src _dst t ->
+       Cont { t with state = FastBlock (ltree, dtree, tl, Length, flush) })
+        src dst t
     | Hunk.Match (len, dist), tl ->
-      (KWriteBlock.put_bits ltree.(Table._length.(len) + 256 + 1)
-       @@ KWriteBlock.put_bits (len - Table._base_length.(Table._length.(len)),
-                                Table._extra_lbits.(Table._length.(len)))
-       @@ KWriteBlock.put_bits dtree.(Table._distance dist)
-       @@ KWriteBlock.put_bits (dist - Table._base_dist.(Table._distance dist),
-                                Table._extra_dbits.(Table._distance dist))
-       @@ fun _ _ t ->
-          Cont { t with state = FastBlock (ltree, dtree, tl, Length, flush) })
-      src dst t
+      (KWriteBlock.put_bits ltree.%{Table._length.%{len} + 256 + 1}
+       @@ KWriteBlock.put_bits (len - Table._base_length.%{Table._length.%{len}},
+                                Table._extra_lbits.%{Table._length.%{len}})
+       @@ KWriteBlock.put_bits dtree.%{Table._distance dist}
+       @@ KWriteBlock.put_bits (dist - Table._base_dist.%{Table._distance dist},
+                                Table._extra_dbits.%{Table._distance dist})
+       @@ fun _src _dst t ->
+       Cont { t with state = FastBlock (ltree, dtree, tl, Length, flush) })
+        src dst t
     | exception Q.Empty ->
-      (KWriteBlock.put_bits ltree.(256)
-       @@ fun _ _ t -> Cont { t with state = block_from_flush flush })
-      src dst t
+      (KWriteBlock.put_bits ltree.%{256}
+       @@ fun _src _dst t -> Cont { t with state = block_of_flush flush })
+        src dst t
 
   let static frequencies queue flush src dst t =
     let flush = flush frequencies in
+    let k _src _dst t =
+      Cont { t with state = FastBlock (Table._static_ltree, Table._static_dtree, queue, Length, flush) } in
+
     (KWriteBlock.put_bit false (* XXX: when the user expect a final block, zlib
-                                       put an empty block to align the output
-                                       in byte - this last block has the final
-                                       flag.
-                                *)
-     @@ KWriteBlock.put_bits (1, 2)
-     @@ fun _ _ t ->
-        Cont { t with state = FastBlock (Table._static_ltree,
-                                         Table._static_dtree,
-                                         queue,
-                                         Length,
-                                         flush) })
-    src dst t
+                                  put an empty block to align the output in byte
+                                  - this last block has the final flag. *)
+     @@ KWriteBlock.put_bits (1, 2) k)
+      src dst t
 
   let dynamic frequencies queue flush src dst t =
     let trans_length    = Array.make 19 0 in
@@ -1415,247 +1404,184 @@ struct
     let hclen           = !hclen in
     let flush           = flush frequencies in
 
-    (KWriteBlock.put_bit false (* XXX: when the user expect a final block,
-                                       zlib put an empty block to align the
-                                       output in byte - this last block has the
-                                       final flag.
-                                *)
+    let k _src _dst t =
+      let ltree = zip literal_code literal_length in
+      let dtree = zip distance_code distance_length in
+
+      Cont { t with state = FastBlock (ltree, dtree, queue, Length, flush) } in
+
+    (KWriteBlock.put_bit false (* XXX: when the user expect a final block, zlib
+                                  put an empty block to align the output in byte
+                                  - this last block has the final flag. *)
      @@ KWriteBlock.put_bits (2, 2)
      @@ KWriteBlock.put_bits (hlit - 257, 5)
      @@ KWriteBlock.put_bits (hdist - 1, 5)
      @@ KWriteBlock.put_bits (hclen - 4, 4)
      @@ KDynamicHeader.put_trans trans_length hclen
-     @@ KDynamicHeader.put_symbols tree_symbol tree_code tree_length
-     @@ fun _ _ t ->
-        let ltree = zip literal_code literal_length in
-        let dtree = zip distance_code distance_length in
+     @@ KDynamicHeader.put_symbols tree_symbol tree_code tree_length k)
+      src dst t
 
-        Cont { t with state = FastBlock (ltree,
-                                         dtree,
-                                         queue,
-                                         Length,
-                                         flush) })
-    src dst t
-
-  let crc src dst ({ adler; _ } as t) =
-    (KWriteBlock.align
-     @@ KWriteBlock.put_short_msb
-          (Int32.to_int (Int32.logand (Int32.shift_right adler 16) 0xFFFFl))
-     @@ KWriteBlock.put_short_msb
-          (Int32.to_int (Int32.logand adler 0xFFFFl))
-     @@ fun _ _ t -> ok t)
-    src dst t
-
-  let rec write_flat off pos len final _ dst t =
+  let rec write_flat off pos len final _src dst t =
     if (len - pos) = 0
     then (if final
-          then Cont { t with state = WriteCrc crc }
+          then ok t
           else Cont { t with state = MakeBlock (Flat 0) })
-    else begin
-      let n = min (len - pos) (t.o_len - t.o_pos) in
-      Safe.blit t.temp (off + pos) dst (t.o_off + t.o_pos) n;
+    else
+      begin
+        let n = min (len - pos) (t.o_len - t.o_pos) in
+        Safe.blit t.temp (off + pos) dst (t.o_off + t.o_pos) n;
 
-      if t.o_len - (t.o_pos + n) = 0
-      then Flush { t with state = WriteBlock (write_flat 0 (pos + n) len final)
-                        ; o_pos = t.o_pos + n
-                        ; write = t.write + n }
-      else Cont { t with state = WriteBlock (write_flat 0 (pos + n) len final)
-                       ; o_pos = t.o_pos + n
-                       ; write = t.write + n }
-    end
+        if t.o_len - (t.o_pos + n) = 0
+        then Flush { t with state = WriteBlock (fun src dst t -> (write_flat[@tailcall]) 0 (pos + n) len final src dst t)
+                          ; o_pos = t.o_pos + n
+                          ; write = t.write + n }
+        else Cont { t with state = WriteBlock (fun src dst t -> (write_flat[@tailcall]) 0 (pos + n) len final src dst t)
+                         ; o_pos = t.o_pos + n
+                         ; write = t.write + n }
+      end
 
   let flat off pos len final src dst t =
     (KWriteBlock.put_bit final
      @@ KWriteBlock.put_bits (0, 2)
      @@ KWriteBlock.align
-     @@ KWriteBlock.put_short len
-     @@ KWriteBlock.put_short (lnot len)
+     @@ KWriteBlock.put_short_lsb len
+     @@ KWriteBlock.put_short_lsb (lnot len)
      @@ write_flat off pos len final)
-    src dst t
+      (* XXX: from [make_block] may be, it's not necessary to pass [off], [pos]
+         and [final]. We use an internal buffer and ensure to start it to 0 for
+         example. [pos] is used only by [write_flat]. *)
+      src dst t
 
-  let make_block src _ t = function
+  let make_block src _dst t = function
     | Static { lz; frequencies; deflate; } ->
       (match L.eval src lz with
        | `Await (lz, seq) ->
-         await { t with state = MakeBlock
-                          (Static { lz
-                                  ; frequencies
-                                  ; deflate = Seq.append deflate seq })
+         await { t with state = MakeBlock (Static { lz; frequencies; deflate = Seq.append deflate seq })
                       ; i_pos = t.i_pos + L.used_in lz
-                      ; adler = Safe.adler32
-                                  src
-                                  t.adler
-                                  (t.i_off + t.i_pos)
-                                  (L.used_in lz) }
-       | `Error (_, exn) ->
-         error t (Lz77_error exn))
+                      ; adler = Safe.adler32 src t.adler (t.i_off + t.i_pos) (L.used_in lz) }
+       | `Error (_, exn) -> error t (Lz77 exn))
     | Dynamic { lz; frequencies; deflate; } ->
       (match L.eval src lz with
        | `Await (lz, seq) ->
-         await { t with state = MakeBlock
-                          (Dynamic { lz
-                                   ; frequencies
-                                   ; deflate = Seq.append deflate seq })
+         await { t with state = MakeBlock (Dynamic { lz; frequencies; deflate = Seq.append deflate seq })
                       ; i_pos = t.i_pos + L.used_in lz
-                      ; adler = Safe.adler32
-                                  src
-                                  t.adler
-                                  (t.i_off + t.i_pos)
-                                  (L.used_in lz) }
-       | `Error (_, exn) ->
-         error t (Lz77_error exn))
+                      ; adler = Safe.adler32 src t.adler (t.i_off + t.i_pos) (L.used_in lz) }
+       | `Error (_, exn) -> error t (Lz77 exn))
     | Flat pos ->
       let len = min (t.i_len - t.i_pos) (0x8000 - pos) in
 
       Safe.blit src (t.i_off + t.i_pos) t.temp pos len;
 
-      if pos + len = 0x8000 (* End of block *)
+      if pos + len = 0x8000
       then Cont { t with state = WriteBlock (flat 0 0 0x8000 false)
                        ; i_pos = t.i_pos + len
-                       ; adler = Safe.adler32
-                                   src
-                                   t.adler
-                                   (t.i_off + t.i_pos)
-                                   len }
+                       ; adler = Safe.adler32 src t.adler (t.i_off + t.i_pos) len }
       else await { t with state = MakeBlock (Flat (pos + len))
                         ; i_pos = t.i_pos + len
-                        ; adler = Safe.adler32
-                                    src
-                                    t.adler
-                                    (t.i_off + t.i_pos)
-                                    len }
+                        ; adler = Safe.adler32 src t.adler (t.i_off + t.i_pos) len }
 
   let fixed_block frequencies last src dst t =
     (KWriteBlock.put_bit last
      @@ KWriteBlock.put_bits (1, 2)
-     @@ KWriteBlock.put_bits Table._static_ltree.(256)
-     @@ fun _ _ t ->
-        let block = block_of_level ~wbits:t.wbits ~frequencies t.level in
-        Cont { t with state = if last
-                              then WriteCrc crc
-                              else MakeBlock block })
-    src dst t
+     @@ KWriteBlock.put_bits Table._static_ltree.%{256}
+     @@ fun _str _dst t ->
+     let block = block_of_level ~wbits:t.wbits ~frequencies t.level in
+     Cont { t with state = if last then End else MakeBlock block })
+      src dst t
 
   let align_block frequencies last src dst t =
     (KWriteBlock.put_bit last
      @@ KWriteBlock.put_bits (0, 2)
      @@ KWriteBlock.align
-     @@ KWriteBlock.put_short 0x0000
-     @@ KWriteBlock.put_short 0xFFFF
-     @@ fun _ _ t ->
-        let block = block_of_level ~wbits:t.wbits ?frequencies t.level in
-        Cont { t with state = if last
-                              then WriteCrc crc
-                              else MakeBlock block })
-    src dst t
+     @@ KWriteBlock.put_short_lsb 0x0000
+     @@ KWriteBlock.put_short_lsb 0xFFFF
+     @@ fun _src _dst t ->
+     let block = block_of_level ~wbits:t.wbits ?frequencies t.level in
+     Cont { t with state = if last then End else MakeBlock block })
+      src dst t
 
-  let fast_block _ dst t ltree dtree queue code flush =
-    let q     = ref queue in
+  let write_fast_block _src dst t ltree dtree queue code flush =
+    let queue = ref queue in
     let hold  = ref t.hold in
     let bits  = ref t.bits in
     let o_pos = ref t.o_pos in
     let write = ref t.write in
     let goto  = ref code in
 
-    while Q.is_empty !q = false && t.o_len - !o_pos > 1
-    do let (hd, tl) = Q.take_front_exn !q in
+    while Q.is_empty !queue = false && t.o_len - !o_pos > 1 do
+      let hd, tl = Q.take_front_exn !queue in
+      let (code, len), new_goto, new_queue = match !goto, hd with
+        | Length, Hunk.Literal chr ->
+          ltree.%{Char.code chr}, Length, tl
+        | Length, Hunk.Match (len, _) ->
+          ltree.%{Table._length.%{len} + 256 + 1}, ExtLength, !queue
+        | ExtLength, Hunk.Match (len, _) ->
+          let code = Table._length.%{len} in
+          (len - Table._base_length.%{code}, Table._extra_lbits.%{code}), Dist, !queue
+        | Dist, Hunk.Match (_, dist) ->
+          dtree.%{Table._distance dist}, ExtDist, !queue
+        | ExtDist, Hunk.Match (_, dist) ->
+          let code = Table._distance dist in
+          (dist - Table._base_dist.%{code}, Table._extra_dbits.%{code}), Length, tl
+        | _ -> assert false in
 
-       let (code, len), new_goto, new_q = match !goto, hd with
-         | Length, Hunk.Literal chr ->
-           ltree.(Char.code chr), Length, tl
-         | Length, Hunk.Match (len, _) ->
-           ltree.(Table._length.(len) + 256 + 1), ExtLength, !q
-         | ExtLength, Hunk.Match (len, _) ->
-           let code = Table._length.(len) in
-           (len - Table._base_length.(code),
-            Table._extra_lbits.(code)),
-           Dist, !q
-         | Dist, Hunk.Match (_, dist) ->
-           dtree.(Table._distance dist), ExtDist, !q
-         | ExtDist, Hunk.Match (_, dist) ->
-           let code = Table._distance dist in
-           (dist - Table._base_dist.(code),
-            Table._extra_dbits.(code)),
-           Length, tl
-         | _ -> assert false
-       in
+      if !bits + len > 16
+      then
+        begin
+          Safe.set dst (t.o_off + !o_pos) (Char.chr ((!hold lor (code lsl !bits)) land 0xFF));
+          incr o_pos;
+          incr write;
+          Safe.set dst (t.o_off + !o_pos) (Char.chr ((!hold lor (code lsl !bits)) lsr 8 land 0xFF));
+          incr o_pos;
+          incr write;
 
-       if !bits + len > 16
-       then begin
-         Safe.set dst (t.o_off + !o_pos)
-           (Char.chr ((!hold lor (code lsl !bits)) land 0xFF));
-         Safe.set dst (t.o_off + !o_pos + 1)
-           (Char.chr ((!hold lor (code lsl !bits)) lsr 8 land 0xFF));
+          hold := code lsr (16 - !bits);
+          bits := !bits + len - 16;
+        end
+      else
+        begin
+          hold := !hold lor (code lsl !bits);
+          bits := !bits + len;
+        end;
 
-         hold  := code lsr (16 - !bits);
-         bits  := !bits + len - 16;
-         o_pos := !o_pos + 2;
-         write := !write + 2;
-       end else begin
-         hold  := !hold lor (code lsl !bits);
-         bits  := !bits + len;
-       end;
+      goto  := new_goto;
+      queue := new_queue;
+    done;
 
-       goto  := new_goto;
-       q     := new_q;
-     done;
+    let k0 queue src dst t = write_block ltree dtree queue flush src dst t in
+    let k1 queue dist src dst t =
+      KWriteBlock.put_bits
+        (dist - (Table._base_dist.%{Table._distance dist}),
+         Table._extra_dbits.%{Table._distance dist})
+        (k0 queue) src dst t in
+    let k2 queue dist src dst t =
+      KWriteBlock.put_bits dtree.%{Table._distance dist}
+        (k1 queue dist) src dst t in
+    let k3 queue len dist src dst t =
+      KWriteBlock.put_bits
+        (len - Table._base_length.%{Table._length.%{len}},
+         Table._extra_lbits.%{Table._length.%{len}})
+        (k2 queue dist) src dst t in
+    let ke src dst t =
+      KWriteBlock.put_bits
+        ltree.%{256}
+        (fun _src _dst t -> Cont { t with state = block_of_flush flush })
+        src dst t in
 
-     let state = match Q.take_front_exn !q, !goto with
-       | _, Length ->
-         WriteBlock (write_block ltree dtree !q flush)
-       | (Hunk.Match (len, dist), tl), ExtLength ->
-         let fn =
-           KWriteBlock.put_bits
-             (len - Table._base_length.(Table._length.(len)),
-              Table._extra_lbits.(Table._length.(len)))
-           @@ KWriteBlock.put_bits dtree.(Table._distance dist)
-           @@ KWriteBlock.put_bits
-                (dist - Table._base_dist.(Table._distance dist),
-                 Table._extra_dbits.(Table._distance dist))
-           @@ fun _ _ t ->
-              Cont { t with state = WriteBlock
-                                      (write_block ltree dtree tl flush) }
-         in
+    let state = match Q.take_front_exn !queue, !goto with
+      | _, Length -> WriteBlock (k0 !queue)
+      | (Hunk.Match (len, dist), tl), ExtLength -> WriteBlock (k3 tl len dist)
+      | (Hunk.Match (_, dist), tl), Dist -> WriteBlock (k2 tl dist)
+      | (Hunk.Match (_, dist), tl), ExtDist -> WriteBlock (k1 tl dist)
+      | exception Q.Empty ->  WriteBlock ke
+      | _ -> assert false in
 
-         WriteBlock fn
-       | (Hunk.Match (_, dist), tl), Dist ->
-         let fn =
-           KWriteBlock.put_bits dtree.(Table._distance dist)
-           @@ KWriteBlock.put_bits
-                (dist - Table._base_dist.(Table._distance dist),
-                 Table._extra_dbits.(Table._distance dist))
-           @@ fun _ _ t ->
-              Cont { t with state = WriteBlock
-                                      (write_block ltree dtree tl flush) }
-         in
-
-         WriteBlock fn
-       | (Hunk.Match (_, dist), tl), ExtDist ->
-         let fn =
-           KWriteBlock.put_bits
-             (dist - Table._base_dist.(Table._distance dist),
-              Table._extra_dbits.(Table._distance dist))
-           @@ fun _ _ t ->
-              Cont { t with state = WriteBlock
-                                      (write_block ltree dtree tl flush) }
-         in
-
-         WriteBlock fn
-       | exception Q.Empty ->
-         let fn =
-           KWriteBlock.put_bits ltree.(256)
-           @@ fun _ _ t -> Cont { t with state = block_from_flush flush }
-         in
-
-         WriteBlock fn
-       | _ -> assert false
-     in
-
-     Cont { t with hold = !hold
-                 ; bits = !bits
-                 ; o_pos = !o_pos
-                 ; write = !write
-                 ; state }
+    let t = { t with hold = !hold
+                   ; bits = !bits
+                   ; o_pos = !o_pos
+                   ; write = !write
+                   ; state } in
+    Cont t
 
   let flush off len t =
     { t with o_off = off
@@ -1665,215 +1591,147 @@ struct
   let get_frequencies t = match t.state with
     | MakeBlock (Dynamic { frequencies; _ })
     | MakeBlock (Static { frequencies; _ }) -> frequencies
-    | _ -> raise (Invalid_argument "Z.frequencies: bad state")
+    | _ -> invalid_arg "get_frequencies: invalid state"
 
   let set_frequencies ?(paranoid = false) (lit, dst) t =
     let check =
       Seq.iter
-        (function Hunk.Literal chr ->
-                    if lit.(Char.code chr) > 0
-                    then ()
-                    else raise (Invalid_argument "Z.set_frequencies: invalid \
-                                                  frequencies")
-                | Hunk.Match (len, dist) ->
-                    if lit.(Table._length.(len) + 256 + 1) > 0
-                       && dst.(Table._distance dist) > 0
-                    then ()
-                    else raise (Invalid_argument "Z.set_frequencies: invalid \
-                                                  frequencies"))
-    in
-
-    if lit.(256) > 0
+        (function
+          | Hunk.Literal chr ->
+            if Array.unsafe_get lit (Char.code chr) = 0
+            then invalid_arg "set_frequencies: invalid frequencies"
+          | Hunk.Match (len, dist) ->
+            if Array.unsafe_get lit (Array.unsafe_get Table._length len + 156 + 1) = 0
+            || Array.unsafe_get dst (Table._distance dist) = 0
+            then invalid_arg "set_frequencies: invalid frequencies") in
+    if Array.unsafe_get lit 256 > 0
     then match t.state with
-         | MakeBlock (Dynamic x) ->
-           if paranoid then check x.deflate;
+      | MakeBlock (Dynamic x) ->
+        if paranoid then check x.deflate;
+        { t with state = MakeBlock (Dynamic { x with frequencies = (lit, dst) }) }
+      | MakeBlock (Static x) ->
+        { t with state = MakeBlock (Static { x with frequencies = (lit, dst) }) }
+      | _ -> invalid_arg "set_frequencies: invalid state"
+    else invalid_arg "set_frequencies: invalid frequencies"
 
-           { t with state = MakeBlock
-                              (Dynamic { x with frequencies = (lit, dst) }) }
-         | MakeBlock (Static x) ->
-           if paranoid then check x.deflate;
-
-           { t with state = MakeBlock
-                              (Static { x with frequencies = (lit, dst) }) }
-         | _ -> raise (Invalid_argument "Z.set_frequencies: bad state")
-    else raise (Invalid_argument "Z.set_frequencies: invalid frequencies")
+  let to_final _frequencies = Final
+  let to_partial frequencies = Partial frequencies
+  let to_sync frequencies = Sync frequencies
+  let to_full _frequencies = Full
 
   let finish t = match t.state with
-    | MakeBlock (Dynamic { frequencies; deflate; _ }) ->
-      { t with state = DynamicHeader
-                         (dynamic
-                           frequencies
-                           (Q.of_seq deflate)
-                           (fun _ -> Final)) }
-    | MakeBlock (Static { frequencies; deflate; _ }) ->
-      { t with state = StaticHeader
-                         (static
-                           frequencies
-                           (Q.of_seq deflate)
-                           (fun _ -> Final)) }
+    | MakeBlock (Dynamic x) ->
+      { t with state = DynamicHeader (dynamic x.frequencies (Q.of_seq x.deflate) to_final) }
+    | MakeBlock (Static x) ->
+      { t with state = StaticHeader (static x.frequencies (Q.of_seq x.deflate) to_final) }
     | MakeBlock (Flat len) ->
       { t with state = WriteBlock (flat 0 0 len true) }
-    | _ -> raise (Invalid_argument "Z.finish: bad state")
+    | _ -> invalid_arg "finish: invalid state"
 
   let no_flush off len t = match t.state with
-    | MakeBlock (Static { lz; frequencies; deflate; }) ->
-      { t with state = MakeBlock (Static { lz = L.refill off len lz
-                                         ; frequencies
-                                         ; deflate })
+    | MakeBlock (Dynamic x) ->
+      { t with state = MakeBlock (Dynamic { x with lz = L.refill off len x.lz })
              ; i_off = off
              ; i_len = len
              ; i_pos = 0 }
-    | MakeBlock (Dynamic { lz; frequencies; deflate; }) ->
-      { t with state = MakeBlock (Dynamic { lz = L.refill off len lz
-                                          ; frequencies
-                                          ; deflate })
+    | MakeBlock (Static x) ->
+      { t with state = MakeBlock (Static { x with lz = L.refill off len x.lz })
              ; i_off = off
              ; i_len = len
              ; i_pos = 0 }
     | MakeBlock (Flat len') ->
       { t with state = MakeBlock (Flat len')
-                   ; i_off = off
-                   ; i_len = len
-                   ; i_pos = 0 }
-    | _ -> raise (Invalid_argument "Z.no_flush: bad state")
+             ; i_off = off
+             ; i_len = len
+             ; i_pos = 0 }
+    | _ -> invalid_arg "no_flush: invalid state"
+
+  (* XXX: factorize *)
 
   let partial_flush off len t = match t.state with
     | MakeBlock block ->
-      if (t.i_len - t.i_pos) = 0
+      if (t.i_len - t.i_pos) > 0
       then match block with
-        | Dynamic { frequencies; deflate; _ } ->
-          { t with state = DynamicHeader
-                             (dynamic
-                               frequencies
-                               (Q.of_seq deflate)
-                               (fun f -> Partial f))
-                 ; i_off = off
-                 ; i_len = len
-                 ; i_pos = 0 }
-        | Static { frequencies; deflate; _ } ->
-          { t with state = StaticHeader
-                             (static
-                               frequencies
-                               (Q.of_seq deflate)
-                               (fun f -> Partial f))
-                 ; i_off = off
-                 ; i_len = len
-                 ; i_pos = 0 }
-        | Flat len -> { t with state = WriteBlock (flat 0 0 len false) }
-      else raise (Invalid_argument (Format.sprintf "Z.partial_flush: you lost \
-                                                    something (pos: %d, \
-                                                               len: %d)"
-                                      t.i_pos t.i_len))
-    | _ -> raise (Invalid_argument "Z.partial_flush: bad state")
+        | Dynamic x -> { t with state = DynamicHeader (dynamic x.frequencies (Q.of_seq x.deflate) to_partial)
+                              ; i_off = off
+                              ; i_len = len
+                              ; i_pos = 0 }
+        | Static x  -> { t with state = StaticHeader (static x.frequencies (Q.of_seq x.deflate) to_partial)
+                              ; i_off = off
+                              ; i_len = len
+                              ; i_pos = 0 }
+        | Flat len  -> { t with state = WriteBlock (flat 0 0 len false)
+                              ; i_off = off
+                              ; i_len = len
+                              ; i_pos = 0 }
+      else invalid_arg (Format.asprintf "partial_flush: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
+    | _ -> invalid_arg "partial_flush: invalid state"
 
   let sync_flush off len t = match t.state with
     | MakeBlock block ->
-      if (t.i_len - t.i_pos) = 0
+      if (t.i_len - t.i_pos) > 0
       then match block with
-        | Dynamic { frequencies; deflate; _ } ->
-          { t with state = DynamicHeader
-                             (dynamic
-                               frequencies
-                               (Q.of_seq deflate)
-                               (fun f -> Sync f))
-                 ; i_off = off
-                 ; i_len = len
-                 ; i_pos = 0 }
-        | Static { frequencies; deflate; _ } ->
-          { t with state = StaticHeader
-                             (static
-                               frequencies
-                               (Q.of_seq deflate)
-                               (fun f -> Sync f))
-                 ; i_off = off
-                 ; i_len = len
-                 ; i_pos = 0 }
-        | Flat len -> { t with state = WriteBlock (flat 0 0 len false) }
-      else raise (Invalid_argument (Format.sprintf "Z.sync_flush: you lost \
-                                                    something (pos: %d, \
-                                                               len: %d)"
-                                      t.i_pos t.i_len))
-    | _ -> raise (Invalid_argument "Z.sync_flush: bad state")
+        | Dynamic x -> { t with state = DynamicHeader (dynamic x.frequencies (Q.of_seq x.deflate) to_sync)
+                              ; i_off = off
+                              ; i_len = len
+                              ; i_pos = 0 }
+        | Static x  -> { t with state = StaticHeader (static x.frequencies (Q.of_seq x.deflate) to_sync)
+                              ; i_off = off
+                              ; i_len = len
+                              ; i_pos = 0 }
+        | Flat len  -> { t with state = WriteBlock (flat 0 0 len false)
+                              ; i_off = off
+                              ; i_len = len
+                              ; i_pos = 0 }
+      else invalid_arg (Format.asprintf "sync_flush: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
+    | _ -> invalid_arg "sync_flush: invalid state"
 
   let full_flush off len t = match t.state with
     | MakeBlock block ->
-      if (t.i_len - t.i_pos) = 0
+      if (t.i_len - t.i_pos) > 0
       then match block with
-        | Dynamic { frequencies; deflate; _ } ->
-          { t with state = DynamicHeader
-                             (dynamic
-                               frequencies
-                               (Q.of_seq deflate)
-                               (fun _ -> Full))
-                 ; i_off = off
-                 ; i_len = len
-                 ; i_pos = 0 }
-        | Static { frequencies; deflate; _ } ->
-          { t with state = StaticHeader
-                             (static
-                               frequencies
-                               (Q.of_seq deflate)
-                               (fun _ -> Full))
-                 ; i_off = off
-                 ; i_len = len
-                 ; i_pos = 0 }
-        | Flat len -> { t with state = WriteBlock (flat 0 0 len false) }
-      else raise (Invalid_argument (Format.sprintf "Z.full_flush: you lost \
-                                                    something (pos: %d, \
-                                                               len: %d)"
-                                      t.i_pos t.i_len))
-    | _ -> raise (Invalid_argument "Z.full_flush: bad state")
+        | Dynamic x -> { t with state = DynamicHeader (dynamic x.frequencies (Q.of_seq x.deflate) to_full)
+                              ; i_off = off
+                              ; i_len = len
+                              ; i_pos = 0 }
+        | Static x  -> { t with state = StaticHeader (static x.frequencies (Q.of_seq x.deflate) to_full)
+                              ; i_off = off
+                              ; i_len = len
+                              ; i_pos = 0 }
+        | Flat len  -> { t with state = WriteBlock (flat 0 0 len false)
+                              ; i_off = off
+                              ; i_len = len
+                              ; i_pos = 0 }
+      else invalid_arg (Format.asprintf "full_flush: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
+    | _ -> invalid_arg "full_flush: invalid state"
 
   let flush_of_meth = function
     | PARTIAL -> partial_flush
     | SYNC -> sync_flush
     | FULL -> full_flush
 
-  let header wbits mode src dst t =
-    let header = (8 + ((wbits - 8) lsl 4)) lsl 8 in
-    let header = header lor (0x4 lsl 5) in
-      (* XXX: FDICT = 0 and FLEVEL = 2,
-              we use a default algorithm. *)
-    let header = header + (31 - (header mod 31)) in
-
-    (KHeader.put_byte (header lsr 8)
-     @@ KHeader.put_byte (header land 0xFF)
-     @@ fun _ _ t ->
-        Cont { t with hold = 0
-                    ; bits = 0
-                    ; state = MakeBlock mode })
-                    (* XXX: not necessary to update [hold] and [bits] but to
-                            be clear. *)
-    src dst t
+  let eval0 safe_src safe_dst t =
+    match t.state with
+    | MakeBlock block -> make_block safe_src safe_dst t block
+    | WriteBlock k -> k safe_src safe_dst t
+    | FastBlock (ltree, dtree, queue, code, flush) -> write_fast_block safe_src safe_dst t ltree dtree queue code flush
+    | AlignBlock (freqs, last) -> align_block freqs last safe_src safe_dst t
+    | FixedBlock freqs -> fixed_block freqs false safe_src safe_dst t
+    | DynamicHeader k -> k safe_src safe_dst t
+    | StaticHeader k -> k safe_src safe_dst t
+    | End -> ok t
+    | Exception exn -> error t exn
 
   let eval src dst t =
     let safe_src = Safe.read_only src in
     let safe_dst = Safe.write_only dst in
 
-    let eval0 t =
-      match t.state with
-      | Header k -> k safe_src safe_dst t
-      | MakeBlock block -> make_block safe_src safe_dst t block
-      | WriteBlock k -> k safe_src safe_dst t
-      | FastBlock (ltree, dtree, queue, code, flush) ->
-        fast_block safe_src safe_dst t ltree dtree queue code flush
-      | AlignBlock (f, last) -> align_block f last safe_src safe_dst t
-      | FixedBlock f -> fixed_block f false safe_src safe_dst t
-      | DynamicHeader k -> k safe_src safe_dst t
-      | StaticHeader k -> k safe_src safe_dst t
-      | WriteCrc k -> k safe_src safe_dst t
-      | End -> ok t
-      | Exception exn -> error t exn
-    in
-
-    let rec loop t =
-      match eval0 t with
+    let rec loop t = match eval0 safe_src safe_dst t with
       | Cont t -> loop t
       | Wait t -> `Await t
       | Flush t -> `Flush t
       | Ok t -> `End t
-      | Error (t, exn) -> `Error (t, exn)
-    in
+      | Error (t, exn) -> `Error (t, exn) in
 
     loop t
 
@@ -1881,11 +1739,11 @@ struct
   let used_out t = t.o_pos
 
   let default ~proof ?(wbits = 15) level =
-    { hold  = 0
-    ; bits  = 0
-    ; temp  = if level <> 0
-              then Safe.read_and_write @@ B.empty ~proof
-              else Safe.read_and_write @@ B.from ~proof 0x8000
+    { hold = 0
+    ; bits = 0
+    ; temp = if level <> 0
+        then Safe.read_and_write @@ B.empty ~proof
+        else Safe.read_and_write @@ B.from ~proof 0x8000
     ; o_off = 0
     ; o_pos = 0
     ; o_len = 0
@@ -1896,51 +1754,199 @@ struct
     ; level
     ; wbits
     ; adler = 1l
-    ; state = Header (header wbits (block_of_level ~wbits level))}
+    ; state = MakeBlock (block_of_level ~wbits level) }
 
-  let to_result src dst ?meth refiller flusher t =
-    let rec aux acc t = match eval src dst t, meth with
-      | `Await t, None ->
-        let n = refiller src None in
-        let t =
-          if n = 0
-          then finish t
-          else no_flush 0 n t
-        in
+  include Convience_deflate
+      (struct
+        type nonrec ('i, 'o) t = ('i, 'o) t
+        type nonrec error = error
+        type nonrec meth = meth = PARTIAL | SYNC | FULL
 
-        aux (acc + n) t
-      | `Await t, Some (meth, max) ->
-        let n = refiller src (Some (max - acc)) in
-        let t, acc' =
-          if n = 0 && (max - acc) <> 0
-          then finish t, acc
-          else if max = acc
-               then flush_of_meth meth 0 n t, 0
-               else no_flush 0 n t, acc + n
-        in
+        let eval = eval
+        let finish = finish
+        let no_flush = no_flush
+        let flush_of_meth = flush_of_meth
+        let flush = flush
+        let used_out = used_out
+      end)
+end
 
-        aux acc' t
-      | `Flush t, _ ->
-        let n = used_out t in
-        let n = flusher dst n in
-        aux acc (flush 0 n t)
-      | `End t, _ ->
-        if used_out t = 0
-        then Pervasives.Ok t
-        else let n = flusher dst (used_out t) in
-             Pervasives.Ok (flush 0 n t)
-      | `Error (_, exn), _ -> Pervasives.Error exn
-    in aux 0 t
+type error_z_deflate = RFC1951 of error_rfc1951_deflate
 
-  let bytes src dst ?meth refiller flusher t =
-    to_result (B.from_bytes src) (B.from_bytes dst) ?meth
-      (function B.Bytes v -> refiller v)
-      (function B.Bytes v -> flusher v) t
+module Zlib_deflate =
+struct
+  type error = error_z_deflate
 
-  let bigstring src dst ?meth refiller flusher t =
-    to_result (B.from_bigstring src) (B.from_bigstring dst) ?meth
-      (function B.Bigstring v -> refiller v)
-      (function B.Bigstring v -> flusher v) t
+  module F = RFC1951_deflate.F
+
+  type ('i, 'o) t =
+    { d : ('i, 'o) RFC1951_deflate.t
+    ; z : ('i, 'o) state }
+  and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
+                   (Safe.write, 'o) Safe.t ->
+                   ('i, 'o) t ->
+                   ('i, 'o) res
+  and ('i, 'o) state =
+    | Header of ('i, 'o) k
+    | Deflate
+    | Adler32 of ('i, 'o) k
+    | Finish
+    | Exception of error
+  and ('i, 'o) res =
+    | Cont  of ('i, 'o) t
+    | Wait  of ('i, 'o) t
+    | Flush of ('i, 'o) t
+    | Ok    of ('i, 'o) t
+    | Error of ('i, 'o) t * error
+  and meth = RFC1951_deflate.meth = PARTIAL | SYNC | FULL
+
+  let pp_error fmt = function
+    | RFC1951 err -> Format.fprintf fmt "(RFC1951 %a)" RFC1951_deflate.pp_error err
+
+  let pp_state fmt = function
+    | Header _    -> Format.fprintf fmt "(Header #fun)"
+    | Deflate     -> Format.fprintf fmt "Deflate"
+    | Adler32 _   -> Format.fprintf fmt "(Adler32 #fun)"
+    | Finish      -> Format.fprintf fmt "Finish"
+    | Exception e -> Format.fprintf fmt "(Exception %a)" pp_error e
+
+  let pp fmt { d; z; } =
+    Format.fprintf fmt "{@[<hov>d = @[<hov>%a@];@ \
+                        z = %a;@]}"
+      RFC1951_deflate.pp d
+      pp_state z
+
+  let ok t        = Ok { t with z = Finish }
+  let error t exn = Error ({ t with z = Exception exn }, exn)
+
+  let rec put_byte ~ctor byte k src dst t =
+    if (t.d.RFC1951_deflate.o_len - t.d.RFC1951_deflate.o_pos) > 0
+    then begin
+      Safe.set dst (t.d.RFC1951_deflate.o_off + t.d.RFC1951_deflate.o_pos) (Char.unsafe_chr byte);
+      k src dst { t with d = { t.d with RFC1951_deflate.o_pos = t.d.RFC1951_deflate.o_pos + 1
+                                      ; RFC1951_deflate.write = t.d.RFC1951_deflate.write + 1 } }
+    end else Flush { t with z = ctor (fun src dst t -> (put_byte[@tailcall]) ~ctor byte k src dst t) }
+
+  let put_short_lsb ~ctor short k src dst t =
+    let put_byte = put_byte ~ctor in
+    (put_byte (short land 0xFF)
+     @@ put_byte (short lsr 8 land 0xFF) k)
+      src dst t
+
+  let align ~ctor k src dst t =
+    (* XXX: we ensure than [hold] can not store more than 2 bytes. *)
+    if t.d.RFC1951_deflate.bits > 8
+    then let k src dst t = k src dst { t with d = { t.d with RFC1951_deflate.hold = 0
+                                                           ; RFC1951_deflate.bits = 0 } } in
+      put_short_lsb ~ctor t.d.RFC1951_deflate.hold k src dst t
+    else if t.d.RFC1951_deflate.bits > 0
+    then let k src dst t = k src dst { t with d = { t.d with RFC1951_deflate.hold = 0
+                                                           ; RFC1951_deflate.bits = 0 } } in
+      put_byte ~ctor t.d.RFC1951_deflate.hold k src dst t
+    else k src dst { t with d = { t.d with RFC1951_deflate.hold = 0
+                                         ; RFC1951_deflate.bits = 0 } }
+
+  let put_short_msb ~ctor short k src dst t =
+    let put_byte = put_byte ~ctor in
+    (put_byte (short lsr 8 land 0xFF)
+     @@ put_byte (short land 0xFF) k)
+      src dst t
+
+  module KHeader =
+  struct
+    let ctor k = Header k
+    let put_short_msb short k src dst t = put_short_msb ~ctor short k src dst t
+  end
+
+  module KAdler32 =
+  struct
+    let ctor k = Adler32 k
+    let align k src dst t = align ~ctor k src dst t
+    let put_short_msb short k src dst t = put_short_msb ~ctor short k src dst t
+  end
+
+  let adler32 src dst t =
+    let adler = t.d.RFC1951_deflate.adler in
+
+    let k _src _dst t = ok t in
+
+    (KAdler32.align
+     @@ KAdler32.put_short_msb Adler32.I.(Int32.to_int ((adler >> 16) && 0xFFFFl))
+     @@ KAdler32.put_short_msb Adler32.I.(Int32.to_int (adler && 0xFFFFl)) k)
+      src dst t
+
+  let deflate src dst t = match RFC1951_deflate.eval0 src dst t.d with
+    | RFC1951_deflate.Cont d -> Cont { t with d }
+    | RFC1951_deflate.Wait d -> Wait { t with d }
+    | RFC1951_deflate.Flush d -> Flush { t with d }
+    | RFC1951_deflate.Ok d -> Cont { z = Adler32 adler32
+                                   ; d }
+    | RFC1951_deflate.Error (d, exn) -> error { t with d } (RFC1951 exn)
+
+  let header wbits src dst t =
+    let header = (8 + ((wbits - 8) lsl 4)) lsl 8 in
+    let header = header lor (0x4 lsl 5) in
+    (* XXX: FDICT = 0 and FLEVEL = 2, we use a default algorithm. *)
+    let header = header + (31 - (header mod 31)) in
+    let k _src _dst t =
+      Cont { d = { t.d with RFC1951_deflate.hold = 0
+                          ; RFC1951_deflate.bits = 0 }
+           ; z = Deflate } in
+
+    KHeader.put_short_msb header k src dst t
+
+  let eval src dst t =
+    let safe_src = Safe.read_only src in
+    let safe_dst = Safe.write_only dst in
+
+    let eval0 t = match t.z with
+      | Header k -> k safe_src safe_dst t
+      | Deflate -> deflate safe_src safe_dst t
+      | Adler32 k -> k safe_src safe_dst t
+      | Finish -> ok t
+      | Exception exn -> error t exn in
+
+    let rec loop t = match eval0 t with
+      | Cont t -> loop t
+      | Wait t -> `Await t
+      | Flush t -> `Flush t
+      | Ok t -> `End t
+      | Error (t, exn) -> `Error (t, exn) in
+
+    loop t
+
+  let default ~proof ?(wbits = 15) level =
+    { d = RFC1951_deflate.default ~proof ~wbits level
+    ; z = Header (header wbits) }
+
+  let get_frequencies t = RFC1951_deflate.get_frequencies t.d
+  let set_frequencies ?paranoid freqs t = { t with d = RFC1951_deflate.set_frequencies ?paranoid  freqs t.d }
+
+  let finish t = { t with d = RFC1951_deflate.finish t.d }
+  let no_flush off len t = { t with d = RFC1951_deflate.no_flush off len t.d }
+  let partial_flush off len t = { t with d = RFC1951_deflate.partial_flush off len t.d }
+  let sync_flush off len t = { t with d = RFC1951_deflate.sync_flush off len t.d }
+  let full_flush off len t = { t with d = RFC1951_deflate.full_flush off len t.d }
+
+  let flush_of_meth meth off len t = { t with d = RFC1951_deflate.flush_of_meth meth off len t.d }
+
+  let flush off len t = { t with d = RFC1951_deflate.flush off len t.d }
+  let used_in t = RFC1951_deflate.used_in t.d
+  let used_out t = RFC1951_deflate.used_out t.d
+
+  include Convience_deflate
+      (struct
+        type nonrec ('i, 'o) t = ('i, 'o) t
+        type nonrec error = error
+        type nonrec meth = meth = PARTIAL | SYNC | FULL
+
+        let eval = eval
+        let finish = finish
+        let no_flush = no_flush
+        let flush_of_meth = flush_of_meth
+        let flush = flush
+        let used_out = used_out
+      end)
 end
 
 module Window =
@@ -2079,7 +2085,7 @@ sig
                   (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
-module type S =
+module type S_inflate =
 sig
   type ('i, 'o) t
   type error
@@ -2090,7 +2096,7 @@ sig
   val used_out: ('i, 'o) t -> int
 end
 
-module Convenience (X: S) =
+module Convenience_inflate (X: S_inflate) =
 struct
   let to_result src dst refiller flusher t =
     let rec go t = match X.eval src dst t with
@@ -2124,12 +2130,12 @@ struct
       t
 end
 
-type error_rfc1951 =
+type error_rfc1951_inflate =
   | Invalid_kind_of_block
   | Invalid_complement_of_length
   | Invalid_dictionary
 
-module RFC1951 =
+module RFC1951_inflate =
 struct
   (* functionnal implementation of Heap, bisoux @c-cube *)
   module Heap =
@@ -2326,7 +2332,7 @@ struct
     | Dist      of int
     | ExtDist   of int * int
     | Write     of int * int
-  and error = error_rfc1951
+  and error = error_rfc1951_inflate
 
   let pp_error fmt = function
     | Invalid_kind_of_block        -> Format.fprintf fmt "Invalid_kind_of_block"
@@ -3004,8 +3010,7 @@ struct
   let used_out t = t.o_pos
   let write t = t.write
 
-
-  include Convenience
+  include Convenience_inflate
       (struct
         type nonrec ('i, 'o) t = ('i, 'o) t
         type nonrec error = error
@@ -3017,15 +3022,15 @@ struct
       end)
 end
 
-type error_z =
-  | RFC1951 of RFC1951.error
+type error_z_inflate =
+  | RFC1951 of RFC1951_inflate.error
   | Invalid_header
   | Invalid_checksum of { have: Adler32.t; expect: Adler32.t }
 
-module Z =
+module Zlib_inflate =
 struct
   type ('i, 'o) t =
-    { d : ('i, 'o) RFC1951.t
+    { d : ('i, 'o) RFC1951_inflate.t
     ; z : ('i, 'o) state }
   and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
     (Safe.write, 'o) Safe.t ->
@@ -3043,10 +3048,10 @@ struct
     | Flush of ('i, 'o) t
     | Ok    of ('i, 'o) t
     | Error of ('i, 'o) t * error
-  and error = error_z
+  and error = error_z_inflate
 
   let pp_error fmt = function
-    | RFC1951 err                        -> Format.fprintf fmt "(RFC1951 %a)" RFC1951.pp_error err
+    | RFC1951 err                        -> Format.fprintf fmt "(RFC1951 %a)" RFC1951_inflate.pp_error err
     | Invalid_header                     -> Format.fprintf fmt "Invalid_header"
     | Invalid_checksum { have; expect; } -> Format.fprintf fmt "(Invalid_check (have:%a, expect:%a))" Adler32.pp have Adler32.pp expect
 
@@ -3060,7 +3065,7 @@ struct
   let pp fmt { d; z; } =
     Format.fprintf fmt "{@[<hov>d = @[<hov>%a@];@ \
                         z = %a;@]}"
-      RFC1951.pp d
+      RFC1951_inflate.pp d
       pp_state z
 
   let error t exn =
@@ -3070,36 +3075,36 @@ struct
     Ok { t with z = Finish }
 
   let rec get_byte ~ctor k src dst t =
-    if (t.d.RFC1951.i_len - t.d.RFC1951.i_pos) > 0
-    then let byte = Char.code (Safe.get src (t.d.RFC1951.i_off + t.d.RFC1951.i_pos)) in
-      k byte src dst { t with d = { t.d with RFC1951.i_pos = t.d.RFC1951.i_pos + 1 } }
+    if (t.d.RFC1951_inflate.i_len - t.d.RFC1951_inflate.i_pos) > 0
+    then let byte = Char.code (Safe.get src (t.d.RFC1951_inflate.i_off + t.d.RFC1951_inflate.i_pos)) in
+      k byte src dst { t with d = { t.d with RFC1951_inflate.i_pos = t.d.RFC1951_inflate.i_pos + 1 } }
     else Wait { t with z = ctor (fun src dst t -> (get_byte[@tailcall]) ~ctor k src dst t) }
 
   let get_with_holding ~ctor k src dst t =
     (* XXX: [hold] contains one already read byte. *)
-    if t.d.RFC1951.bits >= 8
-    then let byte = t.d.RFC1951.hold land 0xFF in
+    if t.d.RFC1951_inflate.bits >= 8
+    then let byte = t.d.RFC1951_inflate.hold land 0xFF in
       k byte src dst
-        { t with d = { t.d with RFC1951.hold = t.d.RFC1951.hold lsr 8
-                              ; RFC1951.bits = t.d.RFC1951.bits - 8 } }
+        { t with d = { t.d with RFC1951_inflate.hold = t.d.RFC1951_inflate.hold lsr 8
+                              ; RFC1951_inflate.bits = t.d.RFC1951_inflate.bits - 8 } }
     else get_byte ~ctor k src dst t
 
   let peek_bits ~ctor n k src dst t =
     let get_byte = get_byte ~ctor in
     let rec go src dst t =
-      if t.d.RFC1951.bits < n
+      if t.d.RFC1951_inflate.bits < n
       then get_byte (fun byte src dst t -> (go[@tailcall]) src dst
-                        { t with d = { t.d with RFC1951.hold = t.d.RFC1951.hold lor (byte lsl t.d.RFC1951.bits)
-                                              ; RFC1951.bits = t.d.RFC1951.bits + 8 } })
+                        { t with d = { t.d with RFC1951_inflate.hold = t.d.RFC1951_inflate.hold lor (byte lsl t.d.RFC1951_inflate.bits)
+                                              ; RFC1951_inflate.bits = t.d.RFC1951_inflate.bits + 8 } })
           src dst t
       else k src dst t
     in go src dst t
 
   let drop_bits ~ctor n k src dst t =
     let go src dst t =
-      k src dst { t with d = { t.d with RFC1951.hold = t.d.RFC1951.hold lsr n
-                                      ; RFC1951.bits = t.d.RFC1951.bits - n } } in
-    if t.d.RFC1951.bits < n
+      k src dst { t with d = { t.d with RFC1951_inflate.hold = t.d.RFC1951_inflate.hold lsr n
+                                      ; RFC1951_inflate.bits = t.d.RFC1951_inflate.bits - n } } in
+    if t.d.RFC1951_inflate.bits < n
     then peek_bits ~ctor n go src dst t
     else go src dst t
 
@@ -3117,9 +3122,9 @@ struct
   end
 
   let adler32 src dst t =
-    let have = Window.crc t.d.RFC1951.window in
+    let have = Window.crc t.d.RFC1951_inflate.window in
 
-    (KCrc.drop_bits (t.d.RFC1951.bits mod 8)
+    (KCrc.drop_bits (t.d.RFC1951_inflate.bits mod 8)
      @@ KCrc.get_with_holding
      @@ fun a1 -> KCrc.get_with_holding
      @@ fun a2 -> KCrc.get_with_holding
@@ -3138,13 +3143,13 @@ struct
      else ok t)
       src dst t
 
-  let inflate src dst t = match RFC1951.eval0 src dst t.d with
-    | RFC1951.Cont d -> Cont { t with d }
-    | RFC1951.Wait d -> Wait { t with d }
-    | RFC1951.Flush d -> Flush { t with d }
-    | RFC1951.Ok d -> Cont { z = Adler32 adler32
-                           ; d }
-    | RFC1951.Error (d, exn) -> error { t with d } (RFC1951 exn)
+  let inflate src dst t = match RFC1951_inflate.eval0 src dst t.d with
+    | RFC1951_inflate.Cont d -> Cont { t with d }
+    | RFC1951_inflate.Wait d -> Wait { t with d }
+    | RFC1951_inflate.Flush d -> Flush { t with d }
+    | RFC1951_inflate.Ok d -> Cont { z = Adler32 adler32
+                                   ; d }
+    | RFC1951_inflate.Error (d, exn) -> error { t with d } (RFC1951 exn)
 
   let header src dst t =
     (KHeader.get_byte
@@ -3173,16 +3178,16 @@ struct
     loop t
 
   let default window =
-    { d = RFC1951.default window
+    { d = RFC1951_inflate.default window
     ; z = Header header }
 
-  let refill off len t = { t with d = RFC1951.refill off len t.d }
-  let flush off len t = { t with d = RFC1951.flush off len t.d }
-  let used_in t = RFC1951.used_in t.d
-  let used_out t = RFC1951.used_out t.d
-  let write t = RFC1951.write t.d
+  let refill off len t = { t with d = RFC1951_inflate.refill off len t.d }
+  let flush off len t = { t with d = RFC1951_inflate.flush off len t.d }
+  let used_in t = RFC1951_inflate.used_in t.d
+  let used_out t = RFC1951_inflate.used_out t.d
+  let write t = RFC1951_inflate.write t.d
 
-  include Convenience
+  include Convenience_inflate
       (struct
         type nonrec ('i, 'o) t = ('i, 'o) t
         type nonrec error = error

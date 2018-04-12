@@ -148,11 +148,7 @@ end
 module type DEFLATE =
 sig
   (** Deflate error. *)
-  type error =
-    | Lz77_error of L.error (** This error appears when the Lz77
-                                algorithm produces an error, see
-                                {!L.error}.
-                             *)
+  type error
 
   (** Frequencies module.
 
@@ -191,32 +187,32 @@ sig
   (** [finish t] means all input was sended. [t] will produce a new zlib block
       with the [final] flag and write the checksum of the input stream.
    *)
-  val finish          : ('i, 'o) t -> ('i, 'o) t
+  val finish          : ('x, 'x) t -> ('x, 'x) t
 
   (** [no_flush off len t] means to continue the compression of an input at
       [off] on [len] byte(s).
    *)
-  val no_flush        : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val no_flush        : int -> int -> ('x, 'x) t -> ('x, 'x) t
 
   (** [partial_flush off len t] finishes the current block, then the encoder
       writes a fixed empty block. So, the output is not aligned. We keep the
       current frequencies to compute the new Huffman tree for the new next
       block.
    *)
-  val partial_flush   : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val partial_flush   : int -> int -> ('x, 'x) t -> ('x, 'x) t
 
   (** [sync_flush off len t] finishes the current block, then the encoder writes
       a stored empty block and the output is aligned. We keep the current
       frequencies to compute the new Huffman tree for the new next block.
    *)
-  val sync_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val sync_flush      : int -> int -> ('x, 'x) t -> ('x, 'x) t
 
   (** [full_flush off len t] finishes the current block, then the encoder writes
       a stored empty block and the output is aligned. We delete the current
       frequencies to compute a new frequencies from your input and write a new
       Huffman tree for the new next block.
    *)
-  val full_flush      : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val full_flush      : int -> int -> ('x, 'x) t -> ('x, 'x) t
 
   type meth = PARTIAL | SYNC | FULL
 
@@ -224,7 +220,7 @@ sig
       [flush_of_meth SYNC] returns [sync_flush]. It's a convenience function,
       nothing else.
   *)
-  val flush_of_meth   : meth -> (int -> int -> ('i, 'o) t -> ('i, 'o) t)
+  val flush_of_meth   : meth -> (int -> int -> ('x, 'x) t -> ('x, 'x) t)
 
   (** [flush off len t] allows the state [t] to use an output at [off] on [len]
       byte(s).
@@ -295,7 +291,13 @@ sig
                   (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
-module Deflate : DEFLATE
+type error_rfc1951_deflate = Lz77 of L.error
+
+module RFC1951_deflate: DEFLATE with type error = error_rfc1951_deflate
+
+type error_z_deflate = RFC1951 of RFC1951_deflate.error
+
+module Zlib_deflate: DEFLATE with type error = error_z_deflate
 
 (** Window used by the Inflate algorithm.
 
@@ -401,16 +403,16 @@ sig
     (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
-type error_rfc1951 =
+type error_rfc1951_inflate =
   | Invalid_kind_of_block
   | Invalid_complement_of_length
   | Invalid_dictionary
 
-module RFC1951: INFLATE with type error = error_rfc1951
+module RFC1951_inflate: INFLATE with type error = error_rfc1951_inflate
 
-type error_z =
-  | RFC1951 of RFC1951.error
+type error_z_inflate =
+  | RFC1951 of RFC1951_inflate.error
   | Invalid_header
   | Invalid_checksum of { have: Adler32.t; expect: Adler32.t; }
 
-module Z: INFLATE with type error = error_z
+module Zlib_inflate: INFLATE with type error = error_z_inflate
