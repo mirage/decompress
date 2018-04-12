@@ -1221,17 +1221,14 @@ struct
       go 0 src dst t
   end
 
-  let (.%{}) : 'a array -> int -> 'a = Array.unsafe_get
-  let (.%{}<-) : 'a array -> int -> 'a -> unit = Array.unsafe_set
-
   let get_tree_symbols hlit lit_lengths hdist dist_lengths =
     let len    = hlit + hdist in
     let src    = Array.make len 0 in
     let result = Array.make (286 + 30) 0 in
     let freqs  = Array.make 19 0 in
 
-    for i = 0 to hlit - 1 do src.%{i} <- lit_lengths.%{i} done;
-    for i = hlit to hlit + hdist - 1 do src.%{i} <- dist_lengths.%{i - hlit} done;
+    for i = 0 to hlit - 1 do Array.unsafe_set src i (Array.unsafe_get lit_lengths i) done;
+    for i = hlit to hlit + hdist - 1 do Array.unsafe_set src i (Array.unsafe_get dist_lengths (i - hlit)) done;
 
     let n = ref 0 in
     let i = ref 0 in
@@ -1240,19 +1237,19 @@ struct
     do
       let j = ref 1 in
 
-      while !i + !j < len && src.%{!i + !j} = src.%{!i}
+      while !i + !j < len && Array.unsafe_get src (!i + !j) = Array.unsafe_get src !i
       do incr j done;
 
       let run_length = ref !j in
 
-      if src.%{!i} = 0
+      if Array.unsafe_get src !i = 0
       then
         if !run_length < 3
         then
           while !run_length > 0 do
-            result.%{!n} <- 0;
+            Array.unsafe_set result !n 0;
             incr n;
-            freqs.%{0} <- freqs.%{0} + 1;
+            Array.unsafe_set freqs 0 (Array.unsafe_get freqs 0 + 1);
             decr run_length;
           done
         else
@@ -1264,34 +1261,34 @@ struct
 
             if !rpt <= 10
             then begin
-              result.%{!n} <- 17;
+              Array.unsafe_set result !n 17;
               incr n;
-              result.%{!n} <- !rpt - 3;
+              Array.unsafe_set result !n (!rpt - 3);
               incr n;
-              freqs.%{17} <- freqs.%{17} + 1;
+              Array.unsafe_set freqs 17 (Array.unsafe_get freqs 17 + 1);
             end else begin
-              result.%{!n} <- 18;
+              Array.unsafe_set result !n 18;
               incr n;
-              result.%{!n} <- !rpt - 11;
+              Array.unsafe_set result !n (!rpt - 11);
               incr n;
-              freqs.%{18} <- freqs.%{18} + 1;
+              Array.unsafe_set freqs 18 (Array.unsafe_get freqs 18 + 1);
             end;
 
             run_length := !run_length - !rpt;
           done
       else
         begin
-          result.%{!n} <- src.%{!i};
+          Array.unsafe_set result !n (Array.unsafe_get src !i);
           incr n;
-          freqs.%{src.%{!i}} <- freqs.%{src.%{!i}} + 1;
+          Array.unsafe_set freqs (Array.unsafe_get src !i) (Array.unsafe_get freqs (Array.unsafe_get src !i) + 1);
           decr run_length;
 
           if !run_length < 3
           then
             while !run_length > 0 do
-              result.%{!n} <- src.%{!i};
+              Array.unsafe_set result !n (Array.unsafe_get src !i);
               incr n;
-              freqs.%{src.%{!i}} <- freqs.%{src.%{!i}} + 1;
+              Array.unsafe_set freqs (Array.unsafe_get src !i) (Array.unsafe_get freqs (Array.unsafe_get src !i) + 1);
               decr run_length;
             done
           else
@@ -1301,11 +1298,11 @@ struct
               if !rpt > !run_length - 3 && !rpt < !run_length
               then rpt := !run_length - 3;
 
-              result.%{!n} <- 16;
+              Array.unsafe_set result !n 16;
               incr n;
-              result.%{!n} <- (!rpt - 3);
+              Array.unsafe_set result !n (!rpt - 3);
               incr n;
-              freqs.%{16} <- freqs.%{16} + 1;
+              Array.unsafe_set freqs 16 (Array.unsafe_get freqs 16 + 1);
 
               run_length := !run_length - !rpt;
             done
@@ -1338,27 +1335,27 @@ struct
       | n -> invalid_arg (Format.asprintf "Invalid level: %d" n)
 
   let zip arr1 arr2 =
-    Array.init (Array.length arr1) (fun i -> arr1.%{i}, arr2.%{i})
+    Array.init (Array.length arr1) (fun i -> Array.unsafe_get arr1 i, Array.unsafe_get arr2 i)
 
   let write_block ltree dtree queue flush src dst t =
     match Q.take_front_exn queue with
     | Hunk.Literal chr, tl ->
-      (KWriteBlock.put_bits ltree.%{Char.code chr}
+      (KWriteBlock.put_bits (Array.unsafe_get ltree (Char.code chr))
        @@ fun _src _dst t ->
        Cont { t with state = FastBlock (ltree, dtree, tl, Length, flush) })
         src dst t
     | Hunk.Match (len, dist), tl ->
-      (KWriteBlock.put_bits ltree.%{Table._length.%{len} + 256 + 1}
-       @@ KWriteBlock.put_bits (len - Table._base_length.%{Table._length.%{len}},
-                                Table._extra_lbits.%{Table._length.%{len}})
-       @@ KWriteBlock.put_bits dtree.%{Table._distance dist}
-       @@ KWriteBlock.put_bits (dist - Table._base_dist.%{Table._distance dist},
-                                Table._extra_dbits.%{Table._distance dist})
+      (KWriteBlock.put_bits (Array.unsafe_get ltree (Array.unsafe_get Table._length len + 256 + 1))
+       @@ KWriteBlock.put_bits (len - (Array.unsafe_get Table._base_length (Array.unsafe_get Table._length len)),
+                                Array.unsafe_get Table._extra_lbits (Array.unsafe_get Table._length len))
+       @@ KWriteBlock.put_bits (Array.unsafe_get dtree (Table._distance dist))
+       @@ KWriteBlock.put_bits (dist - (Array.unsafe_get Table._base_dist (Table._distance dist)),
+                                Array.unsafe_get Table._extra_dbits (Table._distance dist))
        @@ fun _src _dst t ->
        Cont { t with state = FastBlock (ltree, dtree, tl, Length, flush) })
         src dst t
     | exception Q.Empty ->
-      (KWriteBlock.put_bits ltree.%{256}
+      (KWriteBlock.put_bits (Array.unsafe_get ltree 256)
        @@ fun _src _dst t -> Cont { t with state = block_of_flush flush })
         src dst t
 
@@ -1483,7 +1480,7 @@ struct
   let fixed_block frequencies last src dst t =
     (KWriteBlock.put_bit last
      @@ KWriteBlock.put_bits (1, 2)
-     @@ KWriteBlock.put_bits Table._static_ltree.%{256}
+     @@ KWriteBlock.put_bits (Array.unsafe_get Table._static_ltree 256)
      @@ fun _str _dst t ->
      let block = block_of_level ~wbits:t.wbits ~frequencies t.level in
      Cont { t with state = if last then End else MakeBlock block })
@@ -1512,17 +1509,17 @@ struct
       let hd, tl = Q.take_front_exn !queue in
       let (code, len), new_goto, new_queue = match !goto, hd with
         | Length, Hunk.Literal chr ->
-          ltree.%{Char.code chr}, Length, tl
+          Array.unsafe_get ltree (Char.code chr), Length, tl
         | Length, Hunk.Match (len, _) ->
-          ltree.%{Table._length.%{len} + 256 + 1}, ExtLength, !queue
+          Array.unsafe_get ltree (Array.unsafe_get Table._length len + 256 + 1), ExtLength, !queue
         | ExtLength, Hunk.Match (len, _) ->
-          let code = Table._length.%{len} in
-          (len - Table._base_length.%{code}, Table._extra_lbits.%{code}), Dist, !queue
+          let code = Array.unsafe_get Table._length len in
+          (len - Array.unsafe_get Table._base_length code, Array.unsafe_get Table._extra_lbits code), Dist, !queue
         | Dist, Hunk.Match (_, dist) ->
-          dtree.%{Table._distance dist}, ExtDist, !queue
+          Array.unsafe_get dtree (Table._distance dist), ExtDist, !queue
         | ExtDist, Hunk.Match (_, dist) ->
           let code = Table._distance dist in
-          (dist - Table._base_dist.%{code}, Table._extra_dbits.%{code}), Length, tl
+          (dist - (Array.unsafe_get Table._base_dist code), Array.unsafe_get Table._extra_dbits code), Length, tl
         | _ -> assert false in
 
       if !bits + len > 16
@@ -1551,20 +1548,20 @@ struct
     let k0 queue src dst t = write_block ltree dtree queue flush src dst t in
     let k1 queue dist src dst t =
       KWriteBlock.put_bits
-        (dist - (Table._base_dist.%{Table._distance dist}),
-         Table._extra_dbits.%{Table._distance dist})
+        (dist - (Array.unsafe_get Table._base_dist (Table._distance dist)),
+         Array.unsafe_get Table._extra_dbits (Table._distance dist))
         (k0 queue) src dst t in
     let k2 queue dist src dst t =
-      KWriteBlock.put_bits dtree.%{Table._distance dist}
+      KWriteBlock.put_bits (Array.unsafe_get dtree (Table._distance dist))
         (k1 queue dist) src dst t in
     let k3 queue len dist src dst t =
       KWriteBlock.put_bits
-        (len - Table._base_length.%{Table._length.%{len}},
-         Table._extra_lbits.%{Table._length.%{len}})
+        (len - Array.unsafe_get Table._base_length (Array.unsafe_get Table._length len),
+         Array.unsafe_get Table._extra_lbits (Array.unsafe_get Table._length len))
         (k2 queue dist) src dst t in
     let ke src dst t =
       KWriteBlock.put_bits
-        ltree.%{256}
+        (Array.unsafe_get ltree 256)
         (fun _src _dst t -> Cont { t with state = block_of_flush flush })
         src dst t in
 
