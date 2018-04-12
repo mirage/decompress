@@ -24,8 +24,8 @@ let do_command input_size output_size mode level wbits =
 
   match mode with
   | `Compression ->
-    let t = Decompress.Deflate.default ~proof:src ~wbits level in
-    let r = Decompress.Deflate.to_result
+    let t = Decompress.Zlib_deflate.default ~proof:src ~wbits level in
+    let r = Decompress.Zlib_deflate.to_result
       src dst
       (fun src -> function
        | Some max -> unix_read Unix.stdin src 0 (min max input_size)
@@ -34,11 +34,11 @@ let do_command input_size output_size mode level wbits =
       t
     in (match r with
         | Ok _ -> ()
-        | Error exn -> Format.eprintf "%a\n%!" Decompress.Deflate.pp_error exn)
+        | Error exn -> Format.eprintf "%a\n%!" Decompress.Zlib_deflate.pp_error exn)
   | `Decompression ->
     let w = Decompress.Window.create ~proof:dst in
-    let t = Decompress.Z.default w in
-    let r = Decompress.Z.to_result
+    let t = Decompress.Zlib_inflate.default w in
+    let r = Decompress.Zlib_inflate.to_result
       src dst
       (fun src -> unix_read Unix.stdin src 0 input_size)
       (fun dst len ->
@@ -46,7 +46,7 @@ let do_command input_size output_size mode level wbits =
       t
     in (match r with
         | Ok _ -> ()
-        | Error exn -> Format.eprintf "%a\n%!" Decompress.Z.pp_error exn)
+        | Error exn -> Format.eprintf "%a\n%!" Decompress.Zlib_inflate.pp_error exn)
 
 open Cmdliner
 
