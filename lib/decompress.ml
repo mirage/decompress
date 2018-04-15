@@ -1046,7 +1046,8 @@ struct
     | FixedBlock    of F.t
     | DynamicHeader of ('i, 'o) k
     | StaticHeader  of ('i, 'o) k
-    | End
+    | AlignF        of ('i, 'o) k
+    | Finish
     | Exception     of error
   and ('i, 'o) res =
     | Cont  of ('i, 'o) t
@@ -1100,7 +1101,8 @@ struct
     | FixedBlock f                     -> Format.fprintf fmt "(FixedBlock %a)" F.pp f
     | DynamicHeader _                  -> Format.fprintf fmt "(DynamicHeader #fun)"
     | StaticHeader _                   -> Format.fprintf fmt "(StaticHeader #fun)"
-    | End                              -> Format.fprintf fmt "End"
+    | AlignF _                         -> Format.fprintf fmt "(AlignF #fun)"
+    | Finish                           -> Format.fprintf fmt "Finish"
     | Exception exn                    -> Format.fprintf fmt "(Exception %a)" pp_error exn
 
   let pp fmt { hold; bits
@@ -1133,7 +1135,7 @@ struct
 
   let await t     = Wait t
   let error t exn = Error ({ t with state = Exception exn }, exn)
-  let ok t        = Ok { t with state = End }
+  let ok t        = Ok { t with state = Finish }
 
   let block_of_flush = function
     | Partial flush -> FixedBlock flush
@@ -1418,10 +1420,14 @@ struct
      @@ KDynamicHeader.put_symbols tree_symbol tree_code tree_length k)
       src dst t
 
+  let align_bytes src dst t =
+    let k _src _dst t = ok t in
+    KWriteBlock.align k src dst t
+
   let rec write_flat off pos len final _src dst t =
     if (len - pos) = 0
     then (if final
-          then ok t
+          then Cont { t with state = AlignF align_bytes }
           else Cont { t with state = MakeBlock (Flat 0) })
     else
       begin
@@ -1483,7 +1489,7 @@ struct
      @@ KWriteBlock.put_bits (Array.unsafe_get Table._static_ltree 256)
      @@ fun _str _dst t ->
      let block = block_of_level ~wbits:t.wbits ~frequencies t.level in
-     Cont { t with state = if last then End else MakeBlock block })
+     Cont { t with state = if last then AlignF align_bytes else MakeBlock block })
       src dst t
 
   let align_block frequencies last src dst t =
@@ -1494,7 +1500,7 @@ struct
      @@ KWriteBlock.put_short_lsb 0xFFFF
      @@ fun _src _dst t ->
      let block = block_of_level ~wbits:t.wbits ?frequencies t.level in
-     Cont { t with state = if last then End else MakeBlock block })
+     Cont { t with state = if last then AlignF align_bytes else MakeBlock block })
       src dst t
 
   let write_fast_block _src dst t ltree dtree queue code flush =
@@ -1716,7 +1722,8 @@ struct
     | FixedBlock freqs -> fixed_block freqs false safe_src safe_dst t
     | DynamicHeader k -> k safe_src safe_dst t
     | StaticHeader k -> k safe_src safe_dst t
-    | End -> ok t
+    | AlignF k -> k safe_src safe_dst t
+    | Finish -> ok t
     | Exception exn -> error t exn
 
   let eval src dst t =
@@ -2747,7 +2754,8 @@ struct
     let rec go length src dst t =
       (* XXX: recursion. *)
       let k length _src _dst t = Cont { t with state = Inflate (fun src dst t -> (go[@tailcall]) length src dst t) } in
-      let k src dst t = KInflate.get lookup_chr k src dst t in
+      let k src dst t =
+        KInflate.get lookup_chr k src dst t in
 
       match length with
       | 256 ->
@@ -2759,7 +2767,8 @@ struct
         else
           let k length distance src dst t = KInflate.put lookup_chr lookup_dst length distance k src dst t in
           let k length distance src dst t = KInflate.read_extra_dist distance (k length) src dst t in
-          let k length src dst t = KInflate.get lookup_dst (k length) src dst t in
+          let k length src dst t =
+            KInflate.get lookup_dst (k length) src dst t in
           KInflate.read_extra_length (length - 257) k src dst t in
 
     KInflate.get lookup_chr go src dst t
@@ -3158,7 +3167,8 @@ struct
     let safe_src = Safe.read_only src in
     let safe_dst = Safe.write_only dst in
 
-    let eval0 t = match t.z with
+    let eval0 t =
+      match t.z with
       | Header k -> k safe_src safe_dst t
       | Inflate -> inflate safe_src safe_dst t
       | Adler32 k -> k safe_src safe_dst t
