@@ -1047,7 +1047,7 @@ struct
     | DynamicHeader of ('i, 'o) k
     | StaticHeader  of ('i, 'o) k
     | AlignF        of ('i, 'o) k
-    | Finish
+    | Finish        of int
     | Exception     of error
   and ('i, 'o) res =
     | Cont  of ('i, 'o) t
@@ -1102,7 +1102,7 @@ struct
     | DynamicHeader _                  -> Format.fprintf fmt "(DynamicHeader #fun)"
     | StaticHeader _                   -> Format.fprintf fmt "(StaticHeader #fun)"
     | AlignF _                         -> Format.fprintf fmt "(AlignF #fun)"
-    | Finish                           -> Format.fprintf fmt "Finish"
+    | Finish n                         -> Format.fprintf fmt "(Finish %d)" n
     | Exception exn                    -> Format.fprintf fmt "(Exception %a)" pp_error exn
 
   let pp fmt { hold; bits
@@ -1135,7 +1135,7 @@ struct
 
   let await t     = Wait t
   let error t exn = Error ({ t with state = Exception exn }, exn)
-  let ok t        = Ok { t with state = Finish }
+  let ok t rest   = Ok { t with state = Finish rest }
 
   let block_of_flush = function
     | Partial flush -> FixedBlock flush
@@ -1421,7 +1421,8 @@ struct
       src dst t
 
   let align_bytes src dst t =
-    let k _src _dst t = ok t in
+    let rest = if t.bits > 8 then 8 - (t.bits - 8) else if t.bits > 0 then 8 - t.bits else 0 in
+    let k _src _dst t = ok t rest in
     KWriteBlock.align k src dst t
 
   let rec write_flat off pos len final _src dst t =
@@ -1723,7 +1724,7 @@ struct
     | DynamicHeader k -> k safe_src safe_dst t
     | StaticHeader k -> k safe_src safe_dst t
     | AlignF k -> k safe_src safe_dst t
-    | Finish -> ok t
+    | Finish n -> ok t n
     | Exception exn -> error t exn
 
   let eval src dst t =
@@ -1741,6 +1742,10 @@ struct
 
   let used_in t = t.i_pos
   let used_out t = t.o_pos
+
+  let bits_remaining t = match t.state with
+    | Finish bits -> bits
+    | _ -> invalid_arg "bits_remaining: bad state"
 
   let default ~proof ?(wbits = 15) level =
     { hold = 0

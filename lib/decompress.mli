@@ -293,7 +293,12 @@ end
 
 type error_rfc1951_deflate = Lz77 of L.error
 
-module RFC1951_deflate: DEFLATE with type error = error_rfc1951_deflate
+module RFC1951_deflate:
+sig
+  include DEFLATE with type error = error_rfc1951_deflate
+
+  val bits_remaining: ('x, 'x) t -> int
+end
 
 type error_z_deflate = RFC1951 of RFC1951_deflate.error
 
