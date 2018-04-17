@@ -2327,7 +2327,7 @@ struct
     | Inffast    of (Lookup.t * Lookup.t * code)
     | Inflate    of ('i, 'o) k
     | Switch
-    | Finish
+    | Finish     of int
     | Exception  of error
   and ('i, 'o) res =
     | Cont  of ('i, 'o) t
@@ -2364,7 +2364,7 @@ struct
     | Inffast (_, _, c)    -> Format.fprintf fmt "(Inffast %a)" pp_code c
     | Inflate _            -> Format.fprintf fmt "(Inflate #fun)"
     | Switch               -> Format.fprintf fmt "Switch"
-    | Finish               -> Format.fprintf fmt "Finish"
+    | Finish n             -> Format.fprintf fmt "(Finish %d)" n
     | Exception e          -> Format.fprintf fmt "(Exception %a)" pp_error e
 
   let pp fmt { last; hold; bits
@@ -2391,8 +2391,8 @@ struct
   let error t exn =
     Error ({ t with state = Exception exn }, exn)
 
-  let ok t =
-    Ok { t with state = Finish }
+  let ok t n =
+    Ok { t with state = Finish n }
 
   (* Basics operations. *)
 
@@ -2708,7 +2708,7 @@ struct
 
   let switch _src _dst t =
     if t.last
-    then ok t
+    then ok t t.bits
     else Cont { t with state = Last }
 
   let flat src dst t =
@@ -2969,7 +2969,7 @@ struct
     | Inffast (lookup_chr, lookup_dst, code) -> inffast safe_src safe_dst t lookup_chr lookup_dst code
     | Inflate k -> k safe_src safe_dst t
     | Switch -> switch safe_src safe_dst t
-    | Finish -> ok t
+    | Finish n -> ok t n
     | Exception exn -> error t exn
 
   let eval src dst t =
@@ -3005,12 +3005,14 @@ struct
     then { t with i_off = off
                 ; i_len = len
                 ; i_pos = 0 }
-    else if t.state = Finish (* XXX(dinosaure): when inflation computation is
-                                done, we don care if we lost something. *)
-    then { t with i_off = off
-                ; i_len = len
-                ; i_pos = 0 }
-    else invalid_arg (Format.sprintf "refill: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
+    else match t.state with
+      | Finish _ ->
+        (* XXX(dinosaure): when inflation computation is done, we don care if we
+           lost something. *)
+        { t with i_off = off
+               ; i_len = len
+               ; i_pos = 0 }
+      | _ ->  invalid_arg (Format.sprintf "refill: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
 
   let flush off len t =
     { t with o_off = off
@@ -3020,6 +3022,10 @@ struct
   let used_in t = t.i_pos
   let used_out t = t.o_pos
   let write t = t.write
+
+  let bits_remaining t = match t.state with
+    | Finish n -> n
+    | _ -> invalid_arg "bits_remaining: bad state"
 
   include Convenience_inflate
       (struct

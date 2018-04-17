@@ -413,7 +413,12 @@ type error_rfc1951_inflate =
   | Invalid_complement_of_length
   | Invalid_dictionary
 
-module RFC1951_inflate: INFLATE with type error = error_rfc1951_inflate
+module RFC1951_inflate:
+sig
+  include INFLATE with type error = error_rfc1951_inflate
+
+  val bits_remaining: ('x, 'x) t -> int
+end
 
 type error_z_inflate =
   | RFC1951 of RFC1951_inflate.error
