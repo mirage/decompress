@@ -3178,8 +3178,18 @@ struct
 
   let header src dst t =
     (KHeader.get_byte
-     @@ fun _byte0 -> KHeader.get_byte
-     @@ fun _byte1 _src _dst t -> Cont { t with z = Inflate })
+     @@ fun byte0 -> KHeader.get_byte
+     @@ fun byte1 _src _dst t ->
+     let hold = byte0 in
+     let hold = hold + (byte1 lsl 8) in
+     let bits ?(hold = hold) n = hold land ((1 lsl n) - 1) in
+     let drop n = hold lsr n in
+
+     if (((bits 8) lsl 8) + (hold lsr 8)) mod 31 = 0
+        && (bits 4) = 8
+        && (bits ~hold:(drop 4) 4 + 8) <= 15
+     then Cont { t with z = Inflate }
+     else error t Invalid_header)
       src dst t
 
   let eval src dst t =
