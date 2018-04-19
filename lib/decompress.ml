@@ -2436,7 +2436,8 @@ struct
     else Flush { t with state = ctor (fun src dst t -> (fill_byte[@tailcall]) ~ctor byte length k src dst t) }
 
   let peek_bits ~ctor n k src dst t =
-    let get_byte = get_byte ~ctor in
+    let get_byte =
+      get_byte ~ctor in
     let rec go src dst t =
       if t.bits < n
       then get_byte (fun byte src dst t -> (go[@tailcall]) src dst { t with hold = t.hold lor (byte lsl t.bits)
@@ -2509,16 +2510,19 @@ struct
   module KInflate =
   struct
     let ctor k = Inflate k
-    let peek_bits n k src dst t = peek_bits ~ctor n k src dst t
-    let put_byte byte k src dst t = put_byte ~ctor byte k src dst t
-    let fill_byte byte length k src dst t = fill_byte ~ctor byte length k src dst t
+    let peek_bits n k src dst t =
+      peek_bits ~ctor n k src dst t
+    let put_byte byte k src dst t =
+      put_byte ~ctor byte k src dst t
+    let fill_byte byte length k src dst t =
+      fill_byte ~ctor byte length k src dst t
 
-    let get lookup k src dst t =
-      let safe src dst t =
-        let len, v = Lookup.get lookup (t.hold land lookup.Lookup.mask) in
-        k v src dst { t with hold = t.hold lsr len
-                           ; bits = t.bits - len } in
-      peek_bits lookup.Lookup.max safe src dst t
+    let get lookup k src dst t0 =
+      let safe src dst t1 =
+        let len, v = Lookup.get lookup (t1.hold land lookup.Lookup.mask) in
+        k v src dst { t1 with hold = t1.hold lsr len
+                            ; bits = t1.bits - len } in
+      peek_bits lookup.Lookup.max safe src dst t0
 
     let rec put lookup_chr lookup_dst length distance k src dst t =
       match distance with
@@ -2669,9 +2673,11 @@ struct
         let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
         let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
 
-        Cont { t with state = Inffast (Lookup.make tbl_chr max_chr,
-                                       Lookup.make tbl_dst max_dst,
-                                       Length) } in
+        if max_chr > 0 (* && max_dst > 0 ? *)
+        then Cont { t with state = Inffast (Lookup.make tbl_chr max_chr,
+                                            Lookup.make tbl_dst max_dst,
+                                            Length) }
+        else error t Invalid_dictionary in
       Dictionary.inflate (tbl, max, hlit + hdist) k src dst t in
 
     let read_table hlit hdist hclen src dst t =
@@ -2756,25 +2762,27 @@ struct
       src dst t
 
   let inflate lookup_chr lookup_dst src dst t =
-    let rec go length src dst t =
+    let rec go length src dst t0 =
       (* XXX: recursion. *)
-      let k length _src _dst t = Cont { t with state = Inflate (fun src dst t -> (go[@tailcall]) length src dst t) } in
-      let k src dst t =
-        KInflate.get lookup_chr k src dst t in
+      let k length _src _dst t7 =
+        Cont { t7 with state = Inflate (fun src dst t8 -> (go[@tailcall]) length src dst t8) } in
+      let k src dst t6 =
+        KInflate.get lookup_chr k src dst t6 in
 
       match length with
       | 256 ->
-        Cont { t with state = Switch }
+        Cont { t0 with state = Switch }
       | length ->
         if length < 256
         then
-          KInflate.put_byte length k src dst t
+          KInflate.put_byte length k src dst t0
         else
-          let k length distance src dst t = KInflate.put lookup_chr lookup_dst length distance k src dst t in
-          let k length distance src dst t = KInflate.read_extra_dist distance (k length) src dst t in
-          let k length src dst t =
-            KInflate.get lookup_dst (k length) src dst t in
-          KInflate.read_extra_length (length - 257) k src dst t in
+          let k length distance src dst t5 = KInflate.put lookup_chr lookup_dst length distance k src dst t5 in
+          let k length distance src dst t3 =
+            KInflate.read_extra_dist distance (fun dist src dst t4 -> k length dist src dst t4) src dst t3 in
+          let k length src dst t1 =
+            KInflate.get lookup_dst (fun dist src dst t2 -> k length dist src dst t2) src dst t1 in
+          KInflate.read_extra_length (length - 257) k src dst t0 in
 
     KInflate.get lookup_chr go src dst t
 
