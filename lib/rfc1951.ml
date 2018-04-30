@@ -36,6 +36,7 @@ sig
 
   val used_in         : ('i, 'o) t -> int
   val used_out        : ('i, 'o) t -> int
+  val bits_remaining  : ('x, 'x) t -> int
 
   val default         : proof:'o B.t -> ?wbits:int -> int -> ('i, 'o) t
 
@@ -53,14 +54,9 @@ sig
                         (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
-type error_rfc1951_deflate = Decompress_impl.error_rfc1951_deflate = Lz77 of L.error
+type error_deflate = Decompress_impl.error_rfc1951_deflate = Lz77 of L.error
 
-module RFC1951_deflate = Decompress_impl.RFC1951_deflate
-
-type error_z_deflate = Decompress_impl.error_z_deflate = RFC1951 of error_rfc1951_deflate
-
-module Zlib_deflate = Decompress_impl.Zlib_deflate
-
+module Deflate = Decompress_impl.RFC1951_deflate
 module Window  = Decompress_impl.Window
 
 module type INFLATE =
@@ -84,6 +80,7 @@ sig
   val used_in  : ('i, 'o) t -> int
   val used_out : ('i, 'o) t -> int
   val write    : ('i, 'o) t -> int
+  val bits_remaining: ('x, 'x) t -> int
 
   val default  : 'o Window.t -> ('i, 'o) t
 
@@ -101,16 +98,9 @@ sig
                   (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
-type error_rfc1951_inflate = Decompress_impl.error_rfc1951_inflate =
+type error_inflate = Decompress_impl.error_rfc1951_inflate =
   | Invalid_kind_of_block
   | Invalid_complement_of_length
   | Invalid_dictionary
 
-module RFC1951_inflate = Decompress_impl.RFC1951_inflate
-
-type error_z_inflate = Decompress_impl.error_z_inflate =
-  | RFC1951 of RFC1951_inflate.error
-  | Invalid_header
-  | Invalid_checksum of { have: Adler32.t; expect: Adler32.t }
-
-module Zlib_inflate = Decompress_impl.Zlib_inflate
+module Inflate = Decompress_impl.RFC1951_inflate
