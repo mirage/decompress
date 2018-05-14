@@ -248,6 +248,8 @@ sig
   (** [used_out t] returns how many byte(s) was used by [t] in the output. *)
   val used_out        : ('i, 'o) t -> int
 
+  val bits_remaining  : ('x, 'x) t -> int
+
   (** [default ~proof ?wbits level] makes a new state [t]. [~proof] is an ['a
       B.t] specialized with an implementation (see {!B.st} or {!B.bs}) to
       informs the state wich implementation you use.
@@ -291,18 +293,9 @@ sig
                   (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
-type error_rfc1951_deflate = Lz77 of L.error
+type error_deflate = Lz77 of L.error
 
-module RFC1951_deflate:
-sig
-  include DEFLATE with type error = error_rfc1951_deflate
-
-  val bits_remaining: ('x, 'x) t -> int
-end
-
-type error_z_deflate = RFC1951 of RFC1951_deflate.error
-
-module Zlib_deflate: DEFLATE with type error = error_z_deflate
+module Deflate: DEFLATE with type error = error_deflate
 
 (** Window used by the Inflate algorithm.
 
@@ -378,6 +371,8 @@ sig
   (** [write t] returns the size of the stream decompressed. *)
   val write    : ('i, 'o) t -> int
 
+  val bits_remaining: ('x, 'x) t -> int
+
   (** [default] makes a new state [t]. *)
   val default  : 'o Window.t -> ('i, 'o) t
 
@@ -408,21 +403,9 @@ sig
     (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
-type error_rfc1951_inflate =
+type error_inflate =
   | Invalid_kind_of_block
   | Invalid_complement_of_length
   | Invalid_dictionary
 
-module RFC1951_inflate:
-sig
-  include INFLATE with type error = error_rfc1951_inflate
-
-  val bits_remaining: ('x, 'x) t -> int
-end
-
-type error_z_inflate =
-  | RFC1951 of RFC1951_inflate.error
-  | Invalid_header
-  | Invalid_checksum of { have: Adler32.t; expect: Adler32.t; }
-
-module Zlib_inflate: INFLATE with type error = error_z_inflate
+module Inflate: INFLATE with type error = error_inflate

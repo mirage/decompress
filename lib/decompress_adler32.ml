@@ -15,6 +15,11 @@ end
 let _base = 65521
 let _nmax = 5552
 
+let pp fmt v =
+  let a = Int32.to_int I.((v >> 16) && 0xFFFFl) in
+  let b = Int32.to_int I.(v && 0xFFFFl) in
+  Format.fprintf fmt "@[<1>(%04x,@ %04x)@]" a b
+
 let adler32 buf adler32 off len =
   let a = ref (Int32.to_int I.((adler32 >> 16) && 0xFFFFl)) in
   let b = ref (Int32.to_int I.(adler32 && 0xFFFFl)) in

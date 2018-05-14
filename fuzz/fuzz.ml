@@ -3,8 +3,8 @@
 
 open Crowbar
 
-exception Deflate_error of Decompress.Deflate.error
-exception Inflate_error of Decompress.Inflate.error
+exception Deflate_error of Decompress.Zlib_deflate.error
+exception Inflate_error of Decompress.Zlib_inflate.error
 
 let compress ?(level = 4) ?(wbits = 15) data =
   let open Decompress in
@@ -14,7 +14,7 @@ let compress ?(level = 4) ?(wbits = 15) data =
   let pos = ref 0 in
   let res = Buffer.create (String.length data) in
 
-  Deflate.bytes
+  Zlib_deflate.bytes
     input_buffer output_buffer
     (fun input_buffer -> function
      | Some max ->
@@ -30,7 +30,7 @@ let compress ?(level = 4) ?(wbits = 15) data =
     (fun output_buffer len ->
       Buffer.add_subbytes res output_buffer 0 len;
       0xFFFF)
-    (Deflate.default ~proof:B.proof_bytes ~wbits level)
+    (Zlib_deflate.default ~proof:B.proof_bytes ~wbits level)
   |> function
      | Ok _ -> Buffer.contents res
      | Error exn -> raise (Deflate_error exn)
@@ -45,7 +45,7 @@ let decompress data =
   let pos = ref 0 in
   let res = Buffer.create (String.length data) in
 
-  Inflate.bytes
+  Zlib_inflate.bytes
     input_buffer output_buffer
     (fun input_buffer ->
      let n = min 0xFFFF (String.length data - !pos) in
@@ -55,7 +55,7 @@ let decompress data =
     (fun output_buffer len ->
      Buffer.add_subbytes res output_buffer 0 len;
      0xFFFF)
-    (Inflate.default window)
+    (Zlib_inflate.default window)
   |> function
      | Ok _ -> Buffer.contents res
      | Error exn -> raise (Inflate_error exn)
@@ -102,8 +102,8 @@ let pp = pp_scalar ~get:String.get ~length:String.length
 
 let () = Printexc.register_printer
     (function
-      | Inflate_error err -> Some (Fmt.strf "(Inflate_error %a)" (Fmt.hvbox Decompress.Inflate.pp_error) err)
-      | Deflate_error err -> Some (Fmt.strf "(Deflate_error %a)" (Fmt.hvbox Decompress.Deflate.pp_error) err)
+      | Inflate_error err -> Some (Fmt.strf "(Inflate_error %a)" (Fmt.hvbox Decompress.Zlib_inflate.pp_error) err)
+      | Deflate_error err -> Some (Fmt.strf "(Deflate_error %a)" (Fmt.hvbox Decompress.Zlib_deflate.pp_error) err)
       | _ -> None)
 
 let () =

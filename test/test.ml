@@ -39,7 +39,7 @@ module type COMMON =
 sig
   type t
 
-  val compress   : ?level:int -> ?wbits:int -> ?meth:(Decompress.Deflate.meth * int) -> (t -> int option -> int) -> (t -> int -> unit) -> unit
+  val compress   : ?level:int -> ?wbits:int -> ?meth:(Decompress.Zlib_deflate.meth * int) -> (t -> int option -> int) -> (t -> int -> unit) -> unit
   val uncompress : (t -> int) -> (t -> int -> unit) -> unit
 end
 
@@ -47,27 +47,33 @@ module D : COMMON with type t = Bytes.t =
 struct
   type t = Bytes.t
 
-  exception Decompress_inflate of Decompress.Inflate.error
-  exception Decompress_deflate of Decompress.Deflate.error
+  exception Decompress_inflate of Decompress.Zlib_inflate.error
+  exception Decompress_deflate of Decompress.Zlib_deflate.error
+
+  let () = Printexc.register_printer
+      (function
+        | Decompress_inflate err -> Some (Format.asprintf "%a" Decompress.Zlib_inflate.pp_error err)
+        | Decompress_deflate err -> Some (Format.asprintf "%a" Decompress.Zlib_deflate.pp_error err)
+        | _ -> None)
 
   let input  = Bytes.create 0xFFFF
   let output = Bytes.create 0xFFFF
   let window = Decompress.Window.create ~proof:Decompress.B.proof_bytes
 
   let compress ?(level = 4) ?(wbits = 15) ?meth refill flush =
-    Decompress.Deflate.bytes input output ?meth
+    Decompress.Zlib_deflate.bytes input output ?meth
       refill
       (fun buf len -> flush buf len; 0xFFFF)
-      (Decompress.Deflate.default ~proof:(Decompress.B.from_bytes Bytes.empty) level ~wbits)
+      (Decompress.Zlib_deflate.default ~proof:(Decompress.B.from_bytes Bytes.empty) level ~wbits)
     |> function
        | Ok _ -> ()
        | Error exn -> raise (Decompress_deflate exn)
 
   let uncompress refill flush =
-    Decompress.Inflate.bytes input output
+    Decompress.Zlib_inflate.bytes input output
       refill
       (fun buf len -> flush buf len; 0xFFFF)
-      (Decompress.Inflate.default (Decompress.Window.reset window))
+      (Decompress.Zlib_inflate.default (Decompress.Window.reset window))
     |> function
        | Ok _ -> ()
        | Error exn -> raise (Decompress_inflate exn)
@@ -158,8 +164,8 @@ let d2d ?level ?wbits content =
 
 let level = [ 0; 1; 2; 3; 4; 5; 6; 7; 8; 9 ]
 let wbits = [ 15 ]
-  (* XXX(dinosaure): we need to avoid alcotest to write a file output, otherwise
-                     we have an I/O error. *)
+(* XXX(dinosaure): we need to avoid alcotest to write a file output, otherwise
+   we have an I/O error. *)
 
 let make_test filename =
 
