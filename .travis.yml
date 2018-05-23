@@ -6,6 +6,7 @@ script: bash -ex .travis-opam.sh
 sudo: true
 env:
   matrix:
+  - PINS="optint:https://github.com/dinosaure/optint.git checkseum:https://github.com/dinosaure/checkseum.git"
   - PACKAGE="decompress" OCAML_VERSION=4.03 TESTS=true
   - PACKAGE="decompress" OCAML_VERSION=4.04 TESTS=true
   - PACKAGE="decompress" OCAML_VERSION=4.05 TESTS=true

@@ -59,13 +59,6 @@ sig
   val proof_bigstring : bs t
 end
 
-module Adler32 :
-sig
-  type t = int32
-
-  val adler32 : 'a B.t -> t -> int -> int -> t
-end
-
 (** Decompress, functionnal implementation of Zlib in OCaml. *)
 
 (** Hunk definition.
@@ -117,14 +110,14 @@ sig
   type 'i t
 
   (** Pretty-printer of Lz77 error. *)
-  val pp_error : Format.formatter -> error -> unit
+  val pp_error: Format.formatter -> error -> unit
 
   (** Pretty-printer of Lz77 state. *)
-  val pp       : Format.formatter -> 'i t -> unit
+  val pp: Format.formatter -> 'i t -> unit
 
   (** [used_in t] returns [n] bytes(s) used by the algorithm in the current
       input. *)
-  val used_in  : 'i t -> int
+  val used_in: 'i t -> int
 
   (** [default ~level ~on wbits] produces a new state to compute the Lz77
       algorithm in an input. [level] means the level of the compression
@@ -138,7 +131,7 @@ sig
       [on] is a function to interact fastly with your data-structure and keep
       the frequencies of the [Literal] and [Match].
   *)
-  val default  : ?level:int -> ?on:(Hunk.t -> unit) -> int -> 'i t
+  val default: ?level:int -> ?on:(Hunk.t -> unit) -> int -> 'i t
 end
 
 (** Deflate algorithm.
@@ -155,7 +148,7 @@ sig
       This is the representation of the frequencies used by the deflate
       algorithm.
   *)
-  module F : sig type t = int array * int array end
+  module F: sig type t = int array * int array end
 
   (** The state of the deflate algorithm. ['i] and ['o] are the implementation
       used respectively for the input and the ouput, see {!B.st} and {!B.bs}.
@@ -164,15 +157,15 @@ sig
   type ('i, 'o) t
 
   (** Pretty-printer of deflate error. *)
-  val pp_error        : Format.formatter -> error -> unit
+  val pp_error: Format.formatter -> error -> unit
 
   (** Pretty-printer of deflate state. *)
-  val pp              : Format.formatter -> ('i, 'o) t -> unit
+  val pp: Format.formatter -> ('i, 'o) t -> unit
 
   (** [get_frequencies t] returns the current frequencies of the deflate state.
       See {!F.t}.
    *)
-  val get_frequencies : ('i, 'o) t -> F.t
+  val get_frequencies: ('i, 'o) t -> F.t
 
   (** [set_frequencies f t] replaces the frequencies of the state [t] by [f].
       The paranoid mode (if [paranoid = true]) checks if the frequencies
@@ -182,37 +175,37 @@ sig
 
       eg. if we have a [Literal 'a'], [(fst f).(Char.code 'a') > 0].
    *)
-  val set_frequencies : ?paranoid:bool -> F.t -> ('i, 'o) t -> ('i, 'o) t
+  val set_frequencies: ?paranoid:bool -> F.t -> ('i, 'o) t -> ('i, 'o) t
 
   (** [finish t] means all input was sended. [t] will produce a new zlib block
       with the [final] flag and write the checksum of the input stream.
    *)
-  val finish          : ('x, 'x) t -> ('x, 'x) t
+  val finish: ('x, 'x) t -> ('x, 'x) t
 
   (** [no_flush off len t] means to continue the compression of an input at
       [off] on [len] byte(s).
    *)
-  val no_flush        : int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val no_flush: int -> int -> ('x, 'x) t -> ('x, 'x) t
 
   (** [partial_flush off len t] finishes the current block, then the encoder
       writes a fixed empty block. So, the output is not aligned. We keep the
       current frequencies to compute the new Huffman tree for the new next
       block.
    *)
-  val partial_flush   : int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val partial_flush: int -> int -> ('x, 'x) t -> ('x, 'x) t
 
   (** [sync_flush off len t] finishes the current block, then the encoder writes
       a stored empty block and the output is aligned. We keep the current
       frequencies to compute the new Huffman tree for the new next block.
    *)
-  val sync_flush      : int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val sync_flush: int -> int -> ('x, 'x) t -> ('x, 'x) t
 
   (** [full_flush off len t] finishes the current block, then the encoder writes
       a stored empty block and the output is aligned. We delete the current
       frequencies to compute a new frequencies from your input and write a new
       Huffman tree for the new next block.
    *)
-  val full_flush      : int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val full_flush: int -> int -> ('x, 'x) t -> ('x, 'x) t
 
   type meth = PARTIAL | SYNC | FULL
 
@@ -220,12 +213,12 @@ sig
       [flush_of_meth SYNC] returns [sync_flush]. It's a convenience function,
       nothing else.
   *)
-  val flush_of_meth   : meth -> (int -> int -> ('x, 'x) t -> ('x, 'x) t)
+  val flush_of_meth: meth -> (int -> int -> ('x, 'x) t -> ('x, 'x) t)
 
   (** [flush off len t] allows the state [t] to use an output at [off] on [len]
       byte(s).
    *)
-  val flush           : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val flush: int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   (** [eval i o t] computes the state [t] with the input [i] and the ouput [o].
       This function returns:
@@ -236,19 +229,19 @@ sig
         be [t] writes something in your output. You can check with {!used_out}.
       - [`Error (t, exn)]: the algorithm catches an error [exn].
    *)
-  val eval            : 'a B.t -> 'a B.t -> ('a, 'a) t ->
+  val eval: 'a B.t -> 'a B.t -> ('a, 'a) t ->
     [ `Await of ('a, 'a) t
     | `Flush of ('a, 'a) t
     | `End   of ('a, 'a) t
     | `Error of ('a, 'a) t * error ]
 
   (** [used_in t] returns how many byte(s) was used by [t] in the input. *)
-  val used_in         : ('i, 'o) t -> int
+  val used_in: ('i, 'o) t -> int
 
   (** [used_out t] returns how many byte(s) was used by [t] in the output. *)
-  val used_out        : ('i, 'o) t -> int
+  val used_out: ('i, 'o) t -> int
 
-  val bits_remaining  : ('x, 'x) t -> int
+  val bits_remaining: ('x, 'x) t -> int
 
   (** [default ~proof ?wbits level] makes a new state [t]. [~proof] is an ['a
       B.t] specialized with an implementation (see {!B.st} or {!B.bs}) to
@@ -266,7 +259,7 @@ sig
       - 4 .. 9: a dynamic compression (compression with a canonic huffman tree
                 produced by the input)
    *)
-  val default         : proof:'o B.t -> ?wbits:int -> int -> ('i, 'o) t
+  val default: proof:'o B.t -> ?wbits:int -> int -> ('i, 'o) t
 
   (** [to_result i o refill flush t] is a convenience function to apply the
       deflate algorithm on the stream [refill] and call [flush] when the
@@ -275,22 +268,22 @@ sig
       If the compute catch an error, we returns [Error exn]
       (see {!DEFLATE.error}). Otherwise, we returns the {i useless} state [t].
    *)
-  val to_result : 'a B.t -> 'a B.t -> ?meth:(meth * int) ->
-                  ('a B.t -> int option -> int) ->
-                  ('a B.t -> int -> int) ->
-                  ('a, 'a) t -> (('a, 'a) t, error) result
+  val to_result: 'a B.t -> 'a B.t -> ?meth:(meth * int) ->
+                 ('a B.t -> int option -> int) ->
+                 ('a B.t -> int -> int) ->
+                 ('a, 'a) t -> (('a, 'a) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bytes.t}. *)
-  val bytes     : Bytes.t -> Bytes.t -> ?meth:(meth * int) ->
-                  (Bytes.t -> int option -> int) ->
-                  (Bytes.t -> int -> int) ->
-                  (B.st, B.st) t -> ((B.st, B.st) t, error) result
+  val bytes: Bytes.t -> Bytes.t -> ?meth:(meth * int) ->
+             (Bytes.t -> int option -> int) ->
+             (Bytes.t -> int -> int) ->
+             (B.st, B.st) t -> ((B.st, B.st) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bigstring.t}. *)
-  val bigstring : B.Bigstring.t -> B.Bigstring.t -> ?meth:(meth * int) ->
-                  (B.Bigstring.t -> int option -> int) ->
-                  (B.Bigstring.t -> int -> int) ->
-                  (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
+  val bigstring: B.Bigstring.t -> B.Bigstring.t -> ?meth:(meth * int) ->
+                 (B.Bigstring.t -> int option -> int) ->
+                 (B.Bigstring.t -> int -> int) ->
+                 (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
 end
 
 type error_deflate = Lz77 of L.error
@@ -303,19 +296,19 @@ module Deflate: DEFLATE with type error = error_deflate
     After one process, you can [reset] and reuse the window for a new process.
     This API is available to limit the allocation by Decompress.
 *)
-module Window :
+module Window:
 sig
   (** The Window specialized by ['o] (see {!B.st} and {!B.bs}). *)
   type 'o t
 
   (** [create ~proof] creates a new window. *)
-  val create : proof:'o B.t -> 'o t
+  val create: proof:'o B.t -> 'o t
 
   (** [reset window] resets a window to be reused by an Inflate algorithm. *)
-  val reset  : 'o t -> 'o t
+  val reset: 'o t -> 'o t
 
   (** [crc window] returns the checksum computed by the window. *)
-  val crc    : 'o t -> Int32.t
+  val crc: 'o t -> Checkseum.Adler32.t
 end
 
 (** Inflate algorithm.
@@ -333,10 +326,10 @@ sig
   type ('i, 'o) t
 
   (** Pretty-printer of inflate error. *)
-  val pp_error : Format.formatter -> error -> unit
+  val pp_error: Format.formatter -> error -> unit
 
   (** Pretty-printer of inflate state. *)
-  val pp       : Format.formatter -> ('i, 'o) t -> unit
+  val pp: Format.formatter -> ('i, 'o) t -> unit
 
   (** [eval i o t] computes the state [t] with the input [i] and the output [o].
      This function returns:
@@ -348,7 +341,7 @@ sig
       {- [`End t]: means that the deflate algorithm is done in your input. May
      be [t] writes something in your output. You can check with {!used_out}.}
       {- [`Error (t, exn)]: the algorithm catches an error [exn].}} *)
-  val eval     : 'a B.t -> 'a B.t -> ('a, 'a) t ->
+  val eval: 'a B.t -> 'a B.t -> ('a, 'a) t ->
     [ `Await of ('a, 'a) t
     | `Flush of ('a, 'a) t
     | `End   of ('a, 'a) t
@@ -356,25 +349,25 @@ sig
 
   (** [refill off len t] allows the state [t] to use an output at [off] on [len]
      byte(s). *)
-  val refill   : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val refill: int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   (** [flush off len t] allows the state [t] to use an output at [off] on [len]
      byte(s). *)
-  val flush    : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val flush: int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   (** [used_in t] returns how many byte(s) was used by [t] in the input. *)
-  val used_in  : ('i, 'o) t -> int
+  val used_in: ('i, 'o) t -> int
 
   (** [used_out ŧ] returns how many byte(s) was used by [t] in the output. *)
-  val used_out : ('i, 'o) t -> int
+  val used_out: ('i, 'o) t -> int
 
   (** [write t] returns the size of the stream decompressed. *)
-  val write    : ('i, 'o) t -> int
+  val write: ('i, 'o) t -> int
 
   val bits_remaining: ('x, 'x) t -> int
 
   (** [default] makes a new state [t]. *)
-  val default  : 'o Window.t -> ('i, 'o) t
+  val default: 'o Window.t -> ('i, 'o) t
 
   (** [to_result i o refill flush t] is a convenience function to apply the
      inflate algorithm on the stream [refill] and call [flush] when the internal
@@ -382,21 +375,21 @@ sig
 
       If the compute catch an error, we returns [Error exn] (see
      {!INFLATE.error}). Otherwise, we returns the state {i useless} [t]. *)
-  val to_result :
+  val to_result:
     'a B.t -> 'a B.t ->
     ('a B.t -> int) ->
     ('a B.t -> int -> int) ->
     ('a, 'a) t -> (('a, 'a) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bytes.t}. *)
-  val bytes     :
+  val bytes:
     Bytes.t -> Bytes.t ->
     (Bytes.t -> int) ->
     (Bytes.t -> int -> int) ->
     (B.st, B.st) t -> ((B.st, B.st) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bigstring.t}. *)
-  val bigstring :
+  val bigstring:
     B.Bigstring.t -> B.Bigstring.t ->
     (B.Bigstring.t -> int) ->
     (B.Bigstring.t -> int -> int) ->

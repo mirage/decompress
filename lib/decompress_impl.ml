@@ -1,6 +1,5 @@
 module B       = Decompress_b
 module Q       = Decompress_q
-module Adler32 = Decompress_adler32
 module Safe    = Decompress_safe
 module Seq     = Decompress_seq
 module Hunk    = Decompress_lz77.Hunk
@@ -592,7 +591,7 @@ struct
     ; level       : int
     ; wbits       : int
     ; write       : int
-    ; adler       : Int32.t
+    ; adler       : Checkseum.Adler32.t
     ; state       : ('i, 'o) state }
   and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
                    (Safe.write, 'o) Safe.t ->
@@ -685,14 +684,14 @@ struct
                         i_len = %d;@ \
                         level = %d;@ \
                         wbits = %d;@ \
-                        adler = %ld;@ \
+                        adler = %a;@ \
                         state = %a@]}"
     hold bits
     o_off o_pos o_len
     i_off i_pos i_len
     level
     wbits
-    adler
+    Checkseum.Adler32.pp adler
     pp_state state
 
   let await t     = Wait t
@@ -1324,7 +1323,7 @@ struct
     ; write = 0
     ; level
     ; wbits
-    ; adler = 1l
+    ; adler = Checkseum.Adler32.default
     ; state = MakeBlock (block_of_level ~wbits level) }
 
   include Convience_deflate
@@ -1442,8 +1441,8 @@ struct
     let k _src _dst t = ok t in
 
     (KAdler32.align
-     @@ KAdler32.put_short_msb Adler32.I.(Int32.to_int ((adler >> 16) && 0xFFFFl))
-     @@ KAdler32.put_short_msb Adler32.I.(Int32.to_int (adler && 0xFFFFl)) k)
+     @@ KAdler32.put_short_msb Optint.(to_int Infix.((adler >> 16) && (of_int32 0xFFFFl)))
+     @@ KAdler32.put_short_msb Optint.(to_int Infix.(adler && (of_int32 0xFFFFl))) k)
       src dst t
 
   let deflate src dst t = match RFC1951_deflate.eval0 src dst t.d with
@@ -1527,7 +1526,7 @@ struct
     ; wpos   : int
     ; size   : int
     ; buffer : ([ Safe.read | Safe.write ], 'a) Safe.t
-    ; crc    : Int32.t }
+    ; crc    : Checkseum.Adler32.t }
 
   let create ~proof =
     let size = 1 lsl 15 in
@@ -1535,14 +1534,14 @@ struct
     ; wpos   = 0
     ; size   = size + 1
     ; buffer = Safe.read_and_write @@ B.from ~proof (size + 1)
-    ; crc    = 1l }
+    ; crc    = Checkseum.Adler32.default }
 
   let crc { crc; _ } = crc
 
   let reset t =
     { t with rpos = 0
            ; wpos = 0
-           ; crc = 1l }
+           ; crc = Checkseum.Adler32.default }
 
   let available_to_write { wpos; rpos; size; _ } =
     if wpos >= rpos then size - (wpos - rpos) - 1
@@ -1584,9 +1583,9 @@ struct
 
     Safe.set t.buffer t.wpos chr;
 
-    move 1 { t with crc = Adler32.adler32
-                            (B.from_bytes @@ Bytes.make 1 chr)
-                            t.crc 0 1 }
+    move 1 { t with crc = Checkseum.Adler32.digest_bytes
+                            (Bytes.make 1 chr)
+                            0 1 t.crc }
 
   let fill_char chr len t =
     let t = if len > available_to_write t
@@ -1602,9 +1601,9 @@ struct
     end else
       Safe.fill t.buffer t.wpos len chr;
 
-    move len { t with crc = Adler32.adler32
-                              (B.from_bytes @@ Bytes.make len chr)
-                              t.crc 0 len }
+    move len { t with crc = Checkseum.Adler32.digest_bytes
+                              (Bytes.make len chr)
+                              0 len t.crc }
 
   let rec sanitize n ({ size; _ } as t) =
     if n < 0 then sanitize (size + n) t
@@ -2612,7 +2611,7 @@ end
 type error_z_inflate =
   | RFC1951 of RFC1951_inflate.error
   | Invalid_header
-  | Invalid_checksum of { have: Adler32.t; expect: Adler32.t }
+  | Invalid_checksum of { have: Optint.t; expect: Optint.t }
 
 module Zlib_inflate =
 struct
@@ -2640,7 +2639,7 @@ struct
   let pp_error fmt = function
     | RFC1951 err                        -> Format.fprintf fmt "(RFC1951 %a)" RFC1951_inflate.pp_error err
     | Invalid_header                     -> Format.fprintf fmt "Invalid_header"
-    | Invalid_checksum { have; expect; } -> Format.fprintf fmt "(Invalid_check (have:%a, expect:%a))" Adler32.pp have Adler32.pp expect
+    | Invalid_checksum { have; expect; } -> Format.fprintf fmt "(Invalid_check (have:%a, expect:%a))" Optint.pp have Optint.pp expect
 
   let pp_state fmt = function
     | Header _    -> Format.fprintf fmt "(Header #fun)"
@@ -2717,17 +2716,21 @@ struct
      @@ fun a2 -> KCrc.get_with_holding
      @@ fun b1 -> KCrc.get_with_holding
      @@ fun b2 _src _dst t ->
-     let a1 = Int32.of_int a1 in
-     let a2 = Int32.of_int a2 in
-     let b1 = Int32.of_int b1 in
-     let b2 = Int32.of_int b2 in
+     let a1 = Optint.of_int a1 in
+     let a2 = Optint.of_int a2 in
+     let b1 = Optint.of_int b1 in
+     let b2 = Optint.of_int b2 in
 
-     let expect = let open Adler32.I in
-       (a1 << 24) || (a2 << 16) || (b1 << 8) || b2 in
+     Format.eprintf "> %a.\n%!" Optint.pp a1;
+     Format.eprintf "> %a.\n%!" Optint.pp a2;
+     Format.eprintf "> %a.\n%!" Optint.pp b1;
+     Format.eprintf "> %a.\n%!" Optint.pp b2;
 
-     if have <> expect
-     then error t (Invalid_checksum { have; expect; })
-     else ok t)
+     let expect = Optint.Infix.((a1 << 24) || (a2 << 16) || (b1 << 8) || b2) in
+
+     if Optint.equal have expect
+     then ok t
+     else error t (Invalid_checksum { have; expect; }))
       src dst t
 
   let inflate src dst t = match RFC1951_inflate.eval0 src dst t.d with
