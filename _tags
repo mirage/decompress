@@ -1,11 +1,11 @@
-true: safe_string, bin_annot, debug
-<lib/*>: warn_error(+1..49), warn(A-4-41-44)
+true: safe_string, bin_annot
 
 <lib>: include
-<lib/*>: package(checkseum.c)
 
-<test/*>: package(checkseum.c), package(re.str), package(camlzip), package(alcotest)
-<bin/dpipe.{native,byte,ml}>: use_bigarray, use_unix, package(cmdliner), linkdep(bin/bs.o)
-<bin/easy.{native,byte,ml}>: use_bigarray
-<bin/adler32sum.{native,byte,ml}>: use_bigarray
-<fuzz/*>: use_bigarray, package(crowbar), package(fmt), package(afl-persistent), use_afl
+<lib/*>: warn_error(+1..49), warn(A-4-41-44)
+<lib/*>: linkall, package(checkseum.c), package(optint)
+
+<bin/dpipe.{native,byte,ml}>: package(optint), package(checkseum.c), package(cmdliner), linkdep(bin/bs.o)
+
+<test/*>: package(optint), package(checkseum.c), package(re.str), package(camlzip), package(alcotest)
+<fuzz/*>: package(optint), package(checkseum.c), package(crowbar), package(fmt), package(afl-persistent), use_afl

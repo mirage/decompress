@@ -1,1 +1,8 @@
 Decompress
+Decompress_b
+Decompress_q
+Decompress_seq
+Decompress_hunk
+Decompress_impl
+Decompress_lz77
+Decompress_safe
