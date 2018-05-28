@@ -2721,11 +2721,6 @@ struct
      let b1 = Optint.of_int b1 in
      let b2 = Optint.of_int b2 in
 
-     Format.eprintf "> %a.\n%!" Optint.pp a1;
-     Format.eprintf "> %a.\n%!" Optint.pp a2;
-     Format.eprintf "> %a.\n%!" Optint.pp b1;
-     Format.eprintf "> %a.\n%!" Optint.pp b2;
-
      let expect = Optint.Infix.((a1 << 24) || (a2 << 16) || (b1 << 8) || b2) in
 
      if Optint.equal have expect
