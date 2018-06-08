@@ -1,6 +1,6 @@
 description = "Pure implementation of zlib"
 version = "%%VERSION%%"
-requires = "bigarray optint checkseum.c"
+requires = "bigarray optint checkseum"
 archive(byte) = "decompress.cma"
 archive(native) = "decompress.cmxa"
 plugin(byte) = "decompress.cma"
@@ -8,7 +8,7 @@ plugin(native) = "decompress.cmxs"
 
 package "rfc1951" (
   version = "%%VERSION%%"
-  requires = "bigarray optint checkseum.c"
+  requires = "bigarray optint checkseum"
   archive(byte) = "rfc1951.cma"
   archive(native) = "rfc1951.cmxa"
   plugin(byte) = "rfc1951.cma"
