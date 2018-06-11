@@ -1,7 +1,7 @@
 open Decompress
 
-exception Deflate_error of Deflate.error
-exception Inflate_error of Inflate.error
+exception Deflate_error of Zlib_deflate.error
+exception Inflate_error of Zlib_inflate.error
 
 (* Keep in your mind, this is an easy example of Decompress but not efficient.
    Don't copy/paste this code in a productive environment.
@@ -58,7 +58,7 @@ let compress ?(level = 4) data =
      If [meth] is specified, the refiller has a [Some] as the second parameter.
      Otherwise, it is [None].
   *)
-  Deflate.bytes
+  Zlib_deflate.bytes
     input_buffer output_buffer
     (fun input_buffer -> function
      | Some max ->
@@ -74,7 +74,7 @@ let compress ?(level = 4) data =
     (fun output_buffer len ->
       Buffer.add_subbytes res output_buffer 0 len;
       0xFFFF)
-    (Deflate.default ~proof:B.proof_bytes level)
+    (Zlib_deflate.default ~proof:B.proof_bytes level)
   (* We can specify the level of the compression, see the documentation to know
      what we use for each level. The default is 4.
   *)
@@ -101,7 +101,7 @@ let uncompress data =
   let pos = ref 0 in
   let res = Buffer.create (String.length data) in
 
-  Inflate.bytes
+  Zlib_inflate.bytes
     input_buffer output_buffer
     (* Same logic as [compress]. *)
     (fun input_buffer ->
@@ -112,7 +112,7 @@ let uncompress data =
     (fun output_buffer len ->
      Buffer.add_subbytes res output_buffer 0 len;
      0xFFFF)
-    (Inflate.default window)
+    (Zlib_inflate.default window)
   |> function
      | Ok _ -> Buffer.contents res
      | Error exn -> raise (Inflate_error exn)
