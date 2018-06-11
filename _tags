@@ -3,7 +3,7 @@ true: safe_string, bin_annot
 <lib>: include
 
 <lib/*>: warn_error(+1..49), warn(A-4-41-44)
-<lib/*>: linkall, package(checkseum.c), package(optint)
+<lib/*>: linkall, package(checkseum), package(optint)
 
 <bin/dpipe.{native,byte,ml}>: package(optint), package(checkseum.c), package(cmdliner), linkdep(bin/bs.o)
 
