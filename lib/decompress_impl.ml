@@ -503,7 +503,7 @@ sig
   val used_out: ('x, 'x) t -> int
 end
 
-module Convience_deflate (X: S_deflate) =
+module Convenience_deflate (X: S_deflate) =
 struct
   let to_result src dst ?meth refiller flusher t =
     let rec go acc t = match X.eval src dst t, meth with
@@ -1326,7 +1326,7 @@ struct
     ; adler = Checkseum.Adler32.default
     ; state = MakeBlock (block_of_level ~wbits level) }
 
-  include Convience_deflate
+  include Convenience_deflate
       (struct
         type nonrec ('i, 'o) t = ('i, 'o) t
         type nonrec error = error
@@ -1504,7 +1504,7 @@ struct
   let used_in t = RFC1951_deflate.used_in t.d
   let used_out t = RFC1951_deflate.used_out t.d
 
-  include Convience_deflate
+  include Convenience_deflate
       (struct
         type nonrec ('i, 'o) t = ('i, 'o) t
         type nonrec error = error
