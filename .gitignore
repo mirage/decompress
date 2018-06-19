@@ -11,3 +11,5 @@ _tests
 lib_test/files
 zpipe
 c/dpipe
+*.merlin
+*.install
