@@ -1,6 +1,6 @@
-module B       = Decompress_b
-module Hunk    = Decompress_hunk
-module L       = Decompress_lz77
+module B       = Decompress_impl.B
+module Hunk    = Decompress_impl.Hunk
+module L       = Decompress_impl.L
 
 module type DEFLATE =
 sig

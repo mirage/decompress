@@ -1,0 +1,6 @@
+(executable
+ ((name dpipe)
+  (modules (dpipe))
+  (public_name decompress.dpipe)
+  (package decompress)
+  (libraries (checkseum.c unix decompress bigstring_rw cmdliner))))
