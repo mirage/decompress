@@ -1,69 +1,62 @@
-module B :
+module B:
 sig
   type st = St
   type bs = Bs
 
-  module Bigstring :
+  module Bigstring:
   sig
     open Bigarray
 
     type t = (char, int8_unsigned_elt, c_layout) Array1.t
 
-    val length    : t -> int
-    val create    : int -> t
-    val get       : t -> int -> char
-    val set       : t -> int -> char -> unit
-    val sub       : t -> int -> int -> t
-    val fill      : t -> char -> unit
-    val copy      : t -> t
-    val get_u16   : t -> int -> int
-    val get_u32   : t -> int -> int32
-    val get_u64   : t -> int -> int64
-    val set_u16   : t -> int -> int -> unit
-    val set_u32   : t -> int -> int32 -> unit
-    val set_u64   : t -> int -> int64 -> unit
-    val to_string : t -> string
-    val blit      : t -> int -> t -> int -> int -> unit
-    val pp        : Format.formatter -> t -> unit
-    val empty     : t
+    val length: t -> int
+    val create: int -> t
+    val get: t -> int -> char
+    val set: t -> int -> char -> unit
+    val sub: t -> int -> int -> t
+    val fill: t -> char -> unit
+    val copy: t -> t
+    val get_u16: t -> int -> int
+    val get_u32: t -> int -> int32
+    val get_u64: t -> int -> int64
+    val set_u16: t -> int -> int -> unit
+    val set_u32: t -> int -> int32 -> unit
+    val set_u64: t -> int -> int64 -> unit
+    val to_string: t -> string
+    val blit: t -> int -> t -> int -> int -> unit
+    val pp: Format.formatter -> t -> unit
+    val empty: t
   end
 
   type 'a t =
     | Bytes     : Bytes.t -> st t
     | Bigstring : Bigstring.t -> bs t
 
-  val from_bytes      : Bytes.t -> st t
-  val from_bigstring  : Bigstring.t -> bs t
-  val from            : proof: 'a t -> int -> 'a t
+  val from_bytes: Bytes.t -> st t
+  val from_bigstring: Bigstring.t -> bs t
+  val from: proof: 'a t -> int -> 'a t
 
-  val length          : 'a t -> int
-  val get             : 'a t -> int -> char
-  val set             : 'a t -> int -> char -> unit
+  val length: 'a t -> int
+  val get: 'a t -> int -> char
+  val set: 'a t -> int -> char -> unit
 
-  val get_u16         : 'a t -> int -> int
-  val get_u32         : 'a t -> int -> int32
-  val get_u64         : 'a t -> int -> int64
-  val set_u16         : 'a t -> int -> int -> unit
-  val set_u32         : 'a t -> int -> int32 -> unit
-  val set_u64         : 'a t -> int -> int64 -> unit
+  val get_u16: 'a t -> int -> int
+  val get_u32: 'a t -> int -> int32
+  val get_u64: 'a t -> int -> int64
+  val set_u16: 'a t -> int -> int -> unit
+  val set_u32: 'a t -> int -> int32 -> unit
+  val set_u64: 'a t -> int -> int64 -> unit
 
-  val to_string       : 'a t -> string
+  val to_string: 'a t -> string
 
-  val blit            : 'a t -> int -> 'a t -> int -> int -> unit
-  val sub             : 'a t -> int -> int -> 'a t
-  val fill            : 'a t -> int -> int -> char -> unit
-  val pp              : Format.formatter -> 'a t -> unit
-  val empty           : proof:'a t -> 'a t
+  val blit: 'a t -> int -> 'a t -> int -> int -> unit
+  val sub: 'a t -> int -> int -> 'a t
+  val fill: 'a t -> int -> int -> char -> unit
+  val pp: Format.formatter -> 'a t -> unit
+  val empty: proof:'a t -> 'a t
 
-  val proof_bytes     : st t
-  val proof_bigstring : bs t
-end
-
-module Adler32 :
-sig
-  type t = int32
-
-  val adler32 : 'a B.t -> t -> int -> int -> t
+  val proof_bytes: st t
+  val proof_bigstring: bs t
 end
 
 (** Decompress, functionnal implementation of Zlib in OCaml. *)
@@ -74,7 +67,7 @@ end
     at [dist + 1] before the current cursor.
     [Literal chr] means a character.
 *)
-module Hunk :
+module Hunk:
 sig
   type t =
     | Match of (int * int) (** [Match (len, dist)] where [len] and [dist] are
@@ -100,7 +93,7 @@ end
 
     The functor was not done now but may be soonly. So, TODO!
 *)
-module L :
+module L:
 sig
   (** Lz77 error. *)
   type error =
@@ -316,13 +309,13 @@ sig
   type 'o t
 
   (** [create ~proof] creates a new window. *)
-  val create : proof:'o B.t -> 'o t
+  val create: proof:'o B.t -> 'o t
 
   (** [reset window] resets a window to be reused by an Inflate algorithm. *)
-  val reset  : 'o t -> 'o t
+  val reset: 'o t -> 'o t
 
   (** [crc window] returns the checksum computed by the window. *)
-  val crc    : 'o t -> Int32.t
+  val crc: 'o t -> Checkseum.Adler32.t
 end
 
 (** Inflate algorithm.
@@ -340,10 +333,10 @@ sig
   type ('i, 'o) t
 
   (** Pretty-printer of inflate error. *)
-  val pp_error : Format.formatter -> error -> unit
+  val pp_error: Format.formatter -> error -> unit
 
   (** Pretty-printer of inflate state. *)
-  val pp       : Format.formatter -> ('i, 'o) t -> unit
+  val pp: Format.formatter -> ('i, 'o) t -> unit
 
   (** [eval i o t] computes the state [t] with the input [i] and the output [o].
      This function returns:
@@ -355,7 +348,7 @@ sig
       {- [`End t]: means that the deflate algorithm is done in your input. May
      be [t] writes something in your output. You can check with {!used_out}.}
       {- [`Error (t, exn)]: the algorithm catches an error [exn].}} *)
-  val eval     : 'a B.t -> 'a B.t -> ('a, 'a) t ->
+  val eval: 'a B.t -> 'a B.t -> ('a, 'a) t ->
     [ `Await of ('a, 'a) t
     | `Flush of ('a, 'a) t
     | `End   of ('a, 'a) t
@@ -363,23 +356,23 @@ sig
 
   (** [refill off len t] allows the state [t] to use an output at [off] on [len]
      byte(s). *)
-  val refill   : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val refill: int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   (** [flush off len t] allows the state [t] to use an output at [off] on [len]
      byte(s). *)
-  val flush    : int -> int -> ('i, 'o) t -> ('i, 'o) t
+  val flush: int -> int -> ('i, 'o) t -> ('i, 'o) t
 
   (** [used_in t] returns how many byte(s) was used by [t] in the input. *)
-  val used_in  : ('i, 'o) t -> int
+  val used_in: ('i, 'o) t -> int
 
   (** [used_out ŧ] returns how many byte(s) was used by [t] in the output. *)
-  val used_out : ('i, 'o) t -> int
+  val used_out: ('i, 'o) t -> int
 
   (** [write t] returns the size of the stream decompressed. *)
-  val write    : ('i, 'o) t -> int
+  val write: ('i, 'o) t -> int
 
   (** [default] makes a new state [t]. *)
-  val default  : 'o Window.t -> ('i, 'o) t
+  val default: 'o Window.t -> ('i, 'o) t
 
   (** [to_result i o refill flush t] is a convenience function to apply the
      inflate algorithm on the stream [refill] and call [flush] when the internal
@@ -387,21 +380,21 @@ sig
 
       If the compute catch an error, we returns [Error exn] (see
      {!INFLATE.error}). Otherwise, we returns the state {i useless} [t]. *)
-  val to_result :
+  val to_result:
     'a B.t -> 'a B.t ->
     ('a B.t -> int) ->
     ('a B.t -> int -> int) ->
     ('a, 'a) t -> (('a, 'a) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bytes.t}. *)
-  val bytes     :
+  val bytes:
     Bytes.t -> Bytes.t ->
     (Bytes.t -> int) ->
     (Bytes.t -> int -> int) ->
     (B.st, B.st) t -> ((B.st, B.st) t, error) result
 
   (** Specialization of {!to_result} with {!B.Bigstring.t}. *)
-  val bigstring :
+  val bigstring:
     B.Bigstring.t -> B.Bigstring.t ->
     (B.Bigstring.t -> int) ->
     (B.Bigstring.t -> int -> int) ->
@@ -423,6 +416,6 @@ end
 type error_z_inflate =
   | RFC1951 of RFC1951_inflate.error
   | Invalid_header
-  | Invalid_checksum of { have: Adler32.t; expect: Adler32.t; }
+  | Invalid_checksum of { have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t; }
 
 module Zlib_inflate: INFLATE with type error = error_z_inflate

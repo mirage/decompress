@@ -1,0 +1,3 @@
+(library
+ ((name bigstring_rw)
+  (c_names (bs))))

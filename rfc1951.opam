@@ -8,28 +8,17 @@ dev-repo:     "https://github.com/mirage/decompress.git"
 doc:          "https://mirage.github.io/decompress/"
 license:      "MIT"
 
-build: [
-  "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "false"
-  "--with-cmdliner" "%{cmdliner:installed}%"
-]
-
-build-test: [
-  [ "ocaml" "pkg/pkg.ml" "build" "--pinned" "%{pinned}%" "--tests" "true" ]
-  [ "ocaml" "pkg/pkg.ml" "test" ]
-]
+build: [[ "jbuilder" "build" "--only-packages" name "--root" "." "-j" jobs "@install" ]]
+build-test: [[ "jbuilder" "build" "--only-packages" name "--root" "." "-j" jobs "@runtest" ]]
 
 depends: [
-  "ocamlbuild"     {build}
-  "ocamlfind"      {build}
-  "topkg"          {build}
+  "jbuilder"   {build}
   "base-bytes"
-  "camlzip"        {test}
-  "re"             {test & >= "1.7.2"}
-  "alcotest"       {test}
-]
-
-depopts: [
-  "cmdliner"
+  "optint"
+  "checkseum"
+  "camlzip"    {test}
+  "re"         {test & >= "1.7.2"}
+  "alcotest"   {test}
 ]
 
 available: [ocaml-version >= "4.03.0"]

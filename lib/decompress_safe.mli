@@ -17,8 +17,8 @@ val sub_ro    : ([> read ], 'i) t -> int -> int -> (read, 'i) t
 val sub_rw    : ([> read ], 'i) t -> int -> int -> ([ read | write ], 'i) t
 val fill      : ([> write ], 'i) t -> int -> int -> char -> unit
 val blit      : ([> read ], 'i) t -> int -> ([> write ], 'i) t -> int -> int -> unit
-val blit2      : ([> read ], 'i) t -> int -> ([> write ], 'i) t -> int -> ([> write ], 'i) t -> int -> int -> unit
+val blit2     : ([> read ], 'i) t -> int -> ([> write ], 'i) t -> int -> ([> write ], 'i) t -> int -> int -> unit
 val pp        : Format.formatter -> ([> read ], 'i) t -> unit
 val to_string : ([> read ], 'i) t -> string
-val adler32   : ([> read ], 'i) t -> int32 -> int -> int -> int32
+val adler32   : ([> read ], 'i) t -> Checkseum.Adler32.t -> int -> int -> Checkseum.Adler32.t
 val from      : ('a, 'i) t -> 'i Decompress_b.t

@@ -1,5 +1,4 @@
 module B = Decompress_b
-module Adler32 = Decompress_adler32
 
 type read  = [ `Read ]
 type write = [ `Write ]
@@ -23,6 +22,10 @@ let blit      = B.blit
 let blit2     = B.blit2
 let pp        = B.pp
 let to_string = B.to_string
-let adler32   = Adler32.adler32
+let adler32
+    : type a. a B.t -> Checkseum.Adler32.t -> int -> int -> Checkseum.Adler32.t
+  = fun v t off len -> match v with
+  | B.Bytes v -> Checkseum.Adler32.digest_bytes v off len t
+  | B.Bigstring v -> Checkseum.Adler32.digest_bigstring v off len t
 
 external from : ('a, 'i) t -> 'i B.t = "%identity"
