@@ -1,3 +1,22 @@
+v0.8 2018-07-09 Paris (France)
+------------------------------------
+
+* Implementation of RFC1951 (task from @cfcs)
+* *breaking change* New interface of decompress
+
+  We wrap API in `Zlib_{inflate/deflate}` and add `RFC1951_{inflate/deflate}`.
+  
+* Move to `jbuilder`/`dune` (task from @samoht)
+* Better check on `zlib` header
+* Fixed infinite loop (task fron @cfcs)
+
+  See 2e3af68, `decompress` has an infinite loop when the inflated dictionary
+  does not provide any bindings (and length of opcode is <= 0). In this case,
+  `decompress` expects an empty input and provide an empty output in any case.
+  
+* Use re.1.7.2 on tests
+* Use camlzip.1.07 on tests
+
 v0.7 2017-10-18 Paris (France)
 ------------------------------------
 
