@@ -10,12 +10,12 @@ code).
 We respect the interface of `zlib` and all flush mode is available
 (experimental):
 
-- `sync` performs the following tasks:
- - if there is some buffered but not yet compressed data, then this data is
+1. `sync` performs the following tasks:
+ * if there is some buffered but not yet compressed data, then this data is
    compressed into one or several blocks
- - a new type 0 block with empty contents is appended
-- `partial` is a deprecated flush method
-- `full` is a variant of the `sync` method flush. The difference lies in the
+ * a new type 0 block with empty contents is appended
+2. `partial` is a deprecated flush method
+3. `full` is a variant of the `sync` method flush. The difference lies in the
   LZ77 step. The full flush is a sync flush where the dictionary is emptied:
   after a full flush, the deflater will refrain from using copy symbols which
   reference sequences appearing before the flush point.
