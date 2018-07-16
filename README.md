@@ -57,7 +57,7 @@ dependency __before__ `decompress` in `dune` file, like:
   (libraries (checkseum.c decompress))))
 ```
 
-Otherwise, the end-user should have a linking error (see #47).
+Otherwise, the end-user should have a linking error (see [#47](https://github.com/mirage/decompress/issues/47)).
 
 ## RFC 1951
 
