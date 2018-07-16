@@ -48,6 +48,17 @@ implementations: `checkseum.c` and `checkseum.ocaml`. Currently, `decompress`
 When you want to use `decompress`, you **must** choose which implementation
 you want and link with `decompress` **and** `checkseum.{c,ocaml}`.
 
+NOTE: currently the end-user need to put `checkseum.{c,ocaml}` as the first
+dependency __before__ `decompress` in `dune` file, like:
+
+```
+(executable
+ ((name ...)
+  (libraries (checkseum.c decompress))))
+```
+
+Otherwise, the end-user should have a linking error (see #47).
+
 ## RFC 1951
 
 This distribution provides an implementation of `zlib` and an implementation of
