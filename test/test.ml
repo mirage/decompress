@@ -58,13 +58,13 @@ struct
 
   let input  = Bytes.create 0xFFFF
   let output = Bytes.create 0xFFFF
-  let window = Decompress.Window.create ~proof:Decompress.B.proof_bytes
+  let window = Decompress.Window.create ~witness:Decompress.B.bytes
 
   let compress ?(level = 4) ?(wbits = 15) ?meth refill flush =
     Decompress.Zlib_deflate.bytes input output ?meth
       refill
       (fun buf len -> flush buf len; 0xFFFF)
-      (Decompress.Zlib_deflate.default ~proof:(Decompress.B.from_bytes Bytes.empty) level ~wbits)
+      (Decompress.Zlib_deflate.default ~witness:Decompress.B.bytes level ~wbits)
     |> function
        | Ok _ -> ()
        | Error exn -> raise (Decompress_deflate exn)
@@ -73,7 +73,7 @@ struct
     Decompress.Zlib_inflate.bytes input output
       refill
       (fun buf len -> flush buf len; 0xFFFF)
-      (Decompress.Zlib_inflate.default (Decompress.Window.reset window))
+      (Decompress.Zlib_inflate.default ~witness:Decompress.B.bytes (Decompress.Window.reset window))
     |> function
        | Ok _ -> ()
        | Error exn -> raise (Decompress_inflate exn)

@@ -1,6 +1,8 @@
 (library
  ((name decompress_impl)
   (modules (decompress_b
+            decompress_bigstring
+            decompress_bytes
             decompress_hunk
             decompress_impl
             decompress_lz77
