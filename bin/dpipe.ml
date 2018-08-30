@@ -8,41 +8,43 @@ external bs_write : Unix.file_descr -> B.Bigstring.t -> int -> int -> int =
   "bigstring_write" [@@noalloc]
 
 (** Abstract [Unix.read] with ['a B.t]. *)
-let unix_read (type a) ch (tmp : a B.t) off len = match tmp with
-  | B.Bytes v -> Unix.read ch v off len
-  | B.Bigstring v -> bs_read ch v off len
+let unix_read
+  : type a. a B.t -> Unix.file_descr -> a -> int -> int -> int = function
+  | B.Bytes -> Unix.read
+  | B.Bigstring -> bs_read
 
-let unix_write (type a) ch (tmp : a B.t) off len = match tmp with
-  | B.Bytes v -> Unix.write ch v off len
-  | B.Bigstring v -> bs_write ch v off len
+let unix_write
+  : type a. a B.t -> Unix.file_descr -> a -> int -> int -> int = function
+  | B.Bytes -> Unix.write
+  | B.Bigstring -> bs_write
 
 let _chunk = 0xFFFF
 
 let do_command input_size output_size mode level wbits =
-  let src = B.from ~proof:B.proof_bigstring input_size in
-  let dst = B.from ~proof:B.proof_bigstring output_size in
+  let src = Bigarray.Array1.create Bigarray.Char Bigarray.c_layout input_size in
+  let dst = Bigarray.Array1.create Bigarray.Char Bigarray.c_layout output_size in
 
   match mode with
   | `Compression ->
-    let t = Decompress.Zlib_deflate.default ~proof:src ~wbits level in
+    let t = Decompress.Zlib_deflate.default ~witness:B.bigstring ~wbits level in
     let r = Decompress.Zlib_deflate.to_result
       src dst
       (fun src -> function
-       | Some max -> unix_read Unix.stdin src 0 (min max input_size)
-       | None -> unix_read Unix.stdin src 0 input_size)
-      (fun dst len -> let _ = unix_write Unix.stdout dst 0 len in output_size)
+       | Some max -> unix_read B.bigstring Unix.stdin src 0 (min max input_size)
+       | None -> unix_read B.bigstring Unix.stdin src 0 input_size)
+      (fun dst len -> let _ = unix_write B.bigstring Unix.stdout dst 0 len in output_size)
       t
     in (match r with
         | Ok _ -> ()
         | Error exn -> Format.eprintf "%a\n%!" Decompress.Zlib_deflate.pp_error exn)
   | `Decompression ->
-    let w = Decompress.Window.create ~proof:dst in
-    let t = Decompress.Zlib_inflate.default w in
+    let w = Decompress.Window.create ~witness:B.bigstring in
+    let t = Decompress.Zlib_inflate.default ~witness:B.bigstring w in
     let r = Decompress.Zlib_inflate.to_result
       src dst
-      (fun src -> unix_read Unix.stdin src 0 input_size)
+      (fun src -> unix_read B.bigstring Unix.stdin src 0 input_size)
       (fun dst len ->
-       let _ = unix_write Unix.stdout dst 0 len in output_size)
+       let _ = unix_write B.bigstring Unix.stdout dst 0 len in output_size)
       t
     in (match r with
         | Ok _ -> ()

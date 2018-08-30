@@ -1,6 +1,9 @@
-module Safe    = Decompress_safe
-module Seq     = Decompress_seq
-module Hunk    = Decompress_hunk
+module Safe = Decompress_safe
+module Seq = Decompress_seq
+module Hunk = Decompress_hunk
+module B = Decompress_b
+
+let pf = Format.fprintf
 
 let repeat atm =
   let atm = Char.code atm |> Int64.of_int in
@@ -33,7 +36,8 @@ type 'i t =
   ; i_len      : int
   ; level      : int
   ; on         : Hunk.t -> unit
-  ; state      : 'i state }
+  ; state      : 'i state
+  ; witness    : 'i B.t }
 and 'i state =
   | Deflate   of int
   | Deffast   of int
@@ -43,29 +47,25 @@ and 'i res =
   | Cont  of 'i t
   | Wait  of 'i t * Hunk.t Seq.t
   | Error of 'i t * error
-(** XXX: we don't have an [Ok] result because this algorithm does not decide
-          if you need to stop the compression or not - this is decided by the
-          user. It's illogic to force a [`End] state with this algorithm. *)
 
-let pp_state fmt = function
-  | Deflate wbits -> Format.fprintf fmt "(Deflate wbits:%d)" wbits
-  | Deffast wbits -> Format.fprintf fmt "(Deffast wbits:%d)" wbits
-  | Choose wbits -> Format.fprintf fmt "(Choose wbits:%d)" wbits
-  | Exception exn -> Format.fprintf fmt "(Exception %a)" pp_error exn
+(* XXX: we don't have an [Ok] result because this algorithm does not decide if
+   you need to stop the compression or not - this is decided by the user. It's
+   illogic to force a [`End] state with this algorithm. *)
 
-let pp fmt { i_off; i_pos; i_len
-            ; level
-            ; state
-            ; _ } =
-  Format.fprintf fmt "{@[<hov>i_off = %d;@ \
-                              i_pos = %d;@ \
-                              i_len = %d;@ \
-                              level = %d;@ \
-                              on = #fun;@ \
-                              state = %a@]}"
-    i_off i_pos i_len
-    level
-    pp_state state
+let pp_state ppf = function
+  | Deflate wbits -> pf ppf "(Deflate wbits:%d)" wbits
+  | Deffast wbits -> pf ppf "(Deffast wbits:%d)" wbits
+  | Choose wbits -> pf ppf "(Choose wbits:%d)" wbits
+  | Exception exn -> pf ppf "(Exception @[%a@])" pp_error exn
+
+let pp ppf { i_off; i_pos; i_len; level; state; _ } =
+  pf ppf "{@[<hov>i_off = %d;@ \
+                  i_pos = %d;@ \
+                  i_len = %d;@ \
+                  level = %d;@ \
+                  on = #fun;@ \
+                  state = @[%a@]@]}"
+    i_off i_pos i_len level pp_state state
 
 let await t lst = Wait (t, lst)
 let error t exn = Error ({ t with state = Exception exn }, exn)
@@ -75,11 +75,11 @@ let _max_length      = 256
 let _size_of_int64   = 8
 let _idx_boundary    = 2
 
-type key = Int32.t option
+type key = int32 option
 
-let key src idx len : key =
+let key witness src idx len : key =
   if idx < len - 3
-  then Some (Safe.get_u32 src idx)
+  then Some (Safe.get_32 witness src idx)
   else None
 
 module T =
@@ -93,19 +93,18 @@ struct
     Hashtbl.replace table key (value :: rest)
 end
 
-let longuest_substring src x y len =
+let longuest_substring witness src x y len =
   let rec aux acc l =
     if l < _max_length
     && x + l < y
     && y + l < len
-    && Safe.get src (x + l) = Safe.get src (y + l)
+    && Safe.get witness src (x + l) = Safe.get witness src (y + l)
     then aux (Some (l + 1)) (l + 1)
-    else acc
-  in
+    else acc in
   aux None 0
 
 (* XXX: from ocaml-lz77, no optimized but this algorithm has no constraint.
-    bisoux @samoht. *)
+   bisoux @samoht. *)
 let deflate ?(max_fardistance = (1 lsl 15) - 1) src t =
   let results = Queue.create () in
   let src_idx = ref (t.i_off + t.i_pos) in
@@ -113,17 +112,15 @@ let deflate ?(max_fardistance = (1 lsl 15) - 1) src t =
   let last    = ref 0 in
 
   let flush_last () =
-    if !last <> 0 then begin
+    if !last <> 0
+    then begin
       for i = 0 to !last - 1
-      do t.on (Hunk.Literal (Safe.get src (!src_idx - !last + i)));
-          Queue.push
-            (Hunk.Literal (Safe.get src (!src_idx - !last + i)))
-            results;
-      done;
-
-      last := 0
-    end
-  in
+      do let hunk = Hunk.Literal (Safe.get t.witness src (!src_idx - !last + i)) in
+         t.on hunk
+       ; Queue.push hunk results
+      done
+    ; last := 0
+    end in
 
   let find_match idx =
 
@@ -132,10 +129,9 @@ let deflate ?(max_fardistance = (1 lsl 15) - 1) src t =
       | Some (_, x), Some (_, y) -> if x >= y then a else b
       | Some _, None -> a
       | None, Some _ -> b
-      | None, None -> None
-    in
+      | None, None -> None in
 
-    let key = key src idx (t.i_off + t.i_len) in
+    let key = key t.witness src idx (t.i_off + t.i_len) in
     let candidates = T.find table key in
     let rec aux acc = function
       | [] -> acc
@@ -143,35 +139,33 @@ let deflate ?(max_fardistance = (1 lsl 15) - 1) src t =
         if x >= idx
         || idx - x >= max_fardistance
         then acc
-        else match longuest_substring src x idx (t.i_off + t.i_len) with
+        else match longuest_substring t.witness src x idx (t.i_off + t.i_len) with
           | Some len when len >= 3 -> aux (max acc (Some (x, len))) r
           | _ -> aux acc r
     in
 
     match aux None candidates with
     | None -> None
-    | Some (i, len) -> Some (idx - i, len)
-  in
+    | Some (i, len) -> Some (idx - i, len) in
 
   while !src_idx < t.i_off + t.i_len
   do match find_match !src_idx with
       | None ->
-        T.add (key src !src_idx (t.i_off + t.i_len)) !src_idx table;
-        incr last;
-        incr src_idx;
+        T.add (key t.witness src !src_idx (t.i_off + t.i_len)) !src_idx table
+      ; incr last
+      ; incr src_idx
       | Some (start, len) ->
         for i = !src_idx to !src_idx + len - 1
-        do T.add (key src i (t.i_off + t.i_len)) i table done;
+        do T.add (key t.witness src i (t.i_off + t.i_len)) i table done
 
-        flush_last ();
-        t.on (Hunk.Match (len - 3, start - 1));
-        Queue.push (Hunk.Match (len - 3, start - 1)) results;
-        src_idx := !src_idx + len
-  done;
+      ; flush_last ()
+      ; t.on (Hunk.Match (len - 3, start - 1))
+      ; Queue.push (Hunk.Match (len - 3, start - 1)) results
+      ; src_idx := !src_idx + len
+  done
 
-  flush_last ();
-
-  Seq.of_queue results
+  ; flush_last ()
+  ; Seq.of_queue results
 
 let _hlog = [| 0; 11; 11; 11; 12; 13; 13; 13; 13; 13 |]
 
@@ -180,7 +174,7 @@ let deffast
   : type a.
     ?accel:int ->
     ?max_fardistance:int ->
-    (Safe.read, a) Safe.t -> a t -> Hunk.t Seq.t
+    (Safe.ro, a) Safe.t -> a t -> Hunk.t Seq.t
   = fun ?(accel = 1) ?(max_fardistance = (1 lsl 15) - 1) src t ->
   let src_idx    = ref (t.i_off + t.i_pos) in
   let hash_log   = Array.get _hlog t.level in
@@ -190,23 +184,22 @@ let deffast
   let results    = Queue.create () in
   let accel      = if accel < 1 then 0 else accel - 1 in
 
-  t.on (Hunk.Literal (Safe.get src !src_idx));
-  Queue.push (Hunk.Literal (Safe.get src !src_idx)) results;
+  t.on (Hunk.Literal (Safe.get t.witness src !src_idx));
+  Queue.push (Hunk.Literal (Safe.get t.witness src !src_idx)) results;
   incr src_idx;
 
-  t.on (Hunk.Literal (Safe.get src !src_idx));
-  Queue.push (Hunk.Literal (Safe.get src !src_idx)) results;
+  t.on (Hunk.Literal (Safe.get t.witness src !src_idx));
+  Queue.push (Hunk.Literal (Safe.get t.witness src !src_idx)) results;
   incr src_idx;
 
   let c ref idx =
     try
-      if Safe.get src !ref = Safe.get src !idx
+      if Safe.get t.witness src !ref = Safe.get t.witness src !idx
       then begin incr ref;
                   incr idx;
                   true
       end else false
-    with _ -> false
-  in
+    with _ -> false in
 
   while !src_idx < t.i_off + t.i_len - 12
   do
@@ -214,13 +207,13 @@ let deffast
     let src_ref = ref !src_idx in
 
     try
-      if Safe.get src !src_idx = Safe.get src (!src_idx - 1)
-          && Safe.get_u16 src (!src_idx - 1) = Safe.get_u16 src (!src_idx + 1)
+      if Safe.get t.witness src !src_idx = Safe.get t.witness src (!src_idx - 1)
+      && Safe.get_16 t.witness src (!src_idx - 1) = Safe.get_16 t.witness src (!src_idx + 1)
       then raise (Match (0, 0)) (* (+3, +1) *);
 
       let hval =
-        let v = Safe.get_u16 src !src_idx in
-        let v = (Safe.get_u16 src (!src_idx + 1)
+        let v = Safe.get_16 t.witness src !src_idx in
+        let v = (Safe.get_16 t.witness src (!src_idx + 1)
                   lxor (v lsr (16 - hash_log))) lxor v in
         v land ((1 lsl hash_log) - 1)
       in
@@ -235,27 +228,27 @@ let deffast
           || c src_ref src_idx = false
           || c src_ref src_idx = false
           || c src_ref src_idx = false
-      then raise (Literal (Safe.get src anchor));
+      then raise (Literal (Safe.get t.witness src anchor));
 
       if t.level >= 5 && distance >= _max_distance
       then if c src_ref src_idx = false
             || c src_ref src_idx = false
-            then raise (Literal (Safe.get src anchor))
+            then raise (Literal (Safe.get t.witness src anchor))
             else raise (Match (2, distance - 1)) (* (+3, +1) *);
 
       raise (Match (!src_idx - anchor - 3, distance - 1))
     with Match (len, 0) ->
           begin
-            let pattern = Safe.get src (anchor + len - 1) in
+            let pattern = Safe.get t.witness src (anchor + len - 1) in
             let v1 = repeat pattern in
 
             (*  _ _ _ _
-            * |_|_|_|_|
-            * | | | | src_idx
-            * | | | src_ref
-            * | | anchor
-            * | -1
-            *)
+             * |_|_|_|_|
+             * | | | | src_idx
+             * | | | src_ref
+             * | | anchor
+             * | -1
+             *)
 
             src_idx := anchor + (len + 3);
             (* XXX: in blosclz, [src_ref = anchor - 1 + 3], but in this case,
@@ -269,14 +262,14 @@ let deffast
                               - (2 * _idx_boundary)
                     && !src_idx - 3 - anchor < _max_length - _size_of_int64
               do
-                let v2 = Safe.get_u64 src !src_ref in
+                let v2 = Safe.get_64 t.witness src !src_ref in
 
                 if v1 <> v2
                 then begin
                   while !src_idx < (t.i_off + t.i_len) - _idx_boundary
                         && !src_idx - 3 - anchor < _max_length
                   do
-                    if Safe.get src !src_ref <> pattern
+                    if Safe.get t.witness src !src_ref <> pattern
                     then raise Break
                     else begin incr src_ref; incr src_idx; end
                   done;
@@ -312,7 +305,7 @@ let deffast
                               - _size_of_int64
                               - (2 * _idx_boundary)
                     && !src_idx - 3 - anchor < _max_length - _size_of_int64
-              do if Safe.get_u64 src !src_idx <> Safe.get_u64 src !src_ref
+              do if Safe.get_64 t.witness src !src_idx <> Safe.get_64 t.witness src !src_ref
                 then begin
                   while !src_idx < (t.i_off + t.i_len) - _idx_boundary
                         && !src_idx - 3 - anchor < _max_length
@@ -350,9 +343,10 @@ let deffast
   done;
 
   while !src_idx < t.i_off + t.i_len
-  do t.on (Hunk.Literal (Safe.get src !src_idx));
-      Queue.push (Hunk.Literal (Safe.get src !src_idx)) results;
-      incr src_idx
+  do let hunk = (Hunk.Literal (Safe.get t.witness src !src_idx)) in
+       t.on hunk
+     ; Queue.push hunk results;
+     ; incr src_idx
   done;
 
   Seq.of_queue results
@@ -406,26 +400,30 @@ let refill off len t =
 let used_in t = t.i_pos
 
 let default
+  ~witness
   ?(level = 0)
   ?(on = fun _ -> ())
   wbits =
   if level >= 0 && level <= 9 && wbits >= 8 && wbits <= 15
   then { i_off = 0
-        ; i_pos = 0
-        ; i_len = 0
-        ; level
-        ; on
-        ; state = Deflate wbits }
+       ; i_pos = 0
+       ; i_len = 0
+       ; level
+       ; on
+       ; state = Deflate wbits
+       ; witness }
   else if wbits >= 8 && wbits <= 15
   then { i_off = 0
-        ; i_pos = 0
-        ; i_len = 0
-        ; level = 0
-        ; on
-        ; state = Exception (Invalid_level level) }
+       ; i_pos = 0
+       ; i_len = 0
+       ; level = 0
+       ; on
+       ; state = Exception (Invalid_level level)
+       ; witness }
   else { i_off = 0
-        ; i_pos = 0
-        ; i_len = 0
-        ; level = 0
-        ; on
-        ; state = Exception (Invalid_wbits wbits) }
+       ; i_pos = 0
+       ; i_len = 0
+       ; level = 0
+       ; on
+       ; state = Exception (Invalid_wbits wbits)
+       ; witness }

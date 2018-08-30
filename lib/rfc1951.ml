@@ -27,7 +27,7 @@ sig
   val flush_of_meth: meth -> (int -> int -> ('x, 'x) t -> ('x, 'x) t)
   val flush: int -> int -> ('i, 'o) t -> ('i, 'o) t
 
-  val eval            : 'a B.t -> 'a B.t -> ('a, 'a) t ->
+  val eval            : 'a -> 'a -> ('a, 'a) t ->
     [ `Await of ('a, 'a) t
     | `Flush of ('a, 'a) t
     | `End   of ('a, 'a) t
@@ -37,20 +37,20 @@ sig
   val used_out: ('i, 'o) t -> int
   val bits_remaining: ('x, 'x) t -> int
 
-  val default: proof:'o B.t -> ?wbits:int -> int -> ('i, 'o) t
+  val default: witness:'a B.t -> ?wbits:int -> int -> ('a, 'a) t
 
-  val to_result: 'a B.t -> 'a B.t -> ?meth:(meth * int) ->
-                 ('a B.t -> int option -> int) ->
-                 ('a B.t -> int -> int) ->
+  val to_result: 'a -> 'a -> ?meth:(meth * int) ->
+                 ('a -> int option -> int) ->
+                 ('a -> int -> int) ->
                  ('a, 'a) t -> (('a, 'a) t, error) result
   val bytes: Bytes.t -> Bytes.t -> ?meth:(meth * int) ->
              (Bytes.t -> int option -> int) ->
              (Bytes.t -> int -> int) ->
-             (B.st, B.st) t -> ((B.st, B.st) t, error) result
+             (Bytes.t, Bytes.t) t -> ((Bytes.t, Bytes.t) t, error) result
   val bigstring: B.Bigstring.t -> B.Bigstring.t -> ?meth:(meth * int) ->
                  (B.Bigstring.t -> int option -> int) ->
                  (B.Bigstring.t -> int -> int) ->
-                 (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
+                 (B.Bigstring.t, B.Bigstring.t) t -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
 end
 
 type error_deflate = Decompress_impl.error_rfc1951_deflate = Lz77 of L.error
@@ -67,7 +67,7 @@ sig
   val pp_error: Format.formatter -> error -> unit
   val pp: Format.formatter -> ('i, 'o) t -> unit
 
-  val eval: 'a B.t -> 'a B.t -> ('a, 'a) t ->
+  val eval: 'a -> 'a -> ('a, 'a) t ->
     [ `Await of ('a, 'a) t
     | `Flush of ('a, 'a) t
     | `End   of ('a, 'a) t
@@ -81,20 +81,20 @@ sig
   val write: ('i, 'o) t -> int
   val bits_remaining: ('x, 'x) t -> int
 
-  val default: 'o Window.t -> ('i, 'o) t
+  val default: witness:'a B.t -> 'a Window.t -> ('a, 'a) t
 
-  val to_result: 'a B.t -> 'a B.t ->
-                 ('a B.t -> int) ->
-                 ('a B.t -> int -> int) ->
+  val to_result: 'a -> 'a ->
+                 ('a -> int) ->
+                 ('a -> int -> int) ->
                  ('a, 'a) t -> (('a, 'a) t, error) result
   val bytes: Bytes.t -> Bytes.t ->
              (Bytes.t -> int) ->
              (Bytes.t -> int -> int) ->
-             (B.st, B.st) t -> ((B.st, B.st) t, error) result
+             (Bytes.t, Bytes.t) t -> ((Bytes.t, Bytes.t) t, error) result
   val bigstring: B.Bigstring.t -> B.Bigstring.t ->
                  (B.Bigstring.t -> int) ->
                  (B.Bigstring.t -> int -> int) ->
-                 (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
+                 (B.Bigstring.t, B.Bigstring.t) t -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
 end
 
 type error_inflate = Decompress_impl.error_rfc1951_inflate =

@@ -1,9 +1,12 @@
-module B       = Decompress_b
-module Q       = Decompress_q
-module Safe    = Decompress_safe
-module Seq     = Decompress_seq
-module Hunk    = Decompress_lz77.Hunk
-module L       = Decompress_lz77
+module B = Decompress_b
+module Q = Decompress_q
+module Safe = Decompress_safe
+module Seq = Decompress_seq
+module Hunk = Decompress_lz77.Hunk
+module L = Decompress_lz77
+
+let pf = Format.fprintf
+let invalid_arg fmt = Format.ksprintf (fun s -> invalid_arg s) fmt
 
 (** (imperative) Heap implementation *)
 module Heap =
@@ -453,18 +456,18 @@ sig
   val get_frequencies : ('i, 'o) t -> F.t
   val set_frequencies : ?paranoid:bool -> F.t -> ('i, 'o) t -> ('i, 'o) t
 
-  val finish          : ('x, 'x) t -> ('x, 'x) t
-  val no_flush        : int -> int -> ('x, 'x) t -> ('x, 'x) t
-  val partial_flush   : int -> int -> ('x, 'x) t -> ('x, 'x) t
-  val sync_flush      : int -> int -> ('x, 'x) t -> ('x, 'x) t
-  val full_flush      : int -> int -> ('x, 'x) t -> ('x, 'x) t
+  val finish          : ('a, 'a) t -> ('a, 'a) t
+  val no_flush        : int -> int -> ('a, 'a) t -> ('a, 'a) t
+  val partial_flush   : int -> int -> ('a, 'a) t -> ('a, 'a) t
+  val sync_flush      : int -> int -> ('a, 'a) t -> ('a, 'a) t
+  val full_flush      : int -> int -> ('a, 'a) t -> ('a, 'a) t
 
   type meth = PARTIAL | SYNC | FULL
 
-  val flush_of_meth   : meth -> (int -> int -> ('x, 'x) t -> ('x, 'x) t)
+  val flush_of_meth   : meth -> (int -> int -> ('a, 'a) t -> ('a, 'a) t)
   val flush           : int -> int -> ('i, 'o) t -> ('i, 'o) t
 
-  val eval            : 'a B.t -> 'a B.t -> ('a, 'a) t ->
+  val eval            : 'a -> 'a -> ('a, 'a) t ->
     [ `Await of ('a, 'a) t
     | `Flush of ('a, 'a) t
     | `End   of ('a, 'a) t
@@ -473,20 +476,20 @@ sig
   val used_in         : ('i, 'o) t -> int
   val used_out        : ('i, 'o) t -> int
 
-  val default         : proof:'o B.t -> ?wbits:int -> int -> ('i, 'o) t
+  val default         : witness:'a B.t -> ?wbits:int -> int -> ('a, 'a) t
 
-  val to_result       : 'a B.t -> 'a B.t -> ?meth:(meth * int) ->
-                         ('a B.t -> int option -> int) ->
-                         ('a B.t -> int -> int) ->
+  val to_result       : 'a -> 'a -> ?meth:(meth * int) ->
+                         ('a -> int option -> int) ->
+                         ('a -> int -> int) ->
                          ('a, 'a) t -> (('a, 'a) t, error) result
   val bytes           : Bytes.t -> Bytes.t -> ?meth:(meth * int) ->
                         (Bytes.t -> int option -> int) ->
                         (Bytes.t -> int -> int) ->
-                        (B.st, B.st) t -> ((B.st, B.st) t, error) result
+                        (Bytes.t, Bytes.t) t -> ((Bytes.t, Bytes.t) t, error) result
   val bigstring       : B.Bigstring.t -> B.Bigstring.t -> ?meth:(meth * int) ->
                         (B.Bigstring.t -> int option -> int) ->
                         (B.Bigstring.t -> int -> int) ->
-                        (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
+                        (B.Bigstring.t, B.Bigstring.t) t -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
 end
 
 module type S_deflate =
@@ -495,12 +498,12 @@ sig
   type error
   type meth = PARTIAL | SYNC | FULL
 
-  val eval: 'x B.t -> 'x B.t -> ('x, 'x) t -> [ `Await of ('x, 'x) t | `Flush of ('x, 'x) t | `End of ('x, 'x) t | `Error of (('x, 'x) t * error) ]
-  val finish: ('x, 'x) t -> ('x, 'x) t
-  val no_flush: int -> int -> ('x, 'x) t -> ('x, 'x) t
-  val flush_of_meth: meth -> int -> int -> ('x, 'x) t -> ('x, 'x) t
-  val flush: int -> int -> ('x, 'x) t -> ('x, 'x) t
-  val used_out: ('x, 'x) t -> int
+  val eval: 'a -> 'a -> ('a, 'a) t -> [ `Await of ('a, 'a) t | `Flush of ('a, 'a) t | `End of ('a, 'a) t | `Error of (('a, 'a) t * error) ]
+  val finish: ('a, 'a) t -> ('a, 'a) t
+  val no_flush: int -> int -> ('a, 'a) t -> ('a, 'a) t
+  val flush_of_meth: meth -> int -> int -> ('a, 'a) t -> ('a, 'a) t
+  val flush: int -> int -> ('a, 'a) t -> ('a, 'a) t
+  val used_out: ('a, 'a) t -> int
 end
 
 module Convenience_deflate (X: S_deflate) =
@@ -535,16 +538,10 @@ struct
     go 0 t
 
   let bytes src dst ?meth refiller flusher t =
-    to_result (B.from_bytes src) (B.from_bytes dst) ?meth
-      (function B.Bytes v -> refiller v)
-      (function B.Bytes v -> flusher v)
-      t
+    to_result src dst ?meth refiller flusher t
 
   let bigstring src dst ?meth refiller flusher t =
-    to_result (B.from_bigstring src) (B.from_bigstring dst) ?meth
-      (function B.Bigstring v -> refiller v)
-      (function B.Bigstring v -> flusher v)
-      t
+    to_result src dst ?meth refiller flusher t
 end
 
 type error_rfc1951_deflate = Lz77 of L.error
@@ -581,7 +578,7 @@ struct
   type ('i, 'o) t =
     { hold        : int
     ; bits        : int
-    ; temp        : ([ Safe.read | Safe.write ], 'o) Safe.t
+    ; temp        : ([ Safe.ro | Safe.wo ], 'o) Safe.t
     ; o_off       : int
     ; o_pos       : int
     ; o_len       : int
@@ -592,9 +589,11 @@ struct
     ; wbits       : int
     ; write       : int
     ; adler       : Checkseum.Adler32.t
-    ; state       : ('i, 'o) state }
-  and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
-                   (Safe.write, 'o) Safe.t ->
+    ; state       : ('i, 'o) state
+    ; wi          : 'i B.t
+    ; wo          : 'o B.t }
+  and ('i, 'o) k = (Safe.ro, 'i) Safe.t ->
+                   (Safe.wo, 'o) Safe.t ->
                    ('i, 'o) t ->
                    ('i, 'o) res
   and ('i, 'o) state =
@@ -633,40 +632,40 @@ struct
     | ExtDist
   and meth = PARTIAL | SYNC | FULL
 
-  let pp_error fmt = function
-    | Lz77 lz -> Format.fprintf fmt "(Lz77 %a)" L.pp_error lz
+  let pp_error ppf = function
+    | Lz77 lz -> pf ppf "(Lz77 %a)" L.pp_error lz
 
-  let pp_code fmt = function
-    | Length    -> Format.fprintf fmt "Length"
-    | ExtLength -> Format.fprintf fmt "ExtLength"
-    | Dist      -> Format.fprintf fmt "Dist"
-    | ExtDist   -> Format.fprintf fmt "ExtDist"
+  let pp_code ppf = function
+    | Length    -> pf ppf "Length"
+    | ExtLength -> pf ppf "ExtLength"
+    | Dist      -> pf ppf "Dist"
+    | ExtDist   -> pf ppf "ExtDist"
 
-  let pp_flush fmt = function
-    | Sync f    -> Format.fprintf fmt "(Sync %a)" F.pp f
-    | Partial f -> Format.fprintf fmt "(Partial %a)" F.pp f
-    | Full      -> Format.fprintf fmt "Full"
-    | Final     -> Format.fprintf fmt "Final"
+  let pp_flush ppf = function
+    | Sync f    -> pf ppf "(Sync %a)" F.pp f
+    | Partial f -> pf ppf "(Partial %a)" F.pp f
+    | Full      -> pf ppf "Full"
+    | Final     -> pf ppf "Final"
 
-  let pp_block fmt = function
-    | Static { lz; frequencies; _ }  -> Format.fprintf fmt "(Static (%a, %a, #deflate))" L.pp lz F.pp frequencies
-    | Dynamic { lz; frequencies; _ } -> Format.fprintf fmt "(Dynamic (%a, %a, #deflate))" L.pp lz F.pp frequencies
-    | Flat pos                       -> Format.fprintf fmt "(Flat %d)" pos
+  let pp_block ppf = function
+    | Static { lz; frequencies; _ }  -> pf ppf "(Static (%a, %a, #deflate))" L.pp lz F.pp frequencies
+    | Dynamic { lz; frequencies; _ } -> pf ppf "(Dynamic (%a, %a, #deflate))" L.pp lz F.pp frequencies
+    | Flat pos                       -> pf ppf "(Flat %d)" pos
 
-  let pp_state fmt = function
-    | MakeBlock block                  -> Format.fprintf fmt "(MakeBlock %a)" pp_block block
-    | WriteBlock _                     -> Format.fprintf fmt "(WriteBlock #fun)"
-    | FastBlock (_, _, _, code, flush) -> Format.fprintf fmt "(FastBlock (#ltree, #dtree, #deflate, %a, %a))" pp_code code pp_flush flush
-    | AlignBlock (Some f, last)        -> Format.fprintf fmt "(AlignBlock (Some %a, last:%b))" F.pp f last
-    | AlignBlock (None, last)          -> Format.fprintf fmt "(AlignBlock (None, last:%b))" last
-    | FixedBlock f                     -> Format.fprintf fmt "(FixedBlock %a)" F.pp f
-    | DynamicHeader _                  -> Format.fprintf fmt "(DynamicHeader #fun)"
-    | StaticHeader _                   -> Format.fprintf fmt "(StaticHeader #fun)"
-    | AlignF _                         -> Format.fprintf fmt "(AlignF #fun)"
-    | Finish n                         -> Format.fprintf fmt "(Finish %d)" n
-    | Exception exn                    -> Format.fprintf fmt "(Exception %a)" pp_error exn
+  let pp_state ppf = function
+    | MakeBlock block                  -> pf ppf "(MakeBlock %a)" pp_block block
+    | WriteBlock _                     -> pf ppf "(WriteBlock #fun)"
+    | FastBlock (_, _, _, code, flush) -> pf ppf "(FastBlock (#ltree, #dtree, #deflate, %a, %a))" pp_code code pp_flush flush
+    | AlignBlock (Some f, last)        -> pf ppf "(AlignBlock (Some %a, last:%b))" F.pp f last
+    | AlignBlock (None, last)          -> pf ppf "(AlignBlock (None, last:%b))" last
+    | FixedBlock f                     -> pf ppf "(FixedBlock %a)" F.pp f
+    | DynamicHeader _                  -> pf ppf "(DynamicHeader #fun)"
+    | StaticHeader _                   -> pf ppf "(StaticHeader #fun)"
+    | AlignF _                         -> pf ppf "(AlignF #fun)"
+    | Finish n                         -> pf ppf "(Finish %d)" n
+    | Exception exn                    -> pf ppf "(Exception %a)" pp_error exn
 
-  let pp fmt { hold; bits
+  let pp ppf { hold; bits
              ; o_off; o_pos; o_len
              ; i_off; i_pos; i_len
              ; level
@@ -674,18 +673,18 @@ struct
              ; adler
              ; state
              ; _ } =
-    Format.fprintf fmt "{@[<hov>hold = %d;@ \
-                        bits = %d;@ \
-                        o_off = %d;@ \
-                        o_pos = %d;@ \
-                        o_len = %d;@ \
-                        i_off = %d;@ \
-                        i_pos = %d;@ \
-                        i_len = %d;@ \
-                        level = %d;@ \
-                        wbits = %d;@ \
-                        adler = %a;@ \
-                        state = %a@]}"
+    pf ppf "{@[<hov>hold = %d;@ \
+                    bits = %d;@ \
+                    o_off = %d;@ \
+                    o_pos = %d;@ \
+                    o_len = %d;@ \
+                    i_off = %d;@ \
+                    i_pos = %d;@ \
+                    i_len = %d;@ \
+                    level = %d;@ \
+                    wbits = %d;@ \
+                    adler = %a;@ \
+                    state = %a@]}"
     hold bits
     o_off o_pos o_len
     i_off i_pos i_len
@@ -707,7 +706,7 @@ struct
   let rec put_byte ~ctor byte k src dst t =
     if (t.o_len - t.o_pos) > 0
     then begin
-      Safe.set dst (t.o_off + t.o_pos) (Char.unsafe_chr byte);
+      Safe.set t.wo dst (t.o_off + t.o_pos) (Char.unsafe_chr byte);
       k src dst { t with o_pos = t.o_pos + 1
                        ; write = t.write + 1 }
     end else Flush { t with state = ctor (fun src dst t -> (put_byte[@tailcall]) ~ctor byte k src dst t) }
@@ -876,7 +875,7 @@ struct
 
     Array.sub result 0 !n, freqs
 
-  let block_of_level ~wbits ?frequencies level =
+  let block_of_level ~witness ~wbits ?frequencies level =
     match level with
     | 0 -> Flat 0
     | n ->
@@ -888,14 +887,14 @@ struct
         | Hunk.Match (len, dist) -> F.add_distance frequencies (len, dist) in
       match n with
       | 1 | 2 | 3 ->
-        Static { lz = L.default ~on ~level wbits
+        Static { lz = L.default ~witness ~on ~level wbits
                ; frequencies
                ; deflate = Seq.empty }
       | 4 | 5 | 6 | 7 | 8 | 9 ->
-        Dynamic { lz = L.default ~on ~level wbits
+        Dynamic { lz = L.default ~witness ~on ~level wbits
                 ; frequencies
                 ; deflate = Seq.empty }
-      | n -> invalid_arg (Format.asprintf "Invalid level: %d" n)
+      | n -> invalid_arg "Invalid level: %d" n
 
   let zip arr1 arr2 =
     Array.init (Array.length arr1) (fun i -> Array.unsafe_get arr1 i, Array.unsafe_get arr2 i)
@@ -994,7 +993,7 @@ struct
     else
       begin
         let n = min (len - pos) (t.o_len - t.o_pos) in
-        Safe.blit t.temp (off + pos) dst (t.o_off + t.o_pos) n;
+        Safe.blit t.wo t.temp (off + pos) dst (t.o_off + t.o_pos) n;
 
         if t.o_len - (t.o_pos + n) = 0
         then Flush { t with state = WriteBlock (fun src dst t -> (write_flat[@tailcall]) 0 (pos + n) len final src dst t)
@@ -1023,34 +1022,34 @@ struct
        | `Await (lz, seq) ->
          await { t with state = MakeBlock (Static { lz; frequencies; deflate = Seq.append deflate seq })
                       ; i_pos = t.i_pos + L.used_in lz
-                      ; adler = Safe.adler32 src t.adler (t.i_off + t.i_pos) (L.used_in lz) }
+                      ; adler = Safe.adler32 t.wi src (t.i_off + t.i_pos) (L.used_in lz) t.adler }
        | `Error (_, exn) -> error t (Lz77 exn))
     | Dynamic { lz; frequencies; deflate; } ->
       (match L.eval src lz with
        | `Await (lz, seq) ->
          await { t with state = MakeBlock (Dynamic { lz; frequencies; deflate = Seq.append deflate seq })
                       ; i_pos = t.i_pos + L.used_in lz
-                      ; adler = Safe.adler32 src t.adler (t.i_off + t.i_pos) (L.used_in lz) }
+                      ; adler = Safe.adler32 t.wi src (t.i_off + t.i_pos) (L.used_in lz) t.adler }
        | `Error (_, exn) -> error t (Lz77 exn))
     | Flat pos ->
       let len = min (t.i_len - t.i_pos) (0x8000 - pos) in
 
-      Safe.blit src (t.i_off + t.i_pos) t.temp pos len;
+      Safe.blit t.wo src (t.i_off + t.i_pos) t.temp pos len;
 
       if pos + len = 0x8000
       then Cont { t with state = WriteBlock (flat 0 0 0x8000 false)
                        ; i_pos = t.i_pos + len
-                       ; adler = Safe.adler32 src t.adler (t.i_off + t.i_pos) len }
+                       ; adler = Safe.adler32 t.wi src (t.i_off + t.i_pos) len t.adler }
       else await { t with state = MakeBlock (Flat (pos + len))
                         ; i_pos = t.i_pos + len
-                        ; adler = Safe.adler32 src t.adler (t.i_off + t.i_pos) len }
+                        ; adler = Safe.adler32 t.wi src (t.i_off + t.i_pos) len t.adler }
 
   let fixed_block frequencies last src dst t =
     (KWriteBlock.put_bit last
      @@ KWriteBlock.put_bits (1, 2)
      @@ KWriteBlock.put_bits (Array.unsafe_get Table._static_ltree 256)
      @@ fun _str _dst t ->
-     let block = block_of_level ~wbits:t.wbits ~frequencies t.level in
+     let block = block_of_level ~witness:t.wi  ~wbits:t.wbits ~frequencies t.level in
      Cont { t with state = if last then AlignF align_bytes else MakeBlock block })
       src dst t
 
@@ -1061,7 +1060,7 @@ struct
      @@ KWriteBlock.put_short_lsb 0x0000
      @@ KWriteBlock.put_short_lsb 0xFFFF
      @@ fun _src _dst t ->
-     let block = block_of_level ~wbits:t.wbits ?frequencies t.level in
+     let block = block_of_level ~witness:t.wi ~wbits:t.wbits ?frequencies t.level in
      Cont { t with state = if last then AlignF align_bytes else MakeBlock block })
       src dst t
 
@@ -1093,10 +1092,10 @@ struct
       if !bits + len > 16
       then
         begin
-          Safe.set dst (t.o_off + !o_pos) (Char.chr ((!hold lor (code lsl !bits)) land 0xFF));
+          Safe.set t.wo dst (t.o_off + !o_pos) (Char.chr ((!hold lor (code lsl !bits)) land 0xFF));
           incr o_pos;
           incr write;
-          Safe.set dst (t.o_off + !o_pos) (Char.chr ((!hold lor (code lsl !bits)) lsr 8 land 0xFF));
+          Safe.set t.wo dst (t.o_off + !o_pos) (Char.chr ((!hold lor (code lsl !bits)) lsr 8 land 0xFF));
           incr o_pos;
           incr write;
 
@@ -1229,7 +1228,7 @@ struct
                               ; i_off = off
                               ; i_len = len
                               ; i_pos = 0 }
-      else invalid_arg (Format.asprintf "partial_flush: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
+      else invalid_arg "partial_flush: you lost something (pos: %d, len: %d)" t.i_pos t.i_len
     | _ -> invalid_arg "partial_flush: invalid state"
 
   let sync_flush off len t = match t.state with
@@ -1248,7 +1247,7 @@ struct
                               ; i_off = off
                               ; i_len = len
                               ; i_pos = 0 }
-      else invalid_arg (Format.asprintf "sync_flush: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
+      else invalid_arg "sync_flush: you lost something (pos: %d, len: %d)" t.i_pos t.i_len
     | _ -> invalid_arg "sync_flush: invalid state"
 
   let full_flush off len t = match t.state with
@@ -1267,7 +1266,7 @@ struct
                               ; i_off = off
                               ; i_len = len
                               ; i_pos = 0 }
-      else invalid_arg (Format.asprintf "full_flush: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
+      else invalid_arg "full_flush: you lost something (pos: %d, len: %d)" t.i_pos t.i_len
     | _ -> invalid_arg "full_flush: invalid state"
 
   let flush_of_meth = function
@@ -1289,8 +1288,8 @@ struct
     | Exception exn -> error t exn
 
   let eval src dst t =
-    let safe_src = Safe.read_only src in
-    let safe_dst = Safe.write_only dst in
+    let safe_src = Safe.ro t.wi src in
+    let safe_dst = Safe.wo t.wo dst in
 
     let rec loop t = match eval0 safe_src safe_dst t with
       | Cont t -> loop t
@@ -1308,12 +1307,12 @@ struct
     | Finish bits -> bits
     | _ -> invalid_arg "bits_remaining: bad state"
 
-  let default ~proof ?(wbits = 15) level =
+  let default ~witness ?(wbits = 15) level =
     { hold = 0
     ; bits = 0
     ; temp = if level <> 0
-        then Safe.read_and_write @@ B.empty ~proof
-        else Safe.read_and_write @@ B.from ~proof 0x8000
+        then Safe.rw witness (B.empty witness)
+        else Safe.rw witness (B.create witness 0x8000)
     ; o_off = 0
     ; o_pos = 0
     ; o_len = 0
@@ -1324,7 +1323,9 @@ struct
     ; level
     ; wbits
     ; adler = Checkseum.Adler32.default
-    ; state = MakeBlock (block_of_level ~wbits level) }
+    ; state = MakeBlock (block_of_level ~witness ~wbits level)
+    ; wi = witness
+    ; wo = witness }
 
   include Convenience_deflate
       (struct
@@ -1352,8 +1353,8 @@ struct
   type ('i, 'o) t =
     { d : ('i, 'o) RFC1951_deflate.t
     ; z : ('i, 'o) state }
-  and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
-                   (Safe.write, 'o) Safe.t ->
+  and ('i, 'o) k = (Safe.ro, 'i) Safe.t ->
+                   (Safe.wo, 'o) Safe.t ->
                    ('i, 'o) t ->
                    ('i, 'o) res
   and ('i, 'o) state =
@@ -1392,7 +1393,7 @@ struct
   let rec put_byte ~ctor byte k src dst t =
     if (t.d.RFC1951_deflate.o_len - t.d.RFC1951_deflate.o_pos) > 0
     then begin
-      Safe.set dst (t.d.RFC1951_deflate.o_off + t.d.RFC1951_deflate.o_pos) (Char.unsafe_chr byte);
+      Safe.set t.d.RFC1951_deflate.wo dst (t.d.RFC1951_deflate.o_off + t.d.RFC1951_deflate.o_pos) (Char.unsafe_chr byte);
       k src dst { t with d = { t.d with RFC1951_deflate.o_pos = t.d.RFC1951_deflate.o_pos + 1
                                       ; RFC1951_deflate.write = t.d.RFC1951_deflate.write + 1 } }
     end else Flush { t with z = ctor (fun src dst t -> (put_byte[@tailcall]) ~ctor byte k src dst t) }
@@ -1466,8 +1467,8 @@ struct
     KHeader.put_short_msb header k src dst t
 
   let eval src dst t =
-    let safe_src = Safe.read_only src in
-    let safe_dst = Safe.write_only dst in
+    let safe_src = Safe.ro t.d.RFC1951_deflate.wi src in
+    let safe_dst = Safe.wo t.d.RFC1951_deflate.wo dst in
 
     let eval0 t = match t.z with
       | Header k -> k safe_src safe_dst t
@@ -1485,8 +1486,8 @@ struct
 
     loop t
 
-  let default ~proof ?(wbits = 15) level =
-    { d = RFC1951_deflate.default ~proof ~wbits level
+  let default ~witness ?(wbits = 15) level =
+    { d = RFC1951_deflate.default ~witness ~wbits level
     ; z = Header (header wbits) }
 
   let get_frequencies t = RFC1951_deflate.get_frequencies t.d
@@ -1522,19 +1523,21 @@ end
 module Window =
 struct
   type 'a t =
-    { rpos   : int
-    ; wpos   : int
-    ; size   : int
-    ; buffer : ([ Safe.read | Safe.write ], 'a) Safe.t
-    ; crc    : Checkseum.Adler32.t }
+    { rpos    : int
+    ; wpos    : int
+    ; size    : int
+    ; buffer  : ([ Safe.ro | Safe.wo ], 'a) Safe.t
+    ; crc     : Checkseum.Adler32.t
+    ; witness : 'a B.t }
 
-  let create ~proof =
+  let create ~witness =
     let size = 1 lsl 15 in
     { rpos   = 0
     ; wpos   = 0
     ; size   = size + 1
-    ; buffer = Safe.read_and_write @@ B.from ~proof (size + 1)
-    ; crc    = Checkseum.Adler32.default }
+    ; buffer = Safe.rw witness (B.create witness (size + 1))
+    ; crc    = Checkseum.Adler32.default
+    ; witness }
 
   let crc { crc; _ } = crc
 
@@ -1555,7 +1558,7 @@ struct
     { t with wpos = if wpos + n < size then wpos + n
                     else wpos + n - size }
 
-  external hack : ('a, 'i) Safe.t -> (Safe.read, 'i) Safe.t = "%identity"
+  external hack : ('a, 'i) Safe.t -> (Safe.ro, 'i) Safe.t = "%identity"
 
   (* consider than [buf] is the window. *)
   let write buf off dst dst_off len t =
@@ -1567,13 +1570,13 @@ struct
     let extra = len - pre in
 
     if extra > 0 then begin
-      Safe.blit2 buf off t.buffer t.wpos dst dst_off pre;
-      Safe.blit2 buf (off + pre) t.buffer 0 dst (dst_off + pre) extra;
+      Safe.blit2 t.witness buf off t.buffer t.wpos dst dst_off pre;
+      Safe.blit2 t.witness buf (off + pre) t.buffer 0 dst (dst_off + pre) extra;
     end else begin
-      Safe.blit2 buf off t.buffer t.wpos dst dst_off len;
+      Safe.blit2 t.witness buf off t.buffer t.wpos dst dst_off len;
     end;
 
-    move len { t with crc = Safe.adler32 (hack dst) t.crc dst_off len }
+    move len { t with crc = Safe.adler32 t.witness (hack dst) dst_off len t.crc }
       (* XXX(dinosaure): [dst] is more reliable than [buf] because [buf] is the [window]. *)
 
   let write_char chr t =
@@ -1581,7 +1584,7 @@ struct
             then drop (1 - (available_to_write t)) t
             else t in
 
-    Safe.set t.buffer t.wpos chr;
+    Safe.set t.witness t.buffer t.wpos chr;
 
     move 1 { t with crc = Checkseum.Adler32.digest_bytes
                             (Bytes.make 1 chr)
@@ -1596,10 +1599,10 @@ struct
     let extra = len - pre in
 
     if extra > 0 then begin
-      Safe.fill t.buffer t.wpos pre chr;
-      Safe.fill t.buffer 0 extra chr;
+      Safe.fill t.witness t.buffer t.wpos pre chr;
+      Safe.fill t.witness t.buffer 0 extra chr;
     end else
-      Safe.fill t.buffer t.wpos len chr;
+      Safe.fill t.witness t.buffer t.wpos len chr;
 
     move len { t with crc = Checkseum.Adler32.digest_bytes
                               (Bytes.make len chr)
@@ -1626,7 +1629,7 @@ sig
   val pp_error : Format.formatter -> error -> unit
   val pp       : Format.formatter -> ('i, 'o) t -> unit
 
-  val eval     : 'a B.t -> 'a B.t -> ('a, 'a) t ->
+  val eval     : 'a -> 'a -> ('a, 'a) t ->
     [ `Await of ('a, 'a) t
     | `Flush of ('a, 'a) t
     | `End   of ('a, 'a) t
@@ -1641,18 +1644,18 @@ sig
 
   val default  : 'o Window.t -> ('i, 'o) t
 
-  val to_result : 'a B.t -> 'a B.t ->
-                  ('a B.t -> int) ->
-                  ('a B.t -> int -> int) ->
+  val to_result : 'a -> 'a ->
+                  ('a -> int) ->
+                  ('a -> int -> int) ->
                   ('a, 'a) t -> (('a, 'a) t, error) result
   val bytes     : Bytes.t -> Bytes.t ->
                   (Bytes.t -> int) ->
                   (Bytes.t -> int -> int) ->
-                  (B.st, B.st) t -> ((B.st, B.st) t, error) result
+                  (Bytes.t, Bytes.t) t -> ((Bytes.t, Bytes.t) t, error) result
   val bigstring : B.Bigstring.t -> B.Bigstring.t ->
                   (B.Bigstring.t -> int) ->
                   (B.Bigstring.t -> int -> int) ->
-                  (B.bs, B.bs) t -> ((B.bs, B.bs) t, error) result
+                  (B.Bigstring.t, B.Bigstring.t) t -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
 end
 
 module type S_inflate =
@@ -1660,7 +1663,7 @@ sig
   type ('i, 'o) t
   type error
 
-  val eval: 'x B.t -> 'x B.t -> ('x, 'x) t -> [ `Await of ('x, 'x) t | `Flush of ('x, 'x) t | `End of ('x, 'x) t | `Error of (('x, 'x) t * error) ]
+  val eval: 'a -> 'a -> ('a, 'a) t -> [ `Await of ('a, 'a) t | `Flush of ('a, 'a) t | `End of ('a, 'a) t | `Error of (('a, 'a) t * error) ]
   val refill: int -> int -> ('i, 'o) t -> ('i, 'o) t
   val flush: int -> int -> ('i, 'o) t -> ('i, 'o) t
   val used_out: ('i, 'o) t -> int
@@ -1688,16 +1691,10 @@ struct
     go t
 
   let bytes src dst refiller flusher t =
-    to_result (B.from_bytes src) (B.from_bytes dst)
-      (function B.Bytes v -> refiller v)
-      (function B.Bytes v -> flusher v)
-      t
+    to_result src dst refiller flusher t
 
   let bigstring src dst refiller flusher t =
-    to_result (B.from_bigstring src) (B.from_bigstring dst)
-      (function B.Bigstring v -> refiller v)
-      (function B.Bigstring v -> flusher v)
-      t
+    to_result src dst refiller flusher t
 end
 
 type error_rfc1951_inflate =
@@ -1863,20 +1860,22 @@ struct
   end
 
   type ('i, 'o) t =
-    { last  : bool
-    ; hold  : int
-    ; bits  : int
-    ; o_off : int
-    ; o_pos : int
-    ; o_len : int
-    ; i_off : int
-    ; i_pos : int
-    ; i_len : int
-    ; write : int
-    ; state : ('i, 'o) state
-    ; window : 'o Window.t }
-  and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
-    (Safe.write, 'o) Safe.t ->
+    { last   : bool
+    ; hold   : int
+    ; bits   : int
+    ; o_off  : int
+    ; o_pos  : int
+    ; o_len  : int
+    ; i_off  : int
+    ; i_pos  : int
+    ; i_len  : int
+    ; write  : int
+    ; state  : ('i, 'o) state
+    ; window : 'o Window.t
+    ; wi     : 'i B.t
+    ; wo     : 'o B.t }
+  and ('i, 'o) k = (Safe.ro, 'i) Safe.t ->
+    (Safe.wo, 'o) Safe.t ->
     ('i, 'o) t ->
     ('i, 'o) res
   and ('i, 'o) state =
@@ -1904,47 +1903,47 @@ struct
     | Write     of int * int
   and error = error_rfc1951_inflate
 
-  let pp_error fmt = function
-    | Invalid_kind_of_block        -> Format.fprintf fmt "Invalid_kind_of_block"
-    | Invalid_complement_of_length -> Format.fprintf fmt "Invalid_complement_of_length"
-    | Invalid_dictionary           -> Format.fprintf fmt "Invalid_dictionary"
+  let pp_error ppf = function
+    | Invalid_kind_of_block        -> pf ppf "Invalid_kind_of_block"
+    | Invalid_complement_of_length -> pf ppf "Invalid_complement_of_length"
+    | Invalid_dictionary           -> pf ppf "Invalid_dictionary"
 
-  let pp_code fmt = function
-    | Length         -> Format.fprintf fmt "Length"
-    | ExtLength c    -> Format.fprintf fmt "(ExtLength %d)" c
-    | Dist c         -> Format.fprintf fmt "(Dist %d)" c
-    | ExtDist (a, b) -> Format.fprintf fmt "(ExtDist (%d, %d))" a b
-    | Write (a, b)   -> Format.fprintf fmt "(Write (%d, %d))" a b
+  let pp_code ppf = function
+    | Length         -> pf ppf "Length"
+    | ExtLength c    -> pf ppf "(ExtLength %d)" c
+    | Dist c         -> pf ppf "(Dist %d)" c
+    | ExtDist (a, b) -> pf ppf "(ExtDist (%d, %d))" a b
+    | Write (a, b)   -> pf ppf "(Write (%d, %d))" a b
 
-  let pp_state fmt = function
-    | Last                 -> Format.fprintf fmt "Last"
-    | Block                -> Format.fprintf fmt "Block"
-    | Flat _               -> Format.fprintf fmt "(Flat #fun)"
-    | Fixed                -> Format.fprintf fmt "Fixed"
-    | Dictionary _         -> Format.fprintf fmt "(Dictionary #fun)"
-    | Inffast (_, _, c)    -> Format.fprintf fmt "(Inffast %a)" pp_code c
-    | Inflate _            -> Format.fprintf fmt "(Inflate #fun)"
-    | Switch               -> Format.fprintf fmt "Switch"
-    | Finish n             -> Format.fprintf fmt "(Finish %d)" n
-    | Exception e          -> Format.fprintf fmt "(Exception %a)" pp_error e
+  let pp_state ppf = function
+    | Last                 -> pf ppf "Last"
+    | Block                -> pf ppf "Block"
+    | Flat _               -> pf ppf "(Flat #fun)"
+    | Fixed                -> pf ppf "Fixed"
+    | Dictionary _         -> pf ppf "(Dictionary #fun)"
+    | Inffast (_, _, c)    -> pf ppf "(Inffast %a)" pp_code c
+    | Inflate _            -> pf ppf "(Inflate #fun)"
+    | Switch               -> pf ppf "Switch"
+    | Finish n             -> pf ppf "(Finish %d)" n
+    | Exception e          -> pf ppf "(Exception %a)" pp_error e
 
-  let pp fmt { last; hold; bits
+  let pp ppf { last; hold; bits
              ; o_off; o_pos; o_len
              ; i_off; i_pos; i_len; write
              ; state
              ; _ } =
-    Format.fprintf fmt "{ @[<hov>last = %b;@ \
-                        hold = %d;@ \
-                        bits = %d;@ \
-                        o_off = %d;@ \
-                        o_pos = %d;@ \
-                        o_len = %d;@ \
-                        i_off = %d;@ \
-                        i_pos = %d;@ \
-                        i_len = %d;@ \
-                        write = %d;@ \
-                        state = %a;@ \
-                        window = #window;@] }"
+    pf ppf "{ @[<hov>last = %b;@ \
+                     hold = %d;@ \
+                     bits = %d;@ \
+                     o_off = %d;@ \
+                     o_pos = %d;@ \
+                     o_len = %d;@ \
+                     i_off = %d;@ \
+                     i_pos = %d;@ \
+                     i_len = %d;@ \
+                     write = %d;@ \
+                     state = %a;@ \
+                     window = #window;@] }"
       last hold bits
       o_off o_pos o_len i_off i_pos i_len write
       pp_state state
@@ -1959,7 +1958,7 @@ struct
 
   let rec get_byte ~ctor k src dst t =
     if (t.i_len - t.i_pos) > 0
-    then let byte = Char.code (Safe.get src (t.i_off + t.i_pos)) in
+    then let byte = Char.code (Safe.get t.wi src (t.i_off + t.i_pos)) in
       k byte src dst { t with i_pos = t.i_pos + 1 }
     else Wait { t with state = ctor (fun src dst t -> (get_byte[@tailcall]) ~ctor k src dst t) }
 
@@ -1969,7 +1968,7 @@ struct
       begin
         let chr = Char.unsafe_chr byte in
         let window = Window.write_char chr t.window in
-        Safe.set dst (t.o_off + t.o_pos) chr;
+        Safe.set t.wo dst (t.o_off + t.o_pos) chr;
         k src dst { t with o_pos = t.o_pos + 1
                          ; write = t.write + 1
                          ; window = window }
@@ -1983,7 +1982,7 @@ struct
         let chr = Char.unsafe_chr byte in
         let len = min length (t.o_len - t.o_pos) in
         let window = Window.fill_char chr len t.window in
-        Safe.fill dst (t.o_off + t.o_pos) len chr;
+        Safe.fill t.wo dst (t.o_off + t.o_pos) len chr;
 
         if length - len > 0
         then Flush { t with state = ctor (fun src dst t -> (fill_byte[@tailcall]) ~ctor byte (length - len) k src dst t)
@@ -2088,7 +2087,7 @@ struct
     let rec put lookup_chr lookup_dst length distance k src dst t =
       match distance with
       | 1 ->
-        let chr = Safe.get t.window.Window.buffer Window.((t.window.wpos - 1) % t.window) in
+        let chr = Safe.get t.wo t.window.Window.buffer Window.((t.window.wpos - 1) % t.window) in
         let byte = Char.code chr in
         fill_byte byte length k src dst t
       | distance ->
@@ -2368,11 +2367,11 @@ struct
           if !bits < lookup_chr.Lookup.max
           then
             begin
-              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              hold := !hold lor (Char.code (Safe.get t.wi src (t.i_off + !i_pos)) lsl !bits);
               bits := !bits + 8;
               incr i_pos;
 
-              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              hold := !hold lor (Char.code (Safe.get t.wi src (t.i_off + !i_pos)) lsl !bits);
               bits := !bits + 8;
               incr i_pos;
             end;
@@ -2385,7 +2384,7 @@ struct
           if value < 256
           then
             begin
-              Safe.set dst (t.o_off + !o_pos) (Char.chr value);
+              Safe.set t.wo dst (t.o_off + !o_pos) (Char.chr value);
               window := Window.write_char (Char.chr value) !window;
               incr o_pos;
               incr write;
@@ -2400,7 +2399,7 @@ struct
           if !bits < len
           then
             begin
-              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              hold := !hold lor (Char.code (Safe.get t.wi src (t.i_off + !i_pos)) lsl !bits);
               bits := !bits + 8;
               incr i_pos;
             end;
@@ -2414,11 +2413,11 @@ struct
           if !bits < lookup_dst.Lookup.max
           then
             begin
-              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              hold := !hold lor (Char.code (Safe.get t.wi src (t.i_off + !i_pos)) lsl !bits);
               bits := !bits + 8;
               incr i_pos;
 
-              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              hold := !hold lor (Char.code (Safe.get t.wi src (t.i_off + !i_pos)) lsl !bits);
               bits := !bits + 8;
               incr i_pos;
             end;
@@ -2434,11 +2433,11 @@ struct
           if !bits < len
           then
             begin
-              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              hold := !hold lor (Char.code (Safe.get t.wi src (t.i_off + !i_pos)) lsl !bits);
               bits := !bits + 8;
               incr i_pos;
 
-              hold := !hold lor (Char.code (Safe.get src (t.i_off + !i_pos)) lsl !bits);
+              hold := !hold lor (Char.code (Safe.get t.wi src (t.i_off + !i_pos)) lsl !bits);
               bits := !bits + 8;
               incr i_pos;
             end;
@@ -2449,11 +2448,11 @@ struct
           bits := !bits - len;
           goto := Write (length, (Array.get Table._base_dist dist) + 1 + extra)
         | Write (length, 1) ->
-          let chr = Safe.get !window.Window.buffer Window.((!window.wpos - 1) % !window) in
+          let chr = Safe.get t.wo !window.Window.buffer Window.((!window.wpos - 1) % !window) in
           let n = min length (t.o_len - !o_pos) in
 
           window := Window.fill_char chr n !window;
-          Safe.fill dst (t.o_off + !o_pos) n chr;
+          Safe.fill t.wo dst (t.o_off + !o_pos) n chr;
 
           o_pos := !o_pos + n;
           write := !write + n;
@@ -2542,8 +2541,8 @@ struct
     | Exception exn -> error t exn
 
   let eval src dst t =
-    let safe_src = Safe.read_only src in
-    let safe_dst = Safe.write_only dst in
+    let safe_src = Safe.ro t.wi src in
+    let safe_dst = Safe.wo t.wo dst in
 
     let rec loop t =
       match eval0 safe_src safe_dst t with
@@ -2555,7 +2554,7 @@ struct
 
     loop t
 
-  let default window =
+  let default ~witness window =
     { last = false
     ; hold = 0
     ; bits = 0
@@ -2567,7 +2566,9 @@ struct
     ; o_len = 0
     ; write = 0
     ; state = Last
-    ; window }
+    ; window
+    ; wi = witness
+    ; wo = witness }
 
   let refill off len t =
     if t.i_pos = t.i_len
@@ -2581,7 +2582,7 @@ struct
         { t with i_off = off
                ; i_len = len
                ; i_pos = 0 }
-      | _ ->  invalid_arg (Format.sprintf "refill: you lost something (pos: %d, len: %d)" t.i_pos t.i_len)
+      | _ -> invalid_arg "refill: you lost something (pos: %d, len: %d)" t.i_pos t.i_len
 
   let flush off len t =
     { t with o_off = off
@@ -2618,8 +2619,8 @@ struct
   type ('i, 'o) t =
     { d : ('i, 'o) RFC1951_inflate.t
     ; z : ('i, 'o) state }
-  and ('i, 'o) k = (Safe.read, 'i) Safe.t ->
-    (Safe.write, 'o) Safe.t ->
+  and ('i, 'o) k = (Safe.ro, 'i) Safe.t ->
+    (Safe.wo, 'o) Safe.t ->
     ('i, 'o) t ->
     ('i, 'o) res
   and ('i, 'o) state =
@@ -2636,21 +2637,21 @@ struct
     | Error of ('i, 'o) t * error
   and error = error_z_inflate
 
-  let pp_error fmt = function
-    | RFC1951 err                        -> Format.fprintf fmt "(RFC1951 %a)" RFC1951_inflate.pp_error err
-    | Invalid_header                     -> Format.fprintf fmt "Invalid_header"
-    | Invalid_checksum { have; expect; } -> Format.fprintf fmt "(Invalid_check (have:%a, expect:%a))" Optint.pp have Optint.pp expect
+  let pp_error ppf = function
+    | RFC1951 err                        -> pf ppf "(RFC1951 %a)" RFC1951_inflate.pp_error err
+    | Invalid_header                     -> pf ppf "Invalid_header"
+    | Invalid_checksum { have; expect; } -> pf ppf "(Invalid_check (have:%a, expect:%a))" Optint.pp have Optint.pp expect
 
-  let pp_state fmt = function
-    | Header _    -> Format.fprintf fmt "(Header #fun)"
-    | Inflate     -> Format.fprintf fmt "Inflate"
-    | Adler32 _   -> Format.fprintf fmt "(Adler32 #fun)"
-    | Finish      -> Format.fprintf fmt "Finish"
-    | Exception e -> Format.fprintf fmt "(Exception %a)" pp_error e
+  let pp_state ppf = function
+    | Header _    -> pf ppf "(Header #fun)"
+    | Inflate     -> pf ppf "Inflate"
+    | Adler32 _   -> pf ppf "(Adler32 #fun)"
+    | Finish      -> pf ppf "Finish"
+    | Exception e -> pf ppf "(Exception %a)" pp_error e
 
-  let pp fmt { d; z; } =
-    Format.fprintf fmt "{@[<hov>d = @[<hov>%a@];@ \
-                        z = %a;@]}"
+  let pp ppf { d; z; } =
+    pf ppf "{@[<hov>d = @[<hov>%a@];@ \
+                    z = %a;@]}"
       RFC1951_inflate.pp d
       pp_state z
 
@@ -2662,7 +2663,7 @@ struct
 
   let rec get_byte ~ctor k src dst t =
     if (t.d.RFC1951_inflate.i_len - t.d.RFC1951_inflate.i_pos) > 0
-    then let byte = Char.code (Safe.get src (t.d.RFC1951_inflate.i_off + t.d.RFC1951_inflate.i_pos)) in
+    then let byte = Char.code (Safe.get t.d.RFC1951_inflate.wi src (t.d.RFC1951_inflate.i_off + t.d.RFC1951_inflate.i_pos)) in
       k byte src dst { t with d = { t.d with RFC1951_inflate.i_pos = t.d.RFC1951_inflate.i_pos + 1 } }
     else Wait { t with z = ctor (fun src dst t -> (get_byte[@tailcall]) ~ctor k src dst t) }
 
@@ -2753,8 +2754,8 @@ struct
       src dst t
 
   let eval src dst t =
-    let safe_src = Safe.read_only src in
-    let safe_dst = Safe.write_only dst in
+    let safe_src = Safe.ro t.d.RFC1951_inflate.wi src in
+    let safe_dst = Safe.wo t.d.RFC1951_inflate.wo dst in
 
     let eval0 t =
       match t.z with
@@ -2773,8 +2774,8 @@ struct
 
     loop t
 
-  let default window =
-    { d = RFC1951_inflate.default window
+  let default ~witness window =
+    { d = RFC1951_inflate.default ~witness window
     ; z = Header header }
 
   let refill off len t = { t with d = RFC1951_inflate.refill off len t.d }

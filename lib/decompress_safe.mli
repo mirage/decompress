@@ -1,24 +1,26 @@
-type read  = [ `Read ]
-type write = [ `Write ]
+module B = Decompress_b
 
-type ('a, 'i) t constraint 'a = [< read | write ]
+type ro = [ `Rd ]
+type wo = [ `Wr ]
 
-val read_and_write : 'i Decompress_b.t -> ([ read | write ], 'i) t
-val read_only      : 'i Decompress_b.t -> (read, 'i) t
-val write_only     : 'i Decompress_b.t -> (write, 'i) t
+type ('a, 'i) t = private 'i constraint 'a = [< `Rd | `Wr ]
 
-val length    : ('a, 'i) t -> int
-val get       : ([> read ], 'i) t -> int -> char
-val set       : ([> write ], 'i) t -> int -> char -> unit
-val get_u16   : ([> read ], 'i) t -> int -> int
-val get_u32   : ([> read ], 'i) t -> int -> int32
-val get_u64   : ([> read ], 'i) t -> int -> int64
-val sub_ro    : ([> read ], 'i) t -> int -> int -> (read, 'i) t
-val sub_rw    : ([> read ], 'i) t -> int -> int -> ([ read | write ], 'i) t
-val fill      : ([> write ], 'i) t -> int -> int -> char -> unit
-val blit      : ([> read ], 'i) t -> int -> ([> write ], 'i) t -> int -> int -> unit
-val blit2     : ([> read ], 'i) t -> int -> ([> write ], 'i) t -> int -> ([> write ], 'i) t -> int -> int -> unit
-val pp        : Format.formatter -> ([> read ], 'i) t -> unit
-val to_string : ([> read ], 'i) t -> string
-val adler32   : ([> read ], 'i) t -> Checkseum.Adler32.t -> int -> int -> Checkseum.Adler32.t
-val from      : ('a, 'i) t -> 'i Decompress_b.t
+val rw : 'i B.t -> 'i -> ([ ro | wo ], 'i) t
+val ro : 'i B.t -> 'i -> (ro, 'i) t
+val wo : 'i B.t -> 'i -> (wo, 'i) t
+
+val length : 'i B.t -> ('a, 'i) t -> int
+val get : 'i B.t -> ([> ro ], 'i) t -> int -> char
+val set : 'i B.t -> ([> wo ], 'i) t -> int -> char -> unit
+val get_16 : 'i B.t -> ([> ro ], 'i) t -> int -> int
+val get_32 : 'i B.t -> ([> ro ], 'i) t -> int -> int32
+val get_64 : 'i B.t -> ([> ro ], 'i) t -> int -> int64
+val sub_ro : 'i B.t -> ([> ro ], 'i) t -> int -> int -> (ro, 'i) t
+val sub_rw : 'i B.t -> ([> ro ], 'i) t -> int -> int -> ([ ro | wo ], 'i) t
+val fill : 'i B.t -> ([> wo ], 'i) t -> int -> int -> char -> unit
+val blit : 'i B.t -> ([> ro ], 'i) t -> int -> ([> wo ], 'i) t -> int -> int -> unit
+val blit2 : 'i B.t -> ([> ro ], 'i) t -> int -> ([> wo ], 'i) t -> int -> ([> wo ], 'i) t -> int -> int -> unit
+val pp : 'i B.t -> Format.formatter -> ([> ro ], 'i) t -> unit
+val to_string : 'i B.t -> ([> ro ], 'i) t -> string
+val adler32 : 'i B.t -> ([> ro ], 'i) t -> int -> int -> Checkseum.Adler32.t -> Checkseum.Adler32.t
+val unsafe : ('a, 'i) t -> 'i
