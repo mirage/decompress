@@ -10,7 +10,8 @@ let walk directory pattern =
           match (Unix.stat kind).Unix.st_kind with
           | Unix.S_REG -> (dirs, kind :: files)
           | Unix.S_DIR -> (kind :: dirs, files)
-          | _ -> (dirs, files))
+          | (Unix.S_BLK | Unix.S_CHR | Unix.S_FIFO | Unix.S_LNK | Unix.S_SOCK) -> (dirs, files)
+          | exception (Unix.Unix_error _) -> (dirs, files))
           ([], []) contents
       in
       let matched = List.filter select files in
