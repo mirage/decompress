@@ -12,7 +12,7 @@ build: [[ "jbuilder" "build" "--only-packages" name "--root" "." "-j" jobs "@ins
 build-test: [[ "jbuilder" "build" "--only-packages" name "--root" "." "-j" jobs "@runtest" ]]
 
 depends: [
-  "jbuilder"   {build}
+  "dune"       {build}
   "base-bytes"
   "optint"
   "checkseum"
