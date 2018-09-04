@@ -693,9 +693,9 @@ struct
     Checkseum.Adler32.pp adler
     pp_state state
 
-  let await t     = Wait t
-  let error t exn = Error ({ t with state = Exception exn }, exn)
-  let ok t rest   = Ok { t with state = Finish rest }
+  let await t     : ('i, 'o) res = Wait t
+  let error t exn : ('i, 'o) res = Error ({ t with state = Exception exn }, exn)
+  let ok t rest   : ('i, 'o) res = Ok { t with state = Finish rest }
 
   let block_of_flush = function
     | Partial flush -> FixedBlock flush
@@ -1087,7 +1087,9 @@ struct
         | ExtDist, Hunk.Match (_, dist) ->
           let code = Table._distance dist in
           (dist - (Array.unsafe_get Table._base_dist code), Array.unsafe_get Table._extra_dbits code), Length, tl
-        | _ -> assert false in
+        | ExtDist, Hunk.Literal _
+        | Dist, Hunk.Literal _
+        | ExtLength, Hunk.Literal _ -> assert false in
 
       if !bits + len > 16
       then
@@ -1137,8 +1139,8 @@ struct
       | (Hunk.Match (len, dist), tl), ExtLength -> WriteBlock (k3 tl len dist)
       | (Hunk.Match (_, dist), tl), Dist -> WriteBlock (k2 tl dist)
       | (Hunk.Match (_, dist), tl), ExtDist -> WriteBlock (k1 tl dist)
-      | exception Q.Empty ->  WriteBlock ke
-      | _ -> assert false in
+      | (Hunk.Literal _, _), (ExtLength | Dist | ExtDist) -> assert false
+      | exception Q.Empty ->  WriteBlock ke in
 
     let t = { t with hold = !hold
                    ; bits = !bits
@@ -1387,8 +1389,8 @@ struct
       RFC1951_deflate.pp d
       pp_state z
 
-  let ok t        = Ok { t with z = Finish }
-  let error t exn = Error ({ t with z = Exception exn }, exn)
+  let ok t        : ('i, 'o) res = Ok { t with z = Finish }
+  let error t exn : ('i, 'o) res = Error ({ t with z = Exception exn }, exn)
 
   let rec put_byte ~ctor byte k src dst t =
     if (t.d.RFC1951_deflate.o_len - t.d.RFC1951_deflate.o_pos) > 0

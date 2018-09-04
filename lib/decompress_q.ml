@@ -33,7 +33,7 @@ type 'a t =
 
 let empty = Shallow Zero
 
-let is_empty = function Shallow Zero -> true | _ -> false
+let is_empty = function Shallow Zero -> true | Shallow (One _ | Two _ | Three _) | Deep _ -> false
 
 let _single x = Shallow (One x)
 let _double x y = Shallow (Two (x, y))
