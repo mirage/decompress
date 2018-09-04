@@ -1,8 +1,0 @@
-(executable
- ((name test)
-  (libraries (checkseum.c decompress re.str camlzip alcotest))))
-
-(alias
- ((name runtest)
-  (package decompress)
-  (action (run ${exe:test.exe} --color=always))))

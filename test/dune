@@ -1,0 +1,9 @@
+(executable
+ (name test)
+ (libraries checkseum.c decompress re.str camlzip alcotest))
+
+(alias
+ (name runtest)
+ (package decompress)
+ (deps (:test test.exe))
+ (action (run %{test} --color=always)))

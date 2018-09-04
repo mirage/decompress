@@ -67,8 +67,8 @@ let pp ppf { i_off; i_pos; i_len; level; state; _ } =
                   state = @[%a@]@]}"
     i_off i_pos i_len level pp_state state
 
-let await t lst = Wait (t, lst)
-let error t exn = Error ({ t with state = Exception exn }, exn)
+let await t lst : 'i res = Wait (t, lst)
+let error t exn : 'i res = Error ({ t with state = Exception exn }, exn)
 
 let _max_distance    = 8191
 let _max_length      = 256
@@ -390,9 +390,10 @@ let refill off len t =
                 ; i_len = len
                 ; i_pos = 0
                 ; state = Deflate window_bits }
-        | _ -> { t with i_off = off
-                      ; i_len = len
-                      ; i_pos = 0 }
+        | (Deflate _ | Deffast _ | Exception _) ->
+          { t with i_off = off
+                 ; i_len = len
+                 ; i_pos = 0 }
   else invalid_arg (Format.sprintf "L.refill: you lost something (pos: %d, \
                                     len: %d)"
                                   t.i_pos t.i_len)
