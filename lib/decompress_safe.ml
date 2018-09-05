@@ -1,14 +1,12 @@
 module B = Decompress_b
 
-type ro = [ `Rd ]
-type wo = [ `Wr ]
+type ro = [`Rd]
+type wo = [`Wr]
+type ('a, 'i) t = 'i constraint 'a = [< `Rd | `Wr]
 
-type ('a, 'i) t = 'i constraint 'a = [< `Rd | `Wr ]
-
-let rw : 'i B.t -> 'i -> ([ ro | wo ], 'i) t = fun _p v -> v
+let rw : 'i B.t -> 'i -> ([ro | wo], 'i) t = fun _p v -> v
 let ro : 'i B.t -> 'i -> (ro, 'i) t = fun _p v -> v
 let wo : 'i B.t -> 'i -> (wo, 'i) t = fun _p v -> v
-
 let length = B.length
 let get = B.get
 let set = B.set
@@ -23,9 +21,9 @@ let blit2 = B.blit2
 let pp = B.pp
 let to_string = B.to_string
 
-let adler32
-  : type a. a B.t -> a -> int -> int -> Checkseum.Adler32.t -> Checkseum.Adler32.t
-  = function
+let adler32 : type a.
+    a B.t -> a -> int -> int -> Checkseum.Adler32.t -> Checkseum.Adler32.t =
+  function
   | B.Bytes -> Checkseum.Adler32.digest_bytes
   | B.Bigstring -> Checkseum.Adler32.digest_bigstring
 
