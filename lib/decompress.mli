@@ -349,6 +349,7 @@ type error_rfc1951_inflate =
   | Invalid_kind_of_block
   | Invalid_complement_of_length
   | Invalid_dictionary
+  | Invalid_distance of {distance: int; max: int}
 
 module RFC1951_inflate : sig
   include INFLATE with type error = error_rfc1951_inflate

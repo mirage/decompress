@@ -1717,6 +1717,7 @@ type error_rfc1951_inflate =
   | Invalid_kind_of_block
   | Invalid_complement_of_length
   | Invalid_dictionary
+  | Invalid_distance of {distance: int; max: int}
 
 module RFC1951_inflate = struct
   (* functionnal implementation of Heap, bisoux @c-cube *)
@@ -1910,6 +1911,9 @@ module RFC1951_inflate = struct
     | Invalid_kind_of_block -> pf ppf "Invalid_kind_of_block"
     | Invalid_complement_of_length -> pf ppf "Invalid_complement_of_length"
     | Invalid_dictionary -> pf ppf "Invalid_dictionary"
+    | Invalid_distance {distance; max} ->
+        pf ppf "(Invalid_distance { @[distance = %d;@ max = %d;@] })" distance
+          max
 
   let pp_code ppf = function
     | Length -> pf ppf "Length"
