@@ -2806,11 +2806,17 @@ module Zlib_inflate = struct
     let hold = hold + (byte1 lsl 8) in
     let bits ?(hold = hold) n = hold land ((1 lsl n) - 1) in
     let drop n = hold lsr n in
+    let option_is v e = match v with Some e' -> e = e' | None -> true in
     if
       ((bits 8 lsl 8) + (hold lsr 8)) mod 31 = 0
       && bits 4 = 8
       && bits ~hold:(drop 4) 4 + 8 <= 15
-    then Cont {t with z= Inflate}
+      && option_is t.expected_wbits (bits ~hold:(drop 4) 4 + 8)
+    then
+      Cont
+        { t with
+          z= Inflate
+        ; d= {t.d with RFC1951_inflate.wbits= bits ~hold:(drop 4) 4 + 8} }
     else error t Invalid_header )
       src dst t
 
