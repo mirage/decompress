@@ -2096,39 +2096,43 @@ module RFC1951_inflate = struct
           let byte = Char.code chr in
           fill_byte byte length k src dst t
       | distance ->
-          let len = min (t.o_len - t.o_pos) length in
-          let off = Window.((t.window.wpos - distance) % t.window) in
-          let sze = t.window.Window.size in
-          let pre = sze - off in
-          let ext = len - pre in
-          let window =
-            if ext > 0 then
-              let window =
-                Window.write t.window.Window.buffer off dst (t.o_off + t.o_pos)
-                  pre t.window
-              in
-              Window.write window.Window.buffer 0 dst
-                (t.o_off + t.o_pos + pre)
-                ext window
-            else
-              Window.write t.window.Window.buffer off dst (t.o_off + t.o_pos)
-                len t.window
-          in
-          if length - len > 0 then
-            Flush
-              { t with
-                o_pos= t.o_pos + len
-              ; write= t.write + len
-              ; state=
-                  Inflate (put lookup_chr lookup_dst (length - len) distance k)
-              ; window }
+          if distance > 1 lsl t.wbits then
+            error t (Invalid_distance {distance; max= 1 lsl t.wbits})
           else
-            Cont
-              { t with
-                o_pos= t.o_pos + len
-              ; write= t.write + len
-              ; state= Inffast (lookup_chr, lookup_dst, Length)
-              ; window }
+            let len = min (t.o_len - t.o_pos) length in
+            let off = Window.((t.window.wpos - distance) % t.window) in
+            let sze = t.window.Window.size in
+            let pre = sze - off in
+            let ext = len - pre in
+            let window =
+              if ext > 0 then
+                let window =
+                  Window.write t.window.Window.buffer off dst
+                    (t.o_off + t.o_pos) pre t.window
+                in
+                Window.write window.Window.buffer 0 dst
+                  (t.o_off + t.o_pos + pre)
+                  ext window
+              else
+                Window.write t.window.Window.buffer off dst (t.o_off + t.o_pos)
+                  len t.window
+            in
+            if length - len > 0 then
+              Flush
+                { t with
+                  o_pos= t.o_pos + len
+                ; write= t.write + len
+                ; state=
+                    Inflate
+                      (put lookup_chr lookup_dst (length - len) distance k)
+                ; window }
+            else
+              Cont
+                { t with
+                  o_pos= t.o_pos + len
+                ; write= t.write + len
+                ; state= Inffast (lookup_chr, lookup_dst, Length)
+                ; window }
 
     let read_extra_dist distance k src dst t =
       let len = Table._extra_dbits.(distance) in
@@ -2382,6 +2386,8 @@ module RFC1951_inflate = struct
 
   (* this is the end, beautiful friend. *)
 
+  exception Exn_invalid_distance of (int * int)
+
   let inffast src dst t lookup_chr lookup_dst goto =
     let hold = ref t.hold in
     let bits = ref t.bits in
@@ -2477,6 +2483,8 @@ module RFC1951_inflate = struct
             write := !write + n ;
             goto := if length - n = 0 then Length else Write (length - n, 1)
         | Write (length, dist) ->
+            if dist > 1 lsl t.wbits then
+              raise (Exn_invalid_distance (dist, 1 lsl t.wbits)) ;
             let n = min length (t.o_len - !o_pos) in
             let off = Window.((!window.wpos - dist) % !window) in
             let len = !window.Window.size in
@@ -2566,8 +2574,10 @@ module RFC1951_inflate = struct
     | Flat k -> k safe_src safe_dst t
     | Fixed -> fixed safe_src safe_dst t
     | Dictionary k -> k safe_src safe_dst t
-    | Inffast (lookup_chr, lookup_dst, code) ->
-        inffast safe_src safe_dst t lookup_chr lookup_dst code
+    | Inffast (lookup_chr, lookup_dst, code) -> (
+      try inffast safe_src safe_dst t lookup_chr lookup_dst code
+      with Exn_invalid_distance (distance, max) ->
+        error t (Invalid_distance {distance; max}) )
     | Inflate k -> k safe_src safe_dst t
     | Switch -> switch safe_src safe_dst t
     | Finish n -> ok t n
