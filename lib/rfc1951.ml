@@ -95,7 +95,7 @@ module type INFLATE = sig
   val used_out : ('i, 'o) t -> int
   val write : ('i, 'o) t -> int
   val bits_remaining : ('x, 'x) t -> int
-  val default : witness:'a B.t -> 'a Window.t -> ('a, 'a) t
+  val default : witness:'a B.t -> ?wbits:int -> 'a Window.t -> ('a, 'a) t
 
   val to_result :
        'a

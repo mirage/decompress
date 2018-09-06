@@ -309,9 +309,6 @@ module type INFLATE = sig
   val write : ('i, 'o) t -> int
   (** [write t] returns the size of the stream decompressed. *)
 
-  val default : witness:'a B.t -> 'a Window.t -> ('a, 'a) t
-  (** [default] makes a new state [t]. *)
-
   val to_result :
        'a
     -> 'a
@@ -354,6 +351,9 @@ type error_rfc1951_inflate =
 module RFC1951_inflate : sig
   include INFLATE with type error = error_rfc1951_inflate
 
+  val default : witness:'a B.t -> ?wbits:int -> 'a Window.t -> ('a, 'a) t
+  (** [default] makes a new state [t]. *)
+
   val bits_remaining : ('x, 'x) t -> int
 end
 
@@ -362,4 +362,10 @@ type error_z_inflate =
   | Invalid_header
   | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
 
-module Zlib_inflate : INFLATE with type error = error_z_inflate
+module Zlib_inflate : sig
+  include INFLATE with type error = error_z_inflate
+
+  val default :
+    witness:'a B.t -> ?wbits:int option -> 'a Window.t -> ('a, 'a) t
+  (** [default] makes a new state [t]. *)
+end

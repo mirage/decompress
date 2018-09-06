@@ -305,7 +305,7 @@ module type INFLATE = sig
 
   val bits_remaining : ('x, 'x) t -> int
 
-  val default : witness:'a B.t -> 'a Window.t -> ('a, 'a) t
+  val default : witness:'a B.t -> ?wbits:int -> 'a Window.t -> ('a, 'a) t
   (** [default] makes a new state [t]. *)
 
   val to_result :

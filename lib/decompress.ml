@@ -99,7 +99,6 @@ module type INFLATE = sig
   val used_in : ('i, 'o) t -> int
   val used_out : ('i, 'o) t -> int
   val write : ('i, 'o) t -> int
-  val default : witness:'a B.t -> 'a Window.t -> ('a, 'a) t
 
   val to_result :
        'a
