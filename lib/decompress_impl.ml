@@ -1873,6 +1873,7 @@ module RFC1951_inflate = struct
     ; write: int
     ; state: ('i, 'o) state
     ; window: 'o Window.t
+    ; wbits: int
     ; wi: 'i B.t
     ; wo: 'o B.t }
 
@@ -1945,12 +1946,14 @@ module RFC1951_inflate = struct
       ; i_pos
       ; i_len
       ; write
-      ; state; _ } =
+      ; state
+      ; wbits; _ } =
     pf ppf
       "{ @[<hov>last = %b;@ hold = %d;@ bits = %d;@ o_off = %d;@ o_pos = %d;@ \
        o_len = %d;@ i_off = %d;@ i_pos = %d;@ i_len = %d;@ write = %d;@ state \
-       = %a;@ window = #window;@] }"
+       = %a;@ wbits = %d;@ window = #window;@] }"
       last hold bits o_off o_pos o_len i_off i_pos i_len write pp_state state
+      wbits
 
   let error t exn = Error ({t with state= Exception exn}, exn)
   let ok t n = Ok {t with state= Finish n}
@@ -2583,7 +2586,9 @@ module RFC1951_inflate = struct
     in
     loop t
 
-  let default ~witness window =
+  let default ~witness ?(wbits = 15) window =
+    if wbits < 8 || wbits > 15 then
+      invalid_arg "Invalid wbits value (8 >= wbits <= 15)" ;
     { last= false
     ; hold= 0
     ; bits= 0
@@ -2595,6 +2600,7 @@ module RFC1951_inflate = struct
     ; o_len= 0
     ; write= 0
     ; state= Last
+    ; wbits
     ; window
     ; wi= witness
     ; wo= witness }
@@ -2638,7 +2644,10 @@ type error_z_inflate =
   | Invalid_checksum of {have: Optint.t; expect: Optint.t}
 
 module Zlib_inflate = struct
-  type ('i, 'o) t = {d: ('i, 'o) RFC1951_inflate.t; z: ('i, 'o) state}
+  type ('i, 'o) t =
+    { d: ('i, 'o) RFC1951_inflate.t
+    ; z: ('i, 'o) state
+    ; expected_wbits: int option }
 
   and ('i, 'o) k =
     (Safe.ro, 'i) Safe.t -> (Safe.wo, 'o) Safe.t -> ('i, 'o) t -> ('i, 'o) res
@@ -2673,7 +2682,7 @@ module Zlib_inflate = struct
     | Finish -> pf ppf "Finish"
     | Exception e -> pf ppf "(Exception %a)" pp_error e
 
-  let pp ppf {d; z} =
+  let pp ppf {d; z; _} =
     pf ppf "{@[<hov>d = @[<hov>%a@];@ z = %a;@]}" RFC1951_inflate.pp d pp_state
       z
 
@@ -2775,7 +2784,7 @@ module Zlib_inflate = struct
     | RFC1951_inflate.Cont d -> Cont {t with d}
     | RFC1951_inflate.Wait d -> Wait {t with d}
     | RFC1951_inflate.Flush d -> Flush {t with d}
-    | RFC1951_inflate.Ok d -> Cont {z= Adler32 adler32; d}
+    | RFC1951_inflate.Ok d -> Cont {t with z= Adler32 adler32; d}
     | RFC1951_inflate.Error (d, exn) -> error {t with d} (RFC1951 exn)
 
   let header src dst t =
@@ -2816,8 +2825,10 @@ module Zlib_inflate = struct
     in
     loop t
 
-  let default ~witness window =
-    {d= RFC1951_inflate.default ~witness window; z= Header header}
+  let default ~witness ?(wbits = None) window =
+    { d= RFC1951_inflate.default ~witness ?wbits window
+    ; z= Header header
+    ; expected_wbits= wbits }
 
   let refill off len t = {t with d= RFC1951_inflate.refill off len t.d}
   let flush off len t = {t with d= RFC1951_inflate.flush off len t.d}
