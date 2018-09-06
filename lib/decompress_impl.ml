@@ -1781,8 +1781,12 @@ module RFC1951_inflate = struct
         bl_count.(p) <- bl_count.(p) + 1
       done ;
       let code = ref 0 in
+      let left = ref 1 in
       let next_code = Array.make (max_bits + 1) 0 in
       for i = 1 to max_bits - 1 do
+        left := !left lsl 1 ;
+        left := !left - bl_count.(i) ;
+        if !left < 0 then raise Invalid_huffman ;
         code := (!code + bl_count.(i)) lsl 1 ;
         next_code.(i) <- !code
       done ;
