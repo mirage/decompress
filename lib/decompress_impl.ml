@@ -2250,21 +2250,25 @@ module RFC1951_inflate = struct
 
   let dictionary src dst t =
     let make_table hlit hdist _hclen buf src dst t =
-      let tbl, max = Huffman.make buf 0 19 7 in
       let k dict _src _dst t =
-        let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
-        let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
-        if max_chr > 0 (* && max_dst > 0 ? *) then
-          Cont
-            { t with
-              state=
-                Inffast
-                  ( Lookup.make tbl_chr max_chr
-                  , Lookup.make tbl_dst max_dst
-                  , Length ) }
-        else error t Invalid_dictionary
+        try
+          let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
+          let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
+          if max_chr > 0 (* && max_dst > 0 ? *) then
+            Cont
+              { t with
+                state=
+                  Inffast
+                    ( Lookup.make tbl_chr max_chr
+                    , Lookup.make tbl_dst max_dst
+                    , Length ) }
+          else error t Invalid_dictionary
+        with Huffman.Invalid_huffman -> error t Invalid_dictionary
       in
-      Dictionary.inflate (tbl, max, hlit + hdist) k src dst t
+      try
+        let tbl, max = Huffman.make buf 0 19 7 in
+        Dictionary.inflate (tbl, max, hlit + hdist) k src dst t
+      with Huffman.Invalid_huffman -> error t Invalid_dictionary
     in
     let read_table hlit hdist hclen src dst t =
       let buf = Array.make 19 0 in
