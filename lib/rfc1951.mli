@@ -305,7 +305,7 @@ module type INFLATE = sig
 
   val bits_remaining : ('x, 'x) t -> int
 
-  val default : witness:'a B.t -> 'a Window.t -> ('a, 'a) t
+  val default : witness:'a B.t -> ?wbits:int -> 'a Window.t -> ('a, 'a) t
   (** [default] makes a new state [t]. *)
 
   val to_result :
@@ -346,5 +346,6 @@ type error_inflate =
   | Invalid_complement_of_length
   | Invalid_dictionary
   | Invalid_distance_code
+  | Invalid_distance of {distance: int; max: int}
 
 module Inflate : INFLATE with type error = error_inflate

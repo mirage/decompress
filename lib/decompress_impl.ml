@@ -1718,6 +1718,7 @@ type error_rfc1951_inflate =
   | Invalid_complement_of_length
   | Invalid_dictionary
   | Invalid_distance_code
+  | Invalid_distance of {distance: int; max: int}
 
 module RFC1951_inflate = struct
   (* functionnal implementation of Heap, bisoux @c-cube *)
@@ -1886,6 +1887,7 @@ module RFC1951_inflate = struct
     ; write: int
     ; state: ('i, 'o) state
     ; window: 'o Window.t
+    ; wbits: int
     ; wi: 'i B.t
     ; wo: 'o B.t }
 
@@ -1925,6 +1927,9 @@ module RFC1951_inflate = struct
     | Invalid_complement_of_length -> pf ppf "Invalid_complement_of_length"
     | Invalid_dictionary -> pf ppf "Invalid_dictionary"
     | Invalid_distance_code -> pf ppf "Invalid_distance_code"
+    | Invalid_distance {distance; max} ->
+        pf ppf "(Invalid_distance { @[distance = %d;@ max = %d;@] })" distance
+          max
 
   let pp_code ppf = function
     | Length -> pf ppf "Length"
@@ -1956,12 +1961,14 @@ module RFC1951_inflate = struct
       ; i_pos
       ; i_len
       ; write
-      ; state; _ } =
+      ; state
+      ; wbits; _ } =
     pf ppf
       "{ @[<hov>last = %b;@ hold = %d;@ bits = %d;@ o_off = %d;@ o_pos = %d;@ \
        o_len = %d;@ i_off = %d;@ i_pos = %d;@ i_len = %d;@ write = %d;@ state \
-       = %a;@ window = #window;@] }"
+       = %a;@ wbits = %d;@ window = #window;@] }"
       last hold bits o_off o_pos o_len i_off i_pos i_len write pp_state state
+      wbits
 
   let error t exn = Error ({t with state= Exception exn}, exn)
   let ok t n = Ok {t with state= Finish n}
@@ -2104,39 +2111,43 @@ module RFC1951_inflate = struct
           let byte = Char.code chr in
           fill_byte byte length k src dst t
       | distance ->
-          let len = min (t.o_len - t.o_pos) length in
-          let off = Window.((t.window.wpos - distance) % t.window) in
-          let sze = t.window.Window.size in
-          let pre = sze - off in
-          let ext = len - pre in
-          let window =
-            if ext > 0 then
-              let window =
-                Window.write t.window.Window.buffer off dst (t.o_off + t.o_pos)
-                  pre t.window
-              in
-              Window.write window.Window.buffer 0 dst
-                (t.o_off + t.o_pos + pre)
-                ext window
-            else
-              Window.write t.window.Window.buffer off dst (t.o_off + t.o_pos)
-                len t.window
-          in
-          if length - len > 0 then
-            Flush
-              { t with
-                o_pos= t.o_pos + len
-              ; write= t.write + len
-              ; state=
-                  Inflate (put lookup_chr lookup_dst (length - len) distance k)
-              ; window }
+          if distance > 1 lsl t.wbits then
+            error t (Invalid_distance {distance; max= 1 lsl t.wbits})
           else
-            Cont
-              { t with
-                o_pos= t.o_pos + len
-              ; write= t.write + len
-              ; state= Inffast (lookup_chr, lookup_dst, Length)
-              ; window }
+            let len = min (t.o_len - t.o_pos) length in
+            let off = Window.((t.window.wpos - distance) % t.window) in
+            let sze = t.window.Window.size in
+            let pre = sze - off in
+            let ext = len - pre in
+            let window =
+              if ext > 0 then
+                let window =
+                  Window.write t.window.Window.buffer off dst
+                    (t.o_off + t.o_pos) pre t.window
+                in
+                Window.write window.Window.buffer 0 dst
+                  (t.o_off + t.o_pos + pre)
+                  ext window
+              else
+                Window.write t.window.Window.buffer off dst (t.o_off + t.o_pos)
+                  len t.window
+            in
+            if length - len > 0 then
+              Flush
+                { t with
+                  o_pos= t.o_pos + len
+                ; write= t.write + len
+                ; state=
+                    Inflate
+                      (put lookup_chr lookup_dst (length - len) distance k)
+                ; window }
+            else
+              Cont
+                { t with
+                  o_pos= t.o_pos + len
+                ; write= t.write + len
+                ; state= Inffast (lookup_chr, lookup_dst, Length)
+                ; window }
 
     let read_extra_dist distance k src dst t =
       match Table._extra_dbits.(distance) with
@@ -2403,6 +2414,8 @@ module RFC1951_inflate = struct
 
   (* this is the end, beautiful friend. *)
 
+  exception Exn_invalid_distance of (int * int)
+
   let inffast src dst t lookup_chr lookup_dst goto =
     let hold = ref t.hold in
     let bits = ref t.bits in
@@ -2498,6 +2511,8 @@ module RFC1951_inflate = struct
             write := !write + n ;
             goto := if length - n = 0 then Length else Write (length - n, 1)
         | Write (length, dist) ->
+            if dist > 1 lsl t.wbits then
+              raise (Exn_invalid_distance (dist, 1 lsl t.wbits)) ;
             let n = min length (t.o_len - !o_pos) in
             let off = Window.((!window.wpos - dist) % !window) in
             let len = !window.Window.size in
@@ -2587,8 +2602,10 @@ module RFC1951_inflate = struct
     | Flat k -> k safe_src safe_dst t
     | Fixed -> fixed safe_src safe_dst t
     | Dictionary k -> k safe_src safe_dst t
-    | Inffast (lookup_chr, lookup_dst, code) ->
-        inffast safe_src safe_dst t lookup_chr lookup_dst code
+    | Inffast (lookup_chr, lookup_dst, code) -> (
+      try inffast safe_src safe_dst t lookup_chr lookup_dst code
+      with Exn_invalid_distance (distance, max) ->
+        error t (Invalid_distance {distance; max}) )
     | Inflate k -> k safe_src safe_dst t
     | Switch -> switch safe_src safe_dst t
     | Finish n -> ok t n
@@ -2607,7 +2624,9 @@ module RFC1951_inflate = struct
     in
     loop t
 
-  let default ~witness window =
+  let default ~witness ?(wbits = 15) window =
+    if wbits < 8 || wbits > 15 then
+      invalid_arg "Invalid wbits value (8 >= wbits <= 15)" ;
     { last= false
     ; hold= 0
     ; bits= 0
@@ -2619,6 +2638,7 @@ module RFC1951_inflate = struct
     ; o_len= 0
     ; write= 0
     ; state= Last
+    ; wbits
     ; window
     ; wi= witness
     ; wo= witness }
@@ -2662,7 +2682,10 @@ type error_z_inflate =
   | Invalid_checksum of {have: Optint.t; expect: Optint.t}
 
 module Zlib_inflate = struct
-  type ('i, 'o) t = {d: ('i, 'o) RFC1951_inflate.t; z: ('i, 'o) state}
+  type ('i, 'o) t =
+    { d: ('i, 'o) RFC1951_inflate.t
+    ; z: ('i, 'o) state
+    ; expected_wbits: int option }
 
   and ('i, 'o) k =
     (Safe.ro, 'i) Safe.t -> (Safe.wo, 'o) Safe.t -> ('i, 'o) t -> ('i, 'o) res
@@ -2697,7 +2720,7 @@ module Zlib_inflate = struct
     | Finish -> pf ppf "Finish"
     | Exception e -> pf ppf "(Exception %a)" pp_error e
 
-  let pp ppf {d; z} =
+  let pp ppf {d; z; _} =
     pf ppf "{@[<hov>d = @[<hov>%a@];@ z = %a;@]}" RFC1951_inflate.pp d pp_state
       z
 
@@ -2799,7 +2822,7 @@ module Zlib_inflate = struct
     | RFC1951_inflate.Cont d -> Cont {t with d}
     | RFC1951_inflate.Wait d -> Wait {t with d}
     | RFC1951_inflate.Flush d -> Flush {t with d}
-    | RFC1951_inflate.Ok d -> Cont {z= Adler32 adler32; d}
+    | RFC1951_inflate.Ok d -> Cont {t with z= Adler32 adler32; d}
     | RFC1951_inflate.Error (d, exn) -> error {t with d} (RFC1951 exn)
 
   let header src dst t =
@@ -2811,11 +2834,17 @@ module Zlib_inflate = struct
     let hold = hold + (byte1 lsl 8) in
     let bits ?(hold = hold) n = hold land ((1 lsl n) - 1) in
     let drop n = hold lsr n in
+    let option_is v e = match v with Some e' -> e = e' | None -> true in
     if
       ((bits 8 lsl 8) + (hold lsr 8)) mod 31 = 0
       && bits 4 = 8
       && bits ~hold:(drop 4) 4 + 8 <= 15
-    then Cont {t with z= Inflate}
+      && option_is t.expected_wbits (bits ~hold:(drop 4) 4 + 8)
+    then
+      Cont
+        { t with
+          z= Inflate
+        ; d= {t.d with RFC1951_inflate.wbits= bits ~hold:(drop 4) 4 + 8} }
     else error t Invalid_header )
       src dst t
 
@@ -2840,8 +2869,10 @@ module Zlib_inflate = struct
     in
     loop t
 
-  let default ~witness window =
-    {d= RFC1951_inflate.default ~witness window; z= Header header}
+  let default ~witness ?(wbits = None) window =
+    { d= RFC1951_inflate.default ~witness ?wbits window
+    ; z= Header header
+    ; expected_wbits= wbits }
 
   let refill off len t = {t with d= RFC1951_inflate.refill off len t.d}
   let flush off len t = {t with d= RFC1951_inflate.flush off len t.d}

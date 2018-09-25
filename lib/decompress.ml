@@ -99,7 +99,6 @@ module type INFLATE = sig
   val used_in : ('i, 'o) t -> int
   val used_out : ('i, 'o) t -> int
   val write : ('i, 'o) t -> int
-  val default : witness:'a B.t -> 'a Window.t -> ('a, 'a) t
 
   val to_result :
        'a
@@ -131,6 +130,7 @@ type error_rfc1951_inflate = Decompress_impl.error_rfc1951_inflate =
   | Invalid_complement_of_length
   | Invalid_dictionary
   | Invalid_distance_code
+  | Invalid_distance of {distance: int; max: int}
 
 module RFC1951_inflate = Decompress_impl.RFC1951_inflate
 
