@@ -1773,27 +1773,40 @@ module RFC1951_inflate = struct
       in
       aux 0 heap ; tbl
 
-    let make table position size max_bits =
-      let bl_count = Array.make (max_bits + 1) 0 in
-      for i = 0 to size - 1 do
-        let p = table.(i + position) in
-        if p >= max_bits + 1 then raise Invalid_huffman ;
+    let _MAX_BITS = 15
+
+    exception Break
+
+    let make ?(kind = `CODES) table off codes _max_bits =
+      let bl_count = Array.make (_MAX_BITS + 1) 0 in
+      for sym = 0 to codes - 1 do
+        let p = table.(off + sym) in
         bl_count.(p) <- bl_count.(p) + 1
       done ;
+      let max = ref _MAX_BITS in
+      let () =
+        try
+          while !max >= 1 do
+            if bl_count.(!max) <> 0 then raise Break ;
+            decr max
+          done
+        with Break -> ()
+      in
       let code = ref 0 in
       let left = ref 1 in
-      let next_code = Array.make (max_bits + 1) 0 in
-      for i = 1 to max_bits - 1 do
+      let next_code = Array.make (_MAX_BITS + 1) 0 in
+      for i = 1 to _MAX_BITS do
         left := !left lsl 1 ;
         left := !left - bl_count.(i) ;
         if !left < 0 then raise Invalid_huffman ;
         code := (!code + bl_count.(i)) lsl 1 ;
         next_code.(i) <- !code
       done ;
+      if !left > 0 && (kind = `CODES || !max <> 1) then raise Invalid_huffman ;
       let ordered = ref Heap.None in
       let max = ref 0 in
-      for i = 0 to size - 1 do
-        let l = table.(i + position) in
+      for i = 0 to codes - 1 do
+        let l = table.(off + i) in
         if l <> 0 then (
           let n = next_code.(l - 1) in
           next_code.(l - 1) <- n + 1 ;
@@ -1844,7 +1857,7 @@ module RFC1951_inflate = struct
             else if n < 280 then 7
             else 8 )
       in
-      let tbl, max = Huffman.make tbl 0 288 9 in
+      let tbl, max = Huffman.make ~kind:`LENS tbl 0 288 9 in
       make tbl max
 
     let fixed_dst =
@@ -2189,7 +2202,9 @@ module RFC1951_inflate = struct
                   get k src dst t
                 else k state.dictionary src dst t )
             in
-            KDictionary.get_bits 2 (k state) src dst t
+            (* XXX(dinosaure): see invalid bit length repeat error on [zlib]. *)
+            if state.idx = 0 then error t Invalid_dictionary
+            else KDictionary.get_bits 2 (k state) src dst t
         | 17 ->
             let k state n src dst t =
               if state.idx + n + 3 > state.max then error t Invalid_dictionary
@@ -2239,21 +2254,27 @@ module RFC1951_inflate = struct
 
   let dictionary src dst t =
     let make_table hlit hdist _hclen buf src dst t =
-      let tbl, max = Huffman.make buf 0 19 7 in
-      let k dict _src _dst t =
-        let tbl_chr, max_chr = Huffman.make dict 0 hlit 15 in
-        let tbl_dst, max_dst = Huffman.make dict hlit hdist 15 in
-        if max_chr > 0 (* && max_dst > 0 ? *) then
-          Cont
-            { t with
-              state=
-                Inffast
-                  ( Lookup.make tbl_chr max_chr
-                  , Lookup.make tbl_dst max_dst
-                  , Length ) }
-        else error t Invalid_dictionary
-      in
-      Dictionary.inflate (tbl, max, hlit + hdist) k src dst t
+      match Huffman.make ~kind:`CODES buf 0 19 7 with
+      | tbl, max ->
+          let k dict _src _dst t =
+            match
+              ( Huffman.make ~kind:`LENS dict 0 hlit 15
+              , Huffman.make ~kind:`DIST dict hlit hdist 15 )
+            with
+            | (tbl_chr, max_chr), (tbl_dst, max_dst) ->
+                if max_chr > 0 (* && max_dst > 0 ? *) then
+                  Cont
+                    { t with
+                      state=
+                        Inffast
+                          ( Lookup.make tbl_chr max_chr
+                          , Lookup.make tbl_dst max_dst
+                          , Length ) }
+                else error t Invalid_dictionary
+            | exception Huffman.Invalid_huffman -> error t Invalid_dictionary
+          in
+          Dictionary.inflate (tbl, max, hlit + hdist) k src dst t
+      | exception Huffman.Invalid_huffman -> error t Invalid_dictionary
     in
     let read_table hlit hdist hclen src dst t =
       let buf = Array.make 19 0 in
@@ -2276,7 +2297,10 @@ module RFC1951_inflate = struct
       KDictionary.get_bits 4 k src dst t
     in
     let read_hdist hlit src dst t =
-      let k hdist src dst t = read_hclen hlit (hdist + 1) src dst t in
+      let k hdist src dst t =
+        if hlit > 286 || hdist > 30 then error t Invalid_dictionary
+        else read_hclen hlit (hdist + 1) src dst t
+      in
       KDictionary.get_bits 5 k src dst t
     in
     let read_hlit src dst t =
