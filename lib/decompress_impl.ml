@@ -1717,6 +1717,7 @@ type error_rfc1951_inflate =
   | Invalid_kind_of_block
   | Invalid_complement_of_length
   | Invalid_dictionary
+  | Invalid_distance_code
 
 module RFC1951_inflate = struct
   (* functionnal implementation of Heap, bisoux @c-cube *)
@@ -1923,6 +1924,7 @@ module RFC1951_inflate = struct
     | Invalid_kind_of_block -> pf ppf "Invalid_kind_of_block"
     | Invalid_complement_of_length -> pf ppf "Invalid_complement_of_length"
     | Invalid_dictionary -> pf ppf "Invalid_dictionary"
+    | Invalid_distance_code -> pf ppf "Invalid_distance_code"
 
   let pp_code ppf = function
     | Length -> pf ppf "Length"
@@ -2137,15 +2139,17 @@ module RFC1951_inflate = struct
               ; window }
 
     let read_extra_dist distance k src dst t =
-      let len = Table._extra_dbits.(distance) in
-      let safe src dst t =
-        let extra = t.hold land ((1 lsl len) - 1) in
-        k
-          (Table._base_dist.(distance) + 1 + extra)
-          src dst
-          {t with hold= t.hold lsr len; bits= t.bits - len}
-      in
-      peek_bits len safe src dst t
+      match Table._extra_dbits.(distance) with
+      | len ->
+          let safe src dst t =
+            let extra = t.hold land ((1 lsl len) - 1) in
+            k
+              (Table._base_dist.(distance) + 1 + extra)
+              src dst
+              {t with hold= t.hold lsr len; bits= t.bits - len}
+          in
+          peek_bits len safe src dst t
+      | exception Invalid_argument _ -> error t Invalid_distance_code
 
     let read_extra_length length k src dst t =
       let len = Table._extra_lbits.(length) in
