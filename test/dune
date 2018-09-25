@@ -1,9 +1,9 @@
-(executable
- (name test)
+(test
+ (name test_on_files)
+ (modules test_on_files)
  (libraries checkseum.c decompress re.str camlzip alcotest))
 
-(alias
- (name runtest)
- (package decompress)
- (deps (:test test.exe))
- (action (run %{test} --color=always)))
+(test
+ (name test_rfc1951)
+ (modules test_rfc1951)
+ (libraries checkseum.c rfc1951 alcotest))
