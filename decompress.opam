@@ -8,8 +8,8 @@ dev-repo:     "https://github.com/mirage/decompress.git"
 doc:          "https://mirage.github.io/decompress/"
 license:      "MIT"
 
-build: [[ "jbuilder" "build" "--only-packages" name "--root" "." "-j" jobs "@install" ]]
-build-test: [[ "jbuilder" "build" "--only-packages" name "--root" "." "-j" jobs "@runtest" ]]
+build: [[ "dune" "build" "--only-packages" name "--root" "." "-j" jobs ]]
+build-test: [[ "dune" "runtest" "--only-packages" name "--root" "." "-j" jobs ]]
 
 depends: [
   "dune"       {build}
