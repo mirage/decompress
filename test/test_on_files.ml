@@ -9,12 +9,12 @@ let walk directory pattern =
           List.fold_left
             (fun (dirs, files) kind ->
               match (Unix.stat kind).Unix.st_kind with
-              | Unix.S_REG -> dirs, kind :: files
-              | Unix.S_DIR -> kind :: dirs, files
+              | Unix.S_REG -> (dirs, kind :: files)
+              | Unix.S_DIR -> (kind :: dirs, files)
               | Unix.S_BLK | Unix.S_CHR | Unix.S_FIFO | Unix.S_LNK
                |Unix.S_SOCK ->
-                  dirs, files
-              | exception Unix.Unix_error _ -> dirs, files )
+                  (dirs, files)
+              | exception Unix.Unix_error _ -> (dirs, files) )
             ([], []) contents
         in
         let matched = List.filter select files in
@@ -70,7 +70,10 @@ module D : COMMON with type t = Bytes.t = struct
 
   let input = Bytes.create 0xFFFF
   let output = Bytes.create 0xFFFF
-  let window = Decompress.Window.create ~witness:Decompress.B.bytes
+
+  let window =
+    Decompress.Window.create ~crc:Decompress.Window.adler32
+      ~witness:Decompress.B.bytes
 
   let compress ?(level = 4) ?(wbits = 15) ?meth refill flush =
     Decompress.Zlib_deflate.bytes input output ?meth refill
@@ -184,4 +187,4 @@ let make_test filename =
 
 let () =
   Alcotest.run "decompress test"
-    ["files", List.concat @@ List.map make_test (walk "/bin/" ".*")]
+    [("files", List.concat @@ List.map make_test (walk "/bin/" ".*"))]
