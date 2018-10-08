@@ -53,7 +53,10 @@ let do_command input_size output_size mode level wbits =
       | Error exn ->
           Format.eprintf "%a\n%!" Decompress.Zlib_deflate.pp_error exn )
   | `Decompression -> (
-      let w = Decompress.Window.create ~witness:B.bigstring in
+      let w =
+        Decompress.Window.create ~crc:Decompress.Window.adler32
+          ~witness:B.bigstring
+      in
       let t = Decompress.Zlib_inflate.default ~witness:B.bigstring w in
       let r =
         Decompress.Zlib_inflate.to_result src dst
@@ -75,7 +78,7 @@ let nat a b =
     try
       let v = int_of_string s in
       let p = Printf.sprintf in
-      match v, a, b with
+      match (v, a, b) with
       | v, Some a, Some b when a <= v && v <= b -> `Ok v
       | v, Some a, None when a <= v -> `Ok v
       | v, None, Some b when v <= b -> `Ok v
@@ -85,7 +88,7 @@ let nat a b =
       | _, None, Some b -> failwith (p "%s must be <= %d" s b)
     with Failure e -> `Error e
   in
-  parse, Format.pp_print_int
+  (parse, Format.pp_print_int)
 
 let mode =
   let parse = function
