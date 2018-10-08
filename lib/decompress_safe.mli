@@ -42,4 +42,12 @@ val adler32 :
   -> Checkseum.Adler32.t
   -> Checkseum.Adler32.t
 
+val crc32 :
+     'i B.t
+  -> ([> ro], 'i) t
+  -> int
+  -> int
+  -> Checkseum.Crc32.t
+  -> Checkseum.Crc32.t
+
 val unsafe : ('a, 'i) t -> 'i

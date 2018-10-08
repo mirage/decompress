@@ -27,4 +27,10 @@ let adler32 : type a.
   | B.Bytes -> Checkseum.Adler32.digest_bytes
   | B.Bigstring -> Checkseum.Adler32.digest_bigstring
 
+let crc32 : type a.
+    a B.t -> a -> int -> int -> Checkseum.Crc32.t -> Checkseum.Crc32.t =
+  function
+  | B.Bytes -> Checkseum.Crc32.digest_bytes
+  | B.Bigstring -> Checkseum.Crc32.digest_bigstring
+
 external unsafe : ('a, 'i) t -> 'i = "%identity"

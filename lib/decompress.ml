@@ -80,6 +80,7 @@ module Window = Decompress_impl.Window
 
 module type INFLATE = sig
   type error
+  type crc
   type ('i, 'o) t
 
   val pp_error : Format.formatter -> error -> unit
@@ -132,7 +133,27 @@ type error_rfc1951_inflate = Decompress_impl.error_rfc1951_inflate =
   | Invalid_distance_code
   | Invalid_distance of {distance: int; max: int}
 
-module RFC1951_inflate = Decompress_impl.RFC1951_inflate
+module RFC1951_inflate = struct
+  open Decompress_impl.RFC1951_inflate
+
+  type crc = Window.none
+  type nonrec ('i, 'o) t = ('i, 'o, crc) t
+  type nonrec error = error
+
+  let eval = eval
+  let used_in = used_in
+  let used_out = used_out
+  let bits_remaining = bits_remaining
+  let bigstring = bigstring
+  let bytes = bytes
+  let to_result = to_result
+  let default = default
+  let write = write
+  let flush = flush
+  let refill = refill
+  let pp = pp
+  let pp_error = pp_error
+end
 
 type error_z_inflate = Decompress_impl.error_z_inflate =
   | RFC1951 of RFC1951_inflate.error

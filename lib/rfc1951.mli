@@ -238,15 +238,24 @@ module Deflate : DEFLATE with type error = error_deflate
     This API is available to limit the allocation by Decompress. *)
 module Window : sig
   (** The Window specialized by ['o] (see {!B.st} and {!B.bs}). *)
-  type 'o t
+  type ('o, 'crc) t
 
-  val create : witness:'o B.t -> 'o t
+  type 'crc crc
+  type adler32 = Checkseum.Adler32.t
+  type crc32 = Checkseum.Crc32.t
+  type none = unit
+
+  val adler32 : adler32 crc
+  val crc32 : crc32 crc
+  val none : none crc
+
+  val create : crc:'k crc -> witness:'o B.t -> ('o, 'k) t
   (** [create ~proof] creates a new window. *)
 
-  val reset : 'o t -> 'o t
+  val reset : ('o, 'crc) t -> ('o, 'crc) t
   (** [reset window] resets a window to be reused by an Inflate algorithm. *)
 
-  val crc : 'o t -> Checkseum.Adler32.t
+  val crc : ('o, 'crc) t -> 'crc
   (** [crc window] returns the checksum computed by the window. *)
 end
 
@@ -256,6 +265,8 @@ end
 module type INFLATE = sig
   (** Inflate error. *)
   type error
+
+  type crc
 
   (** The state of the inflate algorithm. ['i] and ['o] are the implementation
       used respectively for the input and the output, see {!B.st} and {!B.bs}.
@@ -305,7 +316,8 @@ module type INFLATE = sig
 
   val bits_remaining : ('x, 'x) t -> int
 
-  val default : witness:'a B.t -> ?wbits:int -> 'a Window.t -> ('a, 'a) t
+  val default :
+    witness:'a B.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
   (** [default] makes a new state [t]. *)
 
   val to_result :
@@ -348,4 +360,5 @@ type error_inflate =
   | Invalid_distance_code
   | Invalid_distance of {distance: int; max: int}
 
-module Inflate : INFLATE with type error = error_inflate
+module Inflate :
+  INFLATE with type error = error_inflate and type crc = Window.none

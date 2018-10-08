@@ -1539,25 +1539,68 @@ module Zlib_deflate = struct
 end
 
 module Window = struct
-  type 'a t =
+  type ('a, 'k) t =
     { rpos: int
     ; wpos: int
     ; size: int
     ; buffer: ([Safe.ro | Safe.wo], 'a) Safe.t
-    ; crc: Checkseum.Adler32.t
-    ; witness: 'a B.t }
+    ; crc: 'k (* XXX(dinosaure): we can fix this type to be an [Optint.t]. *)
+    ; crc_witness: 'k crc
+    ; buffer_witness: 'a B.t }
 
-  let create ~witness =
+  and 'k crc = Adler32 : adler32 crc | Crc32 : crc32 crc | None : none crc
+
+  and none = unit
+
+  and adler32 = Checkseum.Adler32.t
+
+  and crc32 = Checkseum.Crc32.t
+
+  let adler32 = Adler32
+  let crc32 = Crc32
+  let none = None
+
+  module Crc = struct
+    type 'k t = 'k crc
+
+    let default : type k. k t -> k = function
+      | Adler32 -> Checkseum.Adler32.default
+      | Crc32 -> Checkseum.Crc32.default
+      | None -> ()
+
+    let update_none :
+        'i B.t -> ([> Safe.ro], 'i) Safe.t -> int -> int -> none -> none =
+     fun _buf _witness _off _len crc -> crc
+
+    let update : type k.
+        k t -> 'i B.t -> ([> Safe.ro], 'i) Safe.t -> int -> int -> k -> k =
+      function
+      | Adler32 -> Safe.adler32
+      | Crc32 -> Safe.crc32
+      | None -> update_none
+
+    let digest_bytes_none : bytes -> int -> int -> none -> none =
+     fun _buf _off _len crc -> crc
+
+    let digest_bytes : type k. k t -> bytes -> int -> int -> k -> k = function
+      | Adler32 -> Checkseum.Adler32.digest_bytes
+      | Crc32 -> Checkseum.Crc32.digest_bytes
+      | None -> digest_bytes_none
+  end
+
+  let create : type o k. crc:k crc -> witness:o B.t -> (o, k) t =
+   fun ~crc ~witness:buffer_witness ->
     let size = 1 lsl 15 in
     { rpos= 0
     ; wpos= 0
     ; size= size + 1
-    ; buffer= Safe.rw witness (B.create witness (size + 1))
-    ; crc= Checkseum.Adler32.default
-    ; witness }
+    ; buffer= Safe.rw buffer_witness (B.create buffer_witness (size + 1))
+    ; crc= Crc.default crc
+    ; crc_witness= crc
+    ; buffer_witness }
 
   let crc {crc; _} = crc
-  let reset t = {t with rpos= 0; wpos= 0; crc= Checkseum.Adler32.default}
+  let reset t = {t with rpos= 0; wpos= 0; crc= Crc.default t.crc_witness}
 
   let available_to_write {wpos; rpos; size; _} =
     if wpos >= rpos then size - (wpos - rpos) - 1 else rpos - wpos - 1
@@ -1579,10 +1622,15 @@ module Window = struct
     let pre = t.size - t.wpos in
     let extra = len - pre in
     if extra > 0 then (
-      Safe.blit2 t.witness buf off t.buffer t.wpos dst dst_off pre ;
-      Safe.blit2 t.witness buf (off + pre) t.buffer 0 dst (dst_off + pre) extra )
-    else Safe.blit2 t.witness buf off t.buffer t.wpos dst dst_off len ;
-    move len {t with crc= Safe.adler32 t.witness (hack dst) dst_off len t.crc}
+      Safe.blit2 t.buffer_witness buf off t.buffer t.wpos dst dst_off pre ;
+      Safe.blit2 t.buffer_witness buf (off + pre) t.buffer 0 dst
+        (dst_off + pre) extra )
+    else Safe.blit2 t.buffer_witness buf off t.buffer t.wpos dst dst_off len ;
+    move len
+      { t with
+        crc=
+          Crc.update t.crc_witness t.buffer_witness (hack dst) dst_off len
+            t.crc }
 
   (* XXX(dinosaure): [dst] is more reliable than [buf] because [buf] is the
      [window]. *)
@@ -1591,9 +1639,9 @@ module Window = struct
     let t =
       if 1 > available_to_write t then drop (1 - available_to_write t) t else t
     in
-    Safe.set t.witness t.buffer t.wpos chr ;
+    Safe.set t.buffer_witness t.buffer t.wpos chr ;
     move 1
-      {t with crc= Checkseum.Adler32.digest_bytes (Bytes.make 1 chr) 0 1 t.crc}
+      {t with crc= Crc.digest_bytes t.crc_witness (Bytes.make 1 chr) 0 1 t.crc}
 
   let fill_char chr len t =
     let t =
@@ -1603,12 +1651,12 @@ module Window = struct
     let pre = t.size - t.wpos in
     let extra = len - pre in
     if extra > 0 then (
-      Safe.fill t.witness t.buffer t.wpos pre chr ;
-      Safe.fill t.witness t.buffer 0 extra chr )
-    else Safe.fill t.witness t.buffer t.wpos len chr ;
+      Safe.fill t.buffer_witness t.buffer t.wpos pre chr ;
+      Safe.fill t.buffer_witness t.buffer 0 extra chr )
+    else Safe.fill t.buffer_witness t.buffer t.wpos len chr ;
     move len
       { t with
-        crc= Checkseum.Adler32.digest_bytes (Bytes.make len chr) 0 len t.crc }
+        crc= Crc.digest_bytes t.crc_witness (Bytes.make len chr) 0 len t.crc }
 
   let rec sanitize n ({size; _} as t) =
     if n < 0 then sanitize (size + n) t
@@ -1622,6 +1670,7 @@ end
 (** non-blocking and functionnal implementation of Inflate *)
 module type INFLATE = sig
   type error
+  type crc
   type ('i, 'o) t
 
   val pp_error : Format.formatter -> error -> unit
@@ -1641,7 +1690,7 @@ module type INFLATE = sig
   val used_in : ('i, 'o) t -> int
   val used_out : ('i, 'o) t -> int
   val write : ('i, 'o) t -> int
-  val default : 'o Window.t -> ('i, 'o) t
+  val default : ('o, crc) Window.t -> ('i, 'o) t
 
   val to_result :
        'a
@@ -1874,7 +1923,7 @@ module RFC1951_inflate = struct
       (shadow lsr 15, shadow land max_mask)
   end
 
-  type ('i, 'o) t =
+  type ('i, 'o, 'crc) t =
     { last: bool
     ; hold: int
     ; bits: int
@@ -1885,33 +1934,36 @@ module RFC1951_inflate = struct
     ; i_pos: int
     ; i_len: int
     ; write: int
-    ; state: ('i, 'o) state
-    ; window: 'o Window.t
+    ; state: ('i, 'o, 'crc) state
+    ; window: ('o, 'crc) Window.t
     ; wbits: int
     ; wi: 'i B.t
     ; wo: 'o B.t }
 
-  and ('i, 'o) k =
-    (Safe.ro, 'i) Safe.t -> (Safe.wo, 'o) Safe.t -> ('i, 'o) t -> ('i, 'o) res
+  and ('i, 'o, 'crc) k =
+       (Safe.ro, 'i) Safe.t
+    -> (Safe.wo, 'o) Safe.t
+    -> ('i, 'o, 'crc) t
+    -> ('i, 'o, 'crc) res
 
-  and ('i, 'o) state =
+  and ('i, 'o, 'crc) state =
     | Last
     | Block
-    | Flat of ('i, 'o) k
+    | Flat of ('i, 'o, 'crc) k
     | Fixed
-    | Dictionary of ('i, 'o) k
+    | Dictionary of ('i, 'o, 'crc) k
     | Inffast of (Lookup.t * Lookup.t * code)
-    | Inflate of ('i, 'o) k
+    | Inflate of ('i, 'o, 'crc) k
     | Switch
     | Finish of int
     | Exception of error
 
-  and ('i, 'o) res =
-    | Cont of ('i, 'o) t
-    | Wait of ('i, 'o) t
-    | Flush of ('i, 'o) t
-    | Ok of ('i, 'o) t
-    | Error of ('i, 'o) t * error
+  and ('i, 'o, 'crc) res =
+    | Cont of ('i, 'o, 'crc) t
+    | Wait of ('i, 'o, 'crc) t
+    | Flush of ('i, 'o, 'crc) t
+    | Ok of ('i, 'o, 'crc) t
+    | Error of ('i, 'o, 'crc) t * error
 
   and code =
     | Length
@@ -2666,7 +2718,9 @@ module RFC1951_inflate = struct
     | _ -> invalid_arg "bits_remaining: bad state"
 
   include Convenience_inflate (struct
-    type nonrec ('i, 'o) t = ('i, 'o) t
+    (* XXX(dinosaure): we fixed [type crc = Window.none] here! *)
+
+    type nonrec ('i, 'o) t = ('i, 'o, Window.none) t
     type nonrec error = error
 
     let eval = eval
@@ -2683,7 +2737,7 @@ type error_z_inflate =
 
 module Zlib_inflate = struct
   type ('i, 'o) t =
-    { d: ('i, 'o) RFC1951_inflate.t
+    { d: ('i, 'o, Window.adler32) RFC1951_inflate.t
     ; z: ('i, 'o) state
     ; expected_wbits: int option }
 
@@ -2705,6 +2759,8 @@ module Zlib_inflate = struct
     | Error of ('i, 'o) t * error
 
   and error = error_z_inflate
+
+  and crc = Window.adler32
 
   let pp_error ppf = function
     | RFC1951 err -> pf ppf "(RFC1951 %a)" RFC1951_inflate.pp_error err
