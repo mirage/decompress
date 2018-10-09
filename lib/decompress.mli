@@ -244,24 +244,24 @@ module Zlib_deflate : DEFLATE with type error = error_z_deflate
     This API is available to limit the allocation by Decompress. *)
 module Window : sig
   (** The Window specialized by ['o] (see {!B.st} and {!B.bs}). *)
-  type ('o, 'crc) t
+  type ('o, 'k) t
 
-  type 'crc crc
-  type adler32 = Checkseum.Adler32.t
-  type crc32 = Checkseum.Crc32.t
-  type none = unit
+  type 'k checksum
+  type adler32
+  type crc32
+  type none
 
-  val adler32 : adler32 crc
-  val crc32 : crc32 crc
-  val none : none crc
+  val adler32 : adler32 checksum
+  val crc32 : crc32 checksum
+  val none : none checksum
 
-  val create : crc:'k crc -> witness:'o B.t -> ('o, 'k) t
+  val create : crc:'k checksum -> witness:'o B.t -> ('o, 'k) t
   (** [create ~proof] creates a new window. *)
 
-  val reset : ('o, 'crc) t -> ('o, 'crc) t
+  val reset : ('o, 'k) t -> ('o, 'k) t
   (** [reset window] resets a window to be reused by an Inflate algorithm. *)
 
-  val crc : ('o, 'crc) t -> 'crc
+  val crc : ('o, 'k) t -> Optint.t
   (** [crc window] returns the checksum computed by the window. *)
 end
 

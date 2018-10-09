@@ -1539,57 +1539,66 @@ module Zlib_deflate = struct
 end
 
 module Window = struct
-  type ('a, 'k) t =
+  type ('a, 'crc) t =
     { rpos: int
     ; wpos: int
     ; size: int
     ; buffer: ([Safe.ro | Safe.wo], 'a) Safe.t
-    ; crc: 'k (* XXX(dinosaure): we can fix this type to be an [Optint.t]. *)
-    ; crc_witness: 'k crc
+    ; crc: Optint.t
+    ; crc_witness: 'crc checksum
     ; buffer_witness: 'a B.t }
 
-  and 'k crc = Adler32 : adler32 crc | Crc32 : crc32 crc | None : none crc
+  and 'crc checksum =
+    | Adler32 : adler32 checksum
+    | Crc32 : crc32 checksum
+    | None : none checksum
 
-  and none = unit
+  and adler32 = A
 
-  and adler32 = Checkseum.Adler32.t
+  and crc32 = B
 
-  and crc32 = Checkseum.Crc32.t
+  and none = C
 
   let adler32 = Adler32
   let crc32 = Crc32
   let none = None
 
   module Crc = struct
-    type 'k t = 'k crc
+    type 'a t = 'a checksum
 
-    let default : type k. k t -> k = function
+    let default : type k. k t -> Optint.t = function
       | Adler32 -> Checkseum.Adler32.default
       | Crc32 -> Checkseum.Crc32.default
-      | None -> ()
+      | None -> Optint.zero
 
-    let update_none :
-        'i B.t -> ([> Safe.ro], 'i) Safe.t -> int -> int -> none -> none =
-     fun _buf _witness _off _len crc -> crc
+    let update_none _buf _witness _off _len crc = crc
 
     let update : type k.
-        k t -> 'i B.t -> ([> Safe.ro], 'i) Safe.t -> int -> int -> k -> k =
-      function
-      | Adler32 -> Safe.adler32
-      | Crc32 -> Safe.crc32
-      | None -> update_none
+           k t
+        -> 'i B.t
+        -> ([> Safe.ro], 'i) Safe.t
+        -> int
+        -> int
+        -> Optint.t
+        -> Optint.t =
+     fun kind buf witness off len crc ->
+      match kind with
+      | Adler32 -> Safe.adler32 buf witness off len crc
+      | Crc32 -> Safe.crc32 buf witness off len crc
+      | None -> update_none buf witness off len crc
 
-    let digest_bytes_none : bytes -> int -> int -> none -> none =
-     fun _buf _off _len crc -> crc
+    let digest_bytes_none _buf _off _len crc = crc
 
-    let digest_bytes : type k. k t -> bytes -> int -> int -> k -> k = function
-      | Adler32 -> Checkseum.Adler32.digest_bytes
-      | Crc32 -> Checkseum.Crc32.digest_bytes
-      | None -> digest_bytes_none
+    let digest_bytes : type k.
+        k t -> bytes -> int -> int -> Optint.t -> Optint.t =
+     fun kind buf off len crc ->
+      match kind with
+      | Adler32 -> Checkseum.Adler32.digest_bytes buf off len crc
+      | Crc32 -> Checkseum.Crc32.digest_bytes buf off len crc
+      | None -> digest_bytes_none buf off len crc
   end
 
-  let create : type o k. crc:k crc -> witness:o B.t -> (o, k) t =
-   fun ~crc ~witness:buffer_witness ->
+  let create ~crc ~witness:buffer_witness =
     let size = 1 lsl 15 in
     { rpos= 0
     ; wpos= 0
@@ -2718,8 +2727,6 @@ module RFC1951_inflate = struct
     | _ -> invalid_arg "bits_remaining: bad state"
 
   include Convenience_inflate (struct
-    (* XXX(dinosaure): we fixed [type crc = Window.none] here! *)
-
     type nonrec ('i, 'o) t = ('i, 'o, Window.none) t
     type nonrec error = error
 
@@ -2736,8 +2743,10 @@ type error_z_inflate =
   | Invalid_checksum of {have: Optint.t; expect: Optint.t}
 
 module Zlib_inflate = struct
+  type crc = Window.adler32
+
   type ('i, 'o) t =
-    { d: ('i, 'o, Window.adler32) RFC1951_inflate.t
+    { d: ('i, 'o, crc) RFC1951_inflate.t
     ; z: ('i, 'o) state
     ; expected_wbits: int option }
 
@@ -2759,8 +2768,6 @@ module Zlib_inflate = struct
     | Error of ('i, 'o) t * error
 
   and error = error_z_inflate
-
-  and crc = Window.adler32
 
   let pp_error ppf = function
     | RFC1951 err -> pf ppf "(RFC1951 %a)" RFC1951_inflate.pp_error err
