@@ -404,3 +404,27 @@ module Zlib_inflate : sig
     witness:'a B.t -> ?wbits:int option -> ('a, crc) Window.t -> ('a, 'a) t
   (** [default] makes a new state [t]. *)
 end
+
+type error_g_inflate =
+  | RFC1951 of RFC1951_inflate.error
+  | Invalid_header
+  | Invalid_header_checksum of
+      { have: Checkseum.Adler32.t
+      ; expect: Checkseum.Adler32.t }
+  | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
+  | Invalid_size of {have: Optint.t; expect: Optint.t}
+
+module Gzip_inflate : sig
+  include INFLATE with type error = error_g_inflate and type crc = Window.crc32
+
+  val xfl : ('a, 'b) t -> int
+  val os : ('a, 'b) t -> int
+  val mtime : ('a, 'b) t -> Optint.t
+  val extra : ('a, 'b) t -> string option
+  val name : ('a, 'b) t -> string option
+  val comment : ('a, 'b) t -> string option
+
+  val default :
+    witness:'a B.t -> ?wbits:int option -> ('a, crc) Window.t -> ('a, 'a) t
+  (** [default] makes a new state [t]. *)
+end

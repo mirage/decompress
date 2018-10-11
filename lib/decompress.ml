@@ -166,3 +166,14 @@ type error_z_inflate = Decompress_impl.error_z_inflate =
   | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
 
 module Zlib_inflate = Decompress_impl.Zlib_inflate
+
+type error_g_inflate = Decompress_impl.error_g_inflate =
+  | RFC1951 of RFC1951_inflate.error
+  | Invalid_header
+  | Invalid_header_checksum of
+      { have: Checkseum.Adler32.t
+      ; expect: Checkseum.Adler32.t }
+  | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
+  | Invalid_size of {have: Optint.t; expect: Optint.t}
+
+module Gzip_inflate = Decompress_impl.Gzip_inflate
