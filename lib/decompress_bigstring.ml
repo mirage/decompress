@@ -74,6 +74,21 @@ let blit src src_off dst dst_off len =
       (length src) dst_off (length dst) len
   else unsafe_blit src src_off dst dst_off len
 
+let blit_string src src_off dst dst_off len =
+  if
+    src_off < 0
+    || dst_off < 0
+    || len < 0
+    || src_off > String.length src - len
+    || dst_off > length dst - len
+  then
+    invalid_arg "Bigstring.blit (src: %d:%d, dst: %d:%d, len: %d)" src_off
+      (String.length src) dst_off (length dst) len
+  else
+    for i = 0 to len - 1 do
+      unsafe_set dst (i + dst_off) (String.unsafe_get src (i + src_off))
+    done
+
 let blit2 src src_off dst0 dst_off0 dst1 dst_off1 len =
   if
     len < 0

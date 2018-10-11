@@ -237,6 +237,26 @@ type error_z_deflate = RFC1951 of RFC1951_deflate.error
 
 module Zlib_deflate : DEFLATE with type error = error_z_deflate
 
+type error_g_deflate = RFC1951 of RFC1951_deflate.error
+
+(* module Gzip_deflate : DEFLATE with type error = error_g_deflate *)
+module Gzip_deflate : sig
+  include DEFLATE with type error = error_g_deflate
+
+  val default :
+       witness:'a B.t
+    -> ?text:bool
+    -> ?header_crc:bool
+    -> ?extra:string option
+    -> ?name:string option
+    -> ?comment:string option
+    -> ?mtime:int
+    -> ?os:int
+    -> int
+    -> ('a, 'a) t
+  (** [default] uses a constant value for wbit. *)
+end
+
 (** Window used by the Inflate algorithm.
 
     A functionnal implementation of window to use with the inflate algorithm.

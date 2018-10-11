@@ -76,6 +76,11 @@ type error_z_deflate = Decompress_impl.error_z_deflate =
   | RFC1951 of error_rfc1951_deflate
 
 module Zlib_deflate = Decompress_impl.Zlib_deflate
+
+type error_g_deflate = Decompress_impl.error_g_deflate =
+  | RFC1951 of error_rfc1951_deflate
+
+module Gzip_deflate = Decompress_impl.Gzip_deflate
 module Window = Decompress_impl.Window
 
 module type INFLATE = sig

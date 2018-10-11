@@ -20,6 +20,11 @@ let blit = B.blit
 let blit2 = B.blit2
 let pp = B.pp
 let to_string = B.to_string
+let of_string : string -> (ro, string) t = fun x -> x
+
+let blit_string : type a.
+    a B.t -> ([> ro], string) t -> int -> ([> wo], a) t -> int -> int -> unit =
+  B.blit_string
 
 let adler32 : type a.
     a B.t -> a -> int -> int -> Checkseum.Adler32.t -> Checkseum.Adler32.t =

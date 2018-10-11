@@ -64,6 +64,11 @@ let blit2 : type a. a t -> a -> int -> a -> int -> a -> int -> int -> unit =
   | Bytes -> Bytes.blit2
   | Bigstring -> Bigstring.blit2
 
+let blit_string : type a. a t -> string -> int -> a -> int -> int -> unit =
+  function
+  | Bytes -> Bytes.blit_string
+  | Bigstring -> Bigstring.blit_string
+
 let pp : type a. a t -> Format.formatter -> a -> unit = function
   | Bytes -> Bytes.pp
   | Bigstring -> Bigstring.pp

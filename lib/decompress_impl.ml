@@ -500,8 +500,10 @@ module RFC1951_deflate = struct
     ; i_len: int
     ; level: int
     ; wbits: int
+    ; read: int32
     ; write: int
     ; adler: Checkseum.Adler32.t
+    ; crc: Checkseum.Crc32.t
     ; state: ('i, 'o) state
     ; wi: 'i B.t
     ; wo: 'o B.t }
@@ -586,16 +588,18 @@ module RFC1951_deflate = struct
       ; i_off
       ; i_pos
       ; i_len
+      ; read
       ; level
       ; wbits
       ; adler
+      ; crc
       ; state; _ } =
     pf ppf
       "{@[<hov>hold = %d;@ bits = %d;@ o_off = %d;@ o_pos = %d;@ o_len = %d;@ \
-       i_off = %d;@ i_pos = %d;@ i_len = %d;@ level = %d;@ wbits = %d;@ adler \
-       = %a;@ state = %a@]}"
-      hold bits o_off o_pos o_len i_off i_pos i_len level wbits
-      Checkseum.Adler32.pp adler pp_state state
+       i_off = %d;@ i_pos = %d;@ i_len = %d;@ read = %d;@ level = %d;@ wbits \
+       = %d;@ adler = %a;@ crc = %a;@ state = %a@];}"
+      hold bits o_off o_pos o_len i_off i_pos i_len (Int32.to_int read) level
+      wbits Checkseum.Adler32.pp adler Checkseum.Crc32.pp crc pp_state state
 
   let await t : ('i, 'o) res = Wait t
   let error t exn : ('i, 'o) res = Error ({t with state= Exception exn}, exn)
@@ -946,9 +950,12 @@ module RFC1951_deflate = struct
                 MakeBlock
                   (Static {lz; frequencies; deflate= Seq.append deflate seq})
             ; i_pos= t.i_pos + L.used_in lz
+            ; read= Int32.add t.read (Int32.of_int (L.used_in lz))
             ; adler=
                 Safe.adler32 t.wi src (t.i_off + t.i_pos) (L.used_in lz)
-                  t.adler }
+                  t.adler
+            ; crc= Safe.crc32 t.wi src (t.i_off + t.i_pos) (L.used_in lz) t.crc
+            }
       | `Error (_, exn) -> error t (Lz77 exn) )
     | Dynamic {lz; frequencies; deflate} -> (
       match L.eval src lz with
@@ -959,9 +966,12 @@ module RFC1951_deflate = struct
                 MakeBlock
                   (Dynamic {lz; frequencies; deflate= Seq.append deflate seq})
             ; i_pos= t.i_pos + L.used_in lz
+            ; read= Int32.add t.read (Int32.of_int (L.used_in lz))
             ; adler=
                 Safe.adler32 t.wi src (t.i_off + t.i_pos) (L.used_in lz)
-                  t.adler }
+                  t.adler
+            ; crc= Safe.crc32 t.wi src (t.i_off + t.i_pos) (L.used_in lz) t.crc
+            }
       | `Error (_, exn) -> error t (Lz77 exn) )
     | Flat pos ->
         let len = min (t.i_len - t.i_pos) (0x8000 - pos) in
@@ -971,13 +981,17 @@ module RFC1951_deflate = struct
             { t with
               state= WriteBlock (flat 0 0 0x8000 false)
             ; i_pos= t.i_pos + len
-            ; adler= Safe.adler32 t.wi src (t.i_off + t.i_pos) len t.adler }
+            ; read= Int32.add t.read (Int32.of_int len)
+            ; adler= Safe.adler32 t.wi src (t.i_off + t.i_pos) len t.adler
+            ; crc= Safe.crc32 t.wi src (t.i_off + t.i_pos) len t.crc }
         else
           await
             { t with
               state= MakeBlock (Flat (pos + len))
             ; i_pos= t.i_pos + len
-            ; adler= Safe.adler32 t.wi src (t.i_off + t.i_pos) len t.adler }
+            ; read= Int32.add t.read (Int32.of_int len)
+            ; adler= Safe.adler32 t.wi src (t.i_off + t.i_pos) len t.adler
+            ; crc= Safe.crc32 t.wi src (t.i_off + t.i_pos) len t.crc }
 
   let fixed_block frequencies last src dst t =
     ( KWriteBlock.put_bit last
@@ -1303,6 +1317,7 @@ module RFC1951_deflate = struct
 
   let used_in t = t.i_pos
   let used_out t = t.o_pos
+  let read_in t = t.read
 
   let bits_remaining t =
     match t.state with
@@ -1322,9 +1337,11 @@ module RFC1951_deflate = struct
     ; i_pos= 0
     ; i_len= 0
     ; write= 0
+    ; read= Int32.zero
     ; level
     ; wbits
     ; adler= Checkseum.Adler32.default
+    ; crc= Checkseum.Crc32.default
     ; state= MakeBlock (block_of_level ~witness ~wbits level)
     ; wi= witness
     ; wo= witness }
@@ -1502,6 +1519,350 @@ module Zlib_deflate = struct
 
   let default ~witness ?(wbits = 15) level =
     {d= RFC1951_deflate.default ~witness ~wbits level; z= Header (header wbits)}
+
+  let get_frequencies t = RFC1951_deflate.get_frequencies t.d
+
+  let set_frequencies ?paranoid freqs t =
+    {t with d= RFC1951_deflate.set_frequencies ?paranoid freqs t.d}
+
+  let finish t = {t with d= RFC1951_deflate.finish t.d}
+  let no_flush off len t = {t with d= RFC1951_deflate.no_flush off len t.d}
+
+  let partial_flush off len t =
+    {t with d= RFC1951_deflate.partial_flush off len t.d}
+
+  let sync_flush off len t = {t with d= RFC1951_deflate.sync_flush off len t.d}
+  let full_flush off len t = {t with d= RFC1951_deflate.full_flush off len t.d}
+
+  let flush_of_meth meth off len t =
+    {t with d= RFC1951_deflate.flush_of_meth meth off len t.d}
+
+  let flush off len t = {t with d= RFC1951_deflate.flush off len t.d}
+  let used_in t = RFC1951_deflate.used_in t.d
+  let used_out t = RFC1951_deflate.used_out t.d
+
+  include Convenience_deflate (struct
+    type nonrec ('i, 'o) t = ('i, 'o) t
+    type nonrec error = error
+    type nonrec meth = meth = PARTIAL | SYNC | FULL
+
+    let eval = eval
+    let finish = finish
+    let no_flush = no_flush
+    let flush_of_meth = flush_of_meth
+    let flush = flush
+    let used_out = used_out
+  end)
+end
+
+type error_g_deflate = RFC1951 of error_rfc1951_deflate
+
+module Gzip_deflate = struct
+  type error = error_g_deflate
+
+  module F = RFC1951_deflate.F
+
+  type ('i, 'o) t =
+    { d: ('i, 'o) RFC1951_deflate.t
+    ; z: ('i, 'o) state
+    ; text: bool
+    ; crc16: Optint.t option
+    ; extra: string option
+    ; name: string option
+    ; comment: string option
+    ; mtime: int
+    ; os: int }
+
+  and ('i, 'o) k =
+    (Safe.ro, 'i) Safe.t -> (Safe.wo, 'o) Safe.t -> ('i, 'o) t -> ('i, 'o) res
+
+  and ('i, 'o) state =
+    | Header of ('i, 'o) k
+    | Deflate
+    | Crc32 of ('i, 'o) k
+    | Size of ('i, 'o) k
+    | Finish
+    | Exception of error
+
+  and ('i, 'o) res =
+    | Cont of ('i, 'o) t
+    | Wait of ('i, 'o) t
+    | Flush of ('i, 'o) t
+    | Ok of ('i, 'o) t
+    | Error of ('i, 'o) t * error
+
+  and meth = RFC1951_deflate.meth = PARTIAL | SYNC | FULL
+
+  let pp_error fmt = function
+    | RFC1951 err ->
+        Format.fprintf fmt "(RFC1951 %a)" RFC1951_deflate.pp_error err
+
+  let pp_state fmt = function
+    | Header _ -> Format.fprintf fmt "(Header #fun)"
+    | Deflate -> Format.fprintf fmt "Deflate"
+    | Crc32 _ -> Format.fprintf fmt "(Crc32 #fun)"
+    | Size _ -> Format.fprintf fmt "(Size #fun)"
+    | Finish -> Format.fprintf fmt "Finish"
+    | Exception e -> Format.fprintf fmt "(Exception %a)" pp_error e
+
+  let pp fmt {d; z; _} =
+    Format.fprintf fmt "{@[<hov>d = @[<hov>%a@];@ z = %a;@]}"
+      RFC1951_deflate.pp d pp_state z
+
+  let ok t : ('i, 'o) res = Ok {t with z= Finish}
+  let error t exn : ('i, 'o) res = Error ({t with z= Exception exn}, exn)
+
+  let rec put_byte ~ctor byte k src dst t =
+    if t.d.RFC1951_deflate.o_len - t.d.RFC1951_deflate.o_pos > 0 then (
+      Safe.set t.d.RFC1951_deflate.wo dst
+        (t.d.RFC1951_deflate.o_off + t.d.RFC1951_deflate.o_pos)
+        (Char.unsafe_chr byte) ;
+      k src dst
+        { t with
+          d=
+            { t.d with
+              RFC1951_deflate.o_pos= t.d.RFC1951_deflate.o_pos + 1
+            ; RFC1951_deflate.write= t.d.RFC1951_deflate.write + 1 } } )
+    else
+      Flush
+        { t with
+          z=
+            ctor (fun src dst t ->
+                (put_byte [@tailcall]) ~ctor byte k src dst t ) }
+
+  let put_short_lsb ~ctor short k src dst t =
+    let put_byte = put_byte ~ctor in
+    (put_byte (short land 0xFF) @@ put_byte ((short lsr 8) land 0xFF) k)
+      src dst t
+
+  let put_string ~ctor str k src dst t =
+    let len = String.length str in
+    let string = Safe.of_string str in
+    let rec go ~ctor off src dst t =
+      let to_blit =
+        min (len - off) (t.d.RFC1951_deflate.o_len - t.d.RFC1951_deflate.o_pos)
+      in
+      Safe.blit_string t.d.RFC1951_deflate.wo string off dst
+        (t.d.RFC1951_deflate.o_off + t.d.RFC1951_deflate.o_pos)
+        to_blit ;
+      let t =
+        { t with
+          d=
+            { t.d with
+              RFC1951_deflate.o_pos= t.d.RFC1951_deflate.o_pos + to_blit
+            ; RFC1951_deflate.write= t.d.RFC1951_deflate.write + to_blit } }
+      in
+      if off + to_blit = len then k src dst t
+      else
+        Flush
+          { t with
+            z=
+              ctor (fun src dst t ->
+                  (go [@tailcall]) ~ctor (off + to_blit) src dst t ) }
+    in
+    go ~ctor 0 src dst t
+
+  let align ~ctor k src dst t =
+    (* XXX: we ensure than [hold] can not store more than 2 bytes. *)
+    if t.d.RFC1951_deflate.bits > 8 then
+      let k src dst t =
+        k src dst
+          { t with
+            d= {t.d with RFC1951_deflate.hold= 0; RFC1951_deflate.bits= 0} }
+      in
+      put_short_lsb ~ctor t.d.RFC1951_deflate.hold k src dst t
+    else if t.d.RFC1951_deflate.bits > 0 then
+      let k src dst t =
+        k src dst
+          { t with
+            d= {t.d with RFC1951_deflate.hold= 0; RFC1951_deflate.bits= 0} }
+      in
+      put_byte ~ctor t.d.RFC1951_deflate.hold k src dst t
+    else
+      k src dst
+        {t with d= {t.d with RFC1951_deflate.hold= 0; RFC1951_deflate.bits= 0}}
+
+  let put_short_msb ~ctor short k src dst t =
+    let put_byte = put_byte ~ctor in
+    (put_byte ((short lsr 8) land 0xFF) @@ put_byte (short land 0xFF) k)
+      src dst t
+
+  let digest_crc16_byte byte crc16 =
+    match crc16 with
+    | Some crc16 ->
+        Some
+          (Checkseum.Crc32.digest_string
+             (String.make 1 (char_of_int byte))
+             0 1 crc16)
+    | None -> None
+
+  let digest_crc16_string str crc16 =
+    match crc16 with
+    | Some crc16 ->
+        Some (Checkseum.Crc32.digest_string str 0 (String.length str) crc16)
+    | None -> None
+
+  module KHeader = struct
+    let ctor k = Header k
+
+    let put_short_lsb short k src dst t =
+      let crc16 = digest_crc16_byte (short land 0xFF) t.crc16 in
+      let crc16 = digest_crc16_byte ((short lsr 8) land 0xFF) crc16 in
+      put_short_lsb ~ctor short k src dst {t with crc16}
+
+    let put_byte byte k src dst t =
+      let crc16 = digest_crc16_byte byte t.crc16 in
+      put_byte ~ctor byte k src dst {t with crc16}
+
+    let put_string str k src dst t =
+      let crc16 = digest_crc16_string str t.crc16 in
+      put_string ~ctor str k src dst {t with crc16}
+  end
+
+  module KSize = struct
+    let ctor k = Size k
+    let align k src dst t = align ~ctor k src dst t
+    let put_short_lsb short k src dst t = put_short_lsb ~ctor short k src dst t
+  end
+
+  module KCrc32 = struct
+    let ctor k = Crc32 k
+    let align k src dst t = align ~ctor k src dst t
+    let put_short_lsb short k src dst t = put_short_lsb ~ctor short k src dst t
+  end
+
+  let size src dst t =
+    let size = RFC1951_deflate.read_in t.d in
+    let k _src _dst t = ok t in
+    ( KSize.align
+    @@ KSize.put_short_lsb Int32.(to_int (Int32.logand size 0xFFFFl))
+    @@ KSize.put_short_lsb
+         Int32.(to_int (Int32.logand (Int32.shift_right size 16) 0xFFFFl))
+         k )
+      src dst t
+
+  let crc32 src dst t =
+    let crc = t.d.RFC1951_deflate.crc in
+    let k _src _dst t = Cont {t with z= Size size} in
+    ( KCrc32.align
+    @@ KCrc32.put_short_lsb Optint.(to_int Infix.(crc && of_int32 0xFFFFl))
+    @@ KCrc32.put_short_lsb
+         Optint.(to_int Infix.(crc >> 16 && of_int32 0xFFFFl))
+         k )
+      src dst t
+
+  let deflate src dst t =
+    match RFC1951_deflate.eval0 src dst t.d with
+    | RFC1951_deflate.Cont d -> Cont {t with d}
+    | RFC1951_deflate.Wait d -> Wait {t with d}
+    | RFC1951_deflate.Flush d -> Flush {t with d}
+    | RFC1951_deflate.Ok d -> Cont {t with z= Crc32 crc32; d}
+    | RFC1951_deflate.Error (d, exn) -> error {t with d} (RFC1951 exn)
+
+  let nop k src dst t = k src dst t
+
+  let fextra extra k src dst t =
+    let extra_l = String.length extra in
+    ( KHeader.put_short_lsb extra_l
+    @@ KHeader.put_string extra
+    @@ fun src dst t -> k src dst t )
+      src dst t
+
+  let fname name k src dst t =
+    ( KHeader.put_string name
+    @@ KHeader.put_byte 0
+    @@ fun src dst t -> k src dst t )
+      src dst t
+
+  let fcomment comment k src dst t =
+    ( KHeader.put_string comment
+    @@ KHeader.put_byte 0
+    @@ fun src dst t -> k src dst t )
+      src dst t
+
+  let fcrc16 crc16 k src dst t =
+    ( KHeader.put_short_lsb (Optint.to_int crc16)
+    @@ fun src dst t -> k src dst t )
+      src dst t
+
+  let get_option k = function Some opt -> k opt | None -> nop
+
+  let header src dst t =
+    let id1 = 31 in
+    let id2 = 139 in
+    let cm = 8 in
+    let flg = if t.text then 0xb1 else 0 in
+    let flg = if t.crc16 <> None then flg lor 0b10 else flg in
+    let flg = if t.extra <> None then flg lor 0b100 else flg in
+    let flg = if t.name <> None then flg lor 0b1000 else flg in
+    let flg = if t.comment <> None then flg lor 0b10000 else flg in
+    let mt0 = t.mtime land 0xFF in
+    let mt1 = (t.mtime lsr 8) land 0xFF in
+    let mt2 = (t.mtime lsr 16) land 0xFF in
+    let mt3 = t.mtime lsr 24 in
+    let xfl = 0 in
+    let os = t.os in
+    let fextra = get_option fextra t.extra in
+    let fname = get_option fname t.name in
+    let fcomment = get_option fcomment t.comment in
+    ( KHeader.put_byte id1
+    @@ KHeader.put_byte id2
+    @@ KHeader.put_byte cm
+    @@ KHeader.put_byte flg
+    @@ KHeader.put_byte mt0
+    @@ KHeader.put_byte mt1
+    @@ KHeader.put_byte mt2
+    @@ KHeader.put_byte mt3
+    @@ KHeader.put_byte xfl
+    @@ KHeader.put_byte os
+    @@ fextra
+    @@ fname
+    @@ fcomment
+    @@ fun src dst t ->
+    let fcrc16 = get_option fcrc16 t.crc16 in
+    let final _src _dst t =
+      Cont
+        { t with
+          d= {t.d with RFC1951_deflate.hold= 0; RFC1951_deflate.bits= 0}
+        ; z= Deflate }
+    in
+    (fcrc16 @@ final) src dst t )
+      src dst t
+
+  let eval src dst t =
+    let safe_src = Safe.ro t.d.RFC1951_deflate.wi src in
+    let safe_dst = Safe.wo t.d.RFC1951_deflate.wo dst in
+    let eval0 t =
+      match t.z with
+      | Header k -> k safe_src safe_dst t
+      | Deflate -> deflate safe_src safe_dst t
+      | Crc32 k -> k safe_src safe_dst t
+      | Size k -> k safe_src safe_dst t
+      | Finish -> ok t
+      | Exception exn -> error t exn
+    in
+    let rec loop t =
+      match eval0 t with
+      | Cont t -> loop t
+      | Wait t -> `Await t
+      | Flush t -> `Flush t
+      | Ok t -> `End t
+      | Error (t, exn) -> `Error (t, exn)
+    in
+    loop t
+
+  let default ~witness ?(text = false) ?(header_crc = false) ?(extra = None)
+      ?(name = None) ?(comment = None) ?(mtime = 0) ?(os = 255) level =
+    let crc16 = if header_crc then Some Optint.zero else None in
+    { d= RFC1951_deflate.default ~witness ~wbits:15 level
+    ; z= Header header
+    ; text
+    ; crc16
+    ; extra
+    ; name
+    ; comment
+    ; mtime
+    ; os }
 
   let get_frequencies t = RFC1951_deflate.get_frequencies t.d
 
