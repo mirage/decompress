@@ -1,7 +1,7 @@
 (test
  (name test_on_files)
  (modules test_on_files)
- (libraries checkseum.c decompress re.str camlzip alcotest))
+ (libraries checkseum.c decompress re.str camlzip alcotest bos))
 
 (test
  (name test_rfc1951)
