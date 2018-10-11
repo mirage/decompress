@@ -115,7 +115,7 @@ let deflate ?(max_fardistance = (1 lsl 15) - 1) src t =
   in
   let find_match idx =
     let max a b =
-      match a, b with
+      match (a, b) with
       | Some (_, x), Some (_, y) -> if x >= y then a else b
       | Some _, None -> a
       | None, Some _ -> b

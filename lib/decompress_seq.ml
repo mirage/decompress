@@ -34,7 +34,7 @@ module MList = struct
     let start = ref Nil in
     let chunk_size = ref 8 in
     (* XXX: fill the list. pref: tail-reference from previous node *)
-    let prev, cur = ref start, ref Nil in
+    let prev, cur = (ref start, ref Nil) in
     seq (fun x ->
         k x ;
         (* callback *)
