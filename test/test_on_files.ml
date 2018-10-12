@@ -61,11 +61,11 @@ module type GCOMMON = sig
        ?level:int
     -> ?text:bool
     -> ?header_crc:bool
-    -> ?extra:string option
-    -> ?name:string option
-    -> ?comment:string option
+    -> ?extra:string
+    -> ?name:string
+    -> ?comment:string
     -> ?mtime:int
-    -> ?os:int
+    -> ?os:Decompress.Gzip_deflate.os
     -> ?meth:Decompress.Gzip_deflate.meth * int
     -> in_channel
     -> out_channel
@@ -131,7 +131,7 @@ module GD : GCOMMON with type t = Bytes.t = struct
       ~witness:Decompress.B.bytes
 
   let compress ?(level = 4) ?(text = false) ?(header_crc = false)
-      ?(extra = None) ?(name = None) ?(comment = None) ?(mtime = 0) ?(os = 255)
+      ?extra ?name ?comment ?(mtime = 0) ?os
       ?meth in_chan out_chan =
     let refill buf = function
       | Some max -> input in_chan buf 0 (min max 0xFFFF)
@@ -140,7 +140,7 @@ module GD : GCOMMON with type t = Bytes.t = struct
     let flush buf len = output out_chan buf 0 len ; 0xFFFF in
     Decompress.Gzip_deflate.bytes in_buf out_buf ?meth refill flush
       (Decompress.Gzip_deflate.default ~witness:Decompress.B.bytes ~text
-         ~header_crc ~extra ~name ~comment ~mtime ~os level)
+         ~header_crc ?extra ?name ?comment ~mtime ?os level)
     |> function Ok _ -> () | Error exn -> raise (Decompress_deflate exn)
 
   let uncompress in_chan out_chan =

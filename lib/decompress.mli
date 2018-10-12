@@ -243,17 +243,23 @@ type error_g_deflate = RFC1951 of RFC1951_deflate.error
 module Gzip_deflate : sig
   include DEFLATE with type error = error_g_deflate
 
+  type os
+
   val default :
        witness:'a B.t
     -> ?text:bool
     -> ?header_crc:bool
-    -> ?extra:string option
-    -> ?name:string option
-    -> ?comment:string option
+    -> ?extra:string
+    -> ?name:string
+    -> ?comment:string
     -> ?mtime:int
-    -> ?os:int
+    -> ?os:os
     -> int
     -> ('a, 'a) t
+
+  val os_of_int : int -> os option
+  val int_of_os : os -> int
+  val string_of_os : os -> string
   (** [default] uses a constant value for wbit. *)
 end
 
@@ -401,7 +407,7 @@ module Zlib_inflate : sig
     INFLATE with type error = error_z_inflate and type crc = Window.adler32
 
   val default :
-    witness:'a B.t -> ?wbits:int option -> ('a, crc) Window.t -> ('a, 'a) t
+    witness:'a B.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
   (** [default] makes a new state [t]. *)
 end
 
@@ -425,6 +431,6 @@ module Gzip_inflate : sig
   val comment : ('a, 'b) t -> string option
 
   val default :
-    witness:'a B.t -> ?wbits:int option -> ('a, crc) Window.t -> ('a, 'a) t
+    witness:'a B.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
   (** [default] makes a new state [t]. *)
 end

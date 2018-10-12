@@ -38,7 +38,7 @@ let do_command input_size output_size mode level algo wbits =
     | `Gzip -> (
         let t =
           Decompress.Gzip_deflate.default ~witness:B.bigstring
-            ~name:(Some "README.md") ~extra:(Some "lolilol") ~header_crc:true
+            ~name:"README.md" ~extra:"lolilol" ~header_crc:true
             level
         in
         let r =

@@ -6,7 +6,7 @@ module Hunk = Decompress_lz77.Hunk
 module L = Decompress_lz77
 
 let pf = Format.fprintf
-let invalid_arg fmt = Format.ksprintf (fun s -> invalid_arg s) fmt
+let invalid_arg ppf = Format.ksprintf (fun s -> invalid_arg s) ppf
 
 (** (imperative) Heap implementation *)
 module Heap = struct
@@ -467,7 +467,7 @@ module RFC1951_deflate = struct
   module F = struct
     type t = int array * int array
 
-    let pp fmt _ = Format.fprintf fmt "(#lit, #dst)"
+    let pp ppf _ = Format.fprintf ppf "(#lit, #dst)"
 
     let make () =
       let lit, dst = (Array.make 286 0, Array.make 30 0) in
@@ -1317,7 +1317,7 @@ module RFC1951_deflate = struct
 
   let used_in t = t.i_pos
   let used_out t = t.o_pos
-  let read_in t = t.read
+  let read t = t.read
 
   let bits_remaining t =
     match t.state with
@@ -1388,19 +1388,19 @@ module Zlib_deflate = struct
 
   and meth = RFC1951_deflate.meth = PARTIAL | SYNC | FULL
 
-  let pp_error fmt = function
+  let pp_error ppf = function
     | RFC1951 err ->
-        Format.fprintf fmt "(RFC1951 %a)" RFC1951_deflate.pp_error err
+        Format.fprintf ppf "(RFC1951 %a)" RFC1951_deflate.pp_error err
 
-  let pp_state fmt = function
-    | Header _ -> Format.fprintf fmt "(Header #fun)"
-    | Deflate -> Format.fprintf fmt "Deflate"
-    | Adler32 _ -> Format.fprintf fmt "(Adler32 #fun)"
-    | Finish -> Format.fprintf fmt "Finish"
-    | Exception e -> Format.fprintf fmt "(Exception %a)" pp_error e
+  let pp_state ppf = function
+    | Header _ -> Format.fprintf ppf "(Header #fun)"
+    | Deflate -> Format.fprintf ppf "Deflate"
+    | Adler32 _ -> Format.fprintf ppf "(Adler32 #fun)"
+    | Finish -> Format.fprintf ppf "Finish"
+    | Exception e -> Format.fprintf ppf "(Exception %a)" pp_error e
 
-  let pp fmt {d; z} =
-    Format.fprintf fmt "{@[<hov>d = @[<hov>%a@];@ z = %a;@]}"
+  let pp ppf {d; z} =
+    Format.fprintf ppf "{@[<hov>d = @[<hov>%a@];@ z = %a;@]}"
       RFC1951_deflate.pp d pp_state z
 
   let ok t : ('i, 'o) res = Ok {t with z= Finish}
@@ -1555,6 +1555,18 @@ module Zlib_deflate = struct
   end)
 end
 
+module Option = struct
+  let get ~def = function
+  | Some x -> x
+  | None -> def
+
+  let apply f x = Some (f x)
+
+  let map f = function
+  | Some x -> f x
+  | None -> None
+end
+
 type error_g_deflate = RFC1951 of error_rfc1951_deflate
 
 module Gzip_deflate = struct
@@ -1571,7 +1583,7 @@ module Gzip_deflate = struct
     ; name: string option
     ; comment: string option
     ; mtime: int
-    ; os: int }
+    ; os: os }
 
   and ('i, 'o) k =
     (Safe.ro, 'i) Safe.t -> (Safe.wo, 'o) Safe.t -> ('i, 'o) t -> ('i, 'o) res
@@ -1591,22 +1603,24 @@ module Gzip_deflate = struct
     | Ok of ('i, 'o) t
     | Error of ('i, 'o) t * error
 
+  and os = int
+
   and meth = RFC1951_deflate.meth = PARTIAL | SYNC | FULL
 
-  let pp_error fmt = function
+  let pp_error ppf = function
     | RFC1951 err ->
-        Format.fprintf fmt "(RFC1951 %a)" RFC1951_deflate.pp_error err
+        Format.fprintf ppf "(RFC1951 %a)" RFC1951_deflate.pp_error err
 
-  let pp_state fmt = function
-    | Header _ -> Format.fprintf fmt "(Header #fun)"
-    | Deflate -> Format.fprintf fmt "Deflate"
-    | Crc32 _ -> Format.fprintf fmt "(Crc32 #fun)"
-    | Size _ -> Format.fprintf fmt "(Size #fun)"
-    | Finish -> Format.fprintf fmt "Finish"
-    | Exception e -> Format.fprintf fmt "(Exception %a)" pp_error e
+  let pp_state ppf = function
+    | Header _ -> Format.fprintf ppf "(Header #fun)"
+    | Deflate -> Format.fprintf ppf "Deflate"
+    | Crc32 _ -> Format.fprintf ppf "(Crc32 #fun)"
+    | Size _ -> Format.fprintf ppf "(Size #fun)"
+    | Finish -> Format.fprintf ppf "Finish"
+    | Exception e -> Format.fprintf ppf "(Exception %a)" pp_error e
 
-  let pp fmt {d; z; _} =
-    Format.fprintf fmt "{@[<hov>d = @[<hov>%a@];@ z = %a;@]}"
+  let pp ppf {d; z; _} =
+    Format.fprintf ppf "{@[<hov>d = @[<hov>%a@];@ z = %a;@]}"
       RFC1951_deflate.pp d pp_state z
 
   let ok t : ('i, 'o) res = Ok {t with z= Finish}
@@ -1637,12 +1651,12 @@ module Gzip_deflate = struct
 
   let put_string ~ctor str k src dst t =
     let len = String.length str in
-    let string = Safe.of_string str in
+    let str = Safe.of_string str in
     let rec go ~ctor off src dst t =
       let to_blit =
         min (len - off) (t.d.RFC1951_deflate.o_len - t.d.RFC1951_deflate.o_pos)
       in
-      Safe.blit_string t.d.RFC1951_deflate.wo string off dst
+      Safe.blit_string t.d.RFC1951_deflate.wo str off dst
         (t.d.RFC1951_deflate.o_off + t.d.RFC1951_deflate.o_pos)
         to_blit ;
       let t =
@@ -1688,34 +1702,25 @@ module Gzip_deflate = struct
       src dst t
 
   let digest_crc16_byte byte crc16 =
-    match crc16 with
-    | Some crc16 ->
-        Some
-          (Checkseum.Crc32.digest_string
-             (String.make 1 (char_of_int byte))
-             0 1 crc16)
-    | None -> None
+    Checkseum.Crc32.digest_string (String.make 1 (char_of_int byte)) 0 1 crc16
 
   let digest_crc16_string str crc16 =
-    match crc16 with
-    | Some crc16 ->
-        Some (Checkseum.Crc32.digest_string str 0 (String.length str) crc16)
-    | None -> None
+    Checkseum.Crc32.digest_string str 0 (String.length str) crc16
 
   module KHeader = struct
     let ctor k = Header k
 
+    let put_byte byte k src dst t =
+    let crc16 = Option.(digest_crc16_byte byte |> apply |> map) t.crc16 in
+    put_byte ~ctor byte k src dst {t with crc16}
+
     let put_short_lsb short k src dst t =
-      let crc16 = digest_crc16_byte (short land 0xFF) t.crc16 in
-      let crc16 = digest_crc16_byte ((short lsr 8) land 0xFF) crc16 in
+    let crc16 = Option.(digest_crc16_byte (short land 0xFF) |> apply |> map) t.crc16
+      |> Option.(digest_crc16_byte ((short lsr 8) land 0xFF) |> apply |> map) in
       put_short_lsb ~ctor short k src dst {t with crc16}
 
-    let put_byte byte k src dst t =
-      let crc16 = digest_crc16_byte byte t.crc16 in
-      put_byte ~ctor byte k src dst {t with crc16}
-
     let put_string str k src dst t =
-      let crc16 = digest_crc16_string str t.crc16 in
+    let crc16 = Option.(digest_crc16_string str |> apply |> map) t.crc16 in
       put_string ~ctor str k src dst {t with crc16}
   end
 
@@ -1732,7 +1737,7 @@ module Gzip_deflate = struct
   end
 
   let size src dst t =
-    let size = RFC1951_deflate.read_in t.d in
+    let size = RFC1951_deflate.read t.d in
     let k _src _dst t = ok t in
     ( KSize.align
     @@ KSize.put_short_lsb Int32.(to_int (Int32.logand size 0xFFFFl))
@@ -1785,8 +1790,6 @@ module Gzip_deflate = struct
     @@ fun src dst t -> k src dst t )
       src dst t
 
-  let get_option k = function Some opt -> k opt | None -> nop
-
   let header src dst t =
     let id1 = 31 in
     let id2 = 139 in
@@ -1802,9 +1805,9 @@ module Gzip_deflate = struct
     let mt3 = t.mtime lsr 24 in
     let xfl = 0 in
     let os = t.os in
-    let fextra = get_option fextra t.extra in
-    let fname = get_option fname t.name in
-    let fcomment = get_option fcomment t.comment in
+    let fextra = Option.(map (apply fextra) t.extra |> get ~def:nop) in
+    let fname = Option.(map (apply fname) t.name |> get ~def:nop) in
+    let fcomment = Option.(map (apply fcomment) t.comment |> get ~def:nop) in
     ( KHeader.put_byte id1
     @@ KHeader.put_byte id2
     @@ KHeader.put_byte cm
@@ -1819,7 +1822,7 @@ module Gzip_deflate = struct
     @@ fname
     @@ fcomment
     @@ fun src dst t ->
-    let fcrc16 = get_option fcrc16 t.crc16 in
+    let fcrc16 = Option.(map (apply fcrc16) t.crc16 |> get ~def:nop) in
     let final _src _dst t =
       Cont
         { t with
@@ -1851,8 +1854,8 @@ module Gzip_deflate = struct
     in
     loop t
 
-  let default ~witness ?(text = false) ?(header_crc = false) ?(extra = None)
-      ?(name = None) ?(comment = None) ?(mtime = 0) ?(os = 255) level =
+  let default ~witness ?(text = false) ?(header_crc = false) ?extra
+      ?name ?comment ?(mtime = 0) ?(os = 255) level =
     let crc16 = if header_crc then Some Optint.zero else None in
     { d= RFC1951_deflate.default ~witness ~wbits:15 level
     ; z= Header header
@@ -1884,6 +1887,30 @@ module Gzip_deflate = struct
   let flush off len t = {t with d= RFC1951_deflate.flush off len t.d}
   let used_in t = RFC1951_deflate.used_in t.d
   let used_out t = RFC1951_deflate.used_out t.d
+
+  let os_of_int = function
+  | n when n >= 0 && n <= 13 || n = 255 -> Some n
+  | _ -> None
+
+  let int_of_os os = os
+
+  let string_of_os = function
+  | 0 -> "FAT filesystem (MS-DOS, OS/2, NT/Win32)"
+  | 1 -> "Amiga"
+  | 2 -> "VMS (or OpenVMS)"
+  | 3 -> "Unix"
+  | 4 -> "VM/CMS"
+  | 5 -> "Atari TOS"
+  | 6 -> "HPFS filesystem (OS/2, NT)"
+  | 7 -> "Macintosh"
+  | 8 -> "Z-System"
+  | 9 -> "CP/M"
+  | 10 -> "TOPS-20"
+  | 11 -> "NTFS filesystem (NT)"
+  | 12 -> "QDOS"
+  | 13 -> "Acorn RISCOS"
+  | 255 -> "unknown"
+  | _ -> ""
 
   include Convenience_deflate (struct
     type nonrec ('i, 'o) t = ('i, 'o) t
@@ -3293,7 +3320,7 @@ module Zlib_inflate = struct
     in
     loop t
 
-  let default ~witness ?(wbits = None) window =
+  let default ~witness ?wbits window =
     { d= RFC1951_inflate.default ~witness ?wbits window
     ; z= Header header
     ; expected_wbits= wbits }
@@ -3690,7 +3717,7 @@ module Gzip_inflate = struct
     in
     loop t
 
-  let default ~witness ?(wbits = None) window =
+  let default ~witness ?wbits window =
     { d= RFC1951_inflate.default ~witness ?wbits window
     ; z= Header header
     ; ftext= false
