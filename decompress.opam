@@ -19,6 +19,7 @@ depends: [
   "camlzip"    {test & >= "1.07"}
   "re"         {test & >= "1.7.2"}
   "alcotest"   {test}
+  "bos"        {test}
   "cmdliner"
 ]
 
