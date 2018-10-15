@@ -32,87 +32,88 @@ let do_command input_size output_size mode level algo wbits =
   let dst =
     Bigarray.Array1.create Bigarray.Char Bigarray.c_layout output_size
   in
+  let refill dst len =
+    let count = unix_write B.bigstring Unix.stdout dst 0 len in
+    match count with
+      | -1 -> raise (Failure "Error occure: unix write returned -1")
+      | _ -> output_size
+  in
   match mode with
-  | `Compression -> (
+  | `Compression ->
+    let flush src max =
+      let count =
+      match max with
+      | Some max -> unix_read B.bigstring Unix.stdin src 0 (min max input_size)
+      | None ->  unix_read B.bigstring Unix.stdin src 0 input_size in
+      match count with
+        | -1 -> raise (Failure "Error occure: unix read returned -1")
+        | _ -> output_size
+    in
+    begin
     match algo with
-    | `Gzip -> (
+    | `Gzip ->
         let t =
           Decompress.Gzip_deflate.default ~witness:B.bigstring
             ~name:"README.md" ~extra:"lolilol" ~header_crc:true
             level
         in
-        let r =
-          Decompress.Gzip_deflate.to_result src dst
-            (fun src -> function
-              | Some max ->
-                  unix_read B.bigstring Unix.stdin src 0 (min max input_size)
-              | None -> unix_read B.bigstring Unix.stdin src 0 input_size )
-            (fun dst len ->
-              let _ = unix_write B.bigstring Unix.stdout dst 0 len in
-              output_size )
-            t
-        in
+        let r = Decompress.Gzip_deflate.to_result src dst flush refill t in
+        begin
         match r with
         | Ok _ -> ()
         | Error exn ->
-            Format.eprintf "%a\n%!" Decompress.Gzip_deflate.pp_error exn )
-    | `Zlib -> (
+            Format.eprintf "%a\n%!" Decompress.Gzip_deflate.pp_error exn
+        end
+    | `Zlib ->
         let t =
           Decompress.Zlib_deflate.default ~witness:B.bigstring ~wbits level
         in
-        let r =
-          Decompress.Zlib_deflate.to_result src dst
-            (fun src -> function
-              | Some max ->
-                  unix_read B.bigstring Unix.stdin src 0 (min max input_size)
-              | None -> unix_read B.bigstring Unix.stdin src 0 input_size )
-            (fun dst len ->
-              let _ = unix_write B.bigstring Unix.stdout dst 0 len in
-              output_size )
-            t
-        in
+        let r = Decompress.Zlib_deflate.to_result src dst flush refill t in
+        begin
         match r with
         | Ok _ -> ()
         | Error exn ->
-            Format.eprintf "%a\n%!" Decompress.Zlib_deflate.pp_error exn ) )
-  | `Decompression -> (
+            Format.eprintf "%a\n%!" Decompress.Zlib_deflate.pp_error exn
+        end
+    end
+  | `Decompression ->
+    let flush src =
+      let count = unix_read B.bigstring Unix.stdin src 0 input_size in
+      match count with
+        | -1 -> raise (Failure "Error occure: read write returned -1")
+        | _ -> output_size
+    in
+    begin
     match algo with
-    | `Gzip -> (
+    | `Gzip ->
         let w =
           Decompress.Window.create ~crc:Decompress.Window.crc32
             ~witness:B.bigstring
         in
         let t = Decompress.Gzip_inflate.default ~witness:B.bigstring w in
-        let r =
-          Decompress.Gzip_inflate.to_result src dst
-            (fun src -> unix_read B.bigstring Unix.stdin src 0 input_size)
-            (fun dst len ->
-              let _ = unix_write B.bigstring Unix.stdout dst 0 len in
-              output_size )
-            t
+        let r = Decompress.Gzip_inflate.to_result src dst flush refill t
         in
+        begin
         match r with
         | Ok _ -> ()
         | Error exn ->
-            Format.eprintf "%a\n%!" Decompress.Gzip_inflate.pp_error exn )
-    | `Zlib -> (
+            Format.eprintf "%a\n%!" Decompress.Gzip_inflate.pp_error exn
+        end
+    | `Zlib ->
         let w =
           Decompress.Window.create ~crc:Decompress.Window.adler32
             ~witness:B.bigstring
         in
         let t = Decompress.Zlib_inflate.default ~witness:B.bigstring w in
-        let r =
-          Decompress.Zlib_inflate.to_result src dst
-            (fun src -> unix_read B.bigstring Unix.stdin src 0 input_size)
-            (fun dst len ->
-              let _ = unix_write B.bigstring Unix.stdout dst 0 len in
-              output_size )
-            t
+        let r = Decompress.Zlib_inflate.to_result src dst flush refill t
         in
+        begin
         match r with
         | Ok _ -> ()
         | Error exn ->
-            Format.eprintf "%a\n%!" Decompress.Zlib_inflate.pp_error exn ) )
+            Format.eprintf "%a\n%!" Decompress.Zlib_inflate.pp_error exn
+        end
+    end
 
 open Cmdliner
 

@@ -3487,29 +3487,31 @@ module Gzip_inflate = struct
 
   let get_string ~ctor n k src dst t =
     let get_byte = get_byte ~ctor in
-    let rec go n hold src dst t =
-      if n > 0 then
+    let bytes = Bytes.create n in
+    let rec go i src dst t =
+      if i < n then
         get_byte
           (fun byte src dst t ->
-            (go [@tailcall]) (n - 1)
-              (hold ^ String.make 1 (char_of_int byte))
+            Bytes.set bytes i (Char.chr byte);
+            (go [@tailcall]) (i + 1)
               src dst t )
           src dst t
-      else k hold src dst t
+      else k (Bytes.unsafe_to_string bytes) src dst t
     in
-    go n "" src dst t
+    go 0 src dst t
 
   let get_zero_term_string ~ctor k src dst t =
     let get_byte = get_byte ~ctor in
-    let rec go hold src dst t =
+    let buf = Buffer.create 256 in
+    let rec go src dst t =
       get_byte
         (fun byte src dst t ->
           match byte with
-          | 0 -> k hold src dst t
-          | b -> go (hold ^ String.make 1 (char_of_int b)) src dst t )
+          | 0 -> k (Bytes.to_string (Buffer.to_bytes buf)) src dst t
+          | b -> Buffer.add_char buf (Char.chr b); go src dst t )
         src dst t
     in
-    go "" src dst t
+    go src dst t
 
   let digest_crc16_byte k byte src dst t =
     let crc16 =
@@ -3674,7 +3676,7 @@ module Gzip_inflate = struct
     let mt2 = Optint.of_int mt2 in
     let mt3 = Optint.of_int mt3 in
     let mtime = Optint.Infix.(mt3 << 24 || mt2 << 16 || mt1 << 8 || mt0) in
-    if id1 == 31 && id2 == 139 && cm == 8 then
+    if id1 = 31 && id2 = 139 && cm = 8 then
       let fcrc16 = if flg land 0b10 <> 0 then fcrc16 else nop in
       let fextra = if flg land 0b100 <> 0 then fextra else nop in
       let fname = if flg land 0b1000 <> 0 then fname else nop in
@@ -3684,11 +3686,11 @@ module Gzip_inflate = struct
       options src dst
         { t with
           d= {t.d with RFC1951_inflate.wbits= 15}
-        ; ftext= flg land 0b1 != 0
-        ; fhcrc= flg land 0b10 != 0
-        ; fextra= flg land 0b100 != 0
-        ; fname= flg land 0b1000 != 0
-        ; fcomment= flg land 0b10000 != 0
+        ; ftext= flg land 0b1 <> 0
+        ; fhcrc= flg land 0b10 <> 0
+        ; fextra= flg land 0b100 <> 0
+        ; fname= flg land 0b1000 <> 0
+        ; fcomment= flg land 0b10000 <> 0
         ; mtime
         ; xfl
         ; os }
