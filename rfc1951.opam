@@ -8,12 +8,16 @@ dev-repo:     "https://github.com/mirage/decompress.git"
 doc:          "https://mirage.github.io/decompress/"
 license:      "MIT"
 
-build: [[ "dune" "build" "--only-packages" name "--root" "." "-j" jobs ]]
+build: [
+  [ "dune" "subst" ]
+  [ "dune" "build" "-p" name "-j" jobs ]
+]
 build-test: [[ "dune" "runtest" "--only-packages" name "--root" "." "-j" jobs ]]
 
 depends: [
   "jbuilder"   {build}
   "base-bytes"
+  "base-bigarray"
   "optint"
   "checkseum"
   "camlzip"    {test}
