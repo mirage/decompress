@@ -6,7 +6,7 @@ open Crowbar
 exception Deflate_error of Decompress.Gzip_deflate.error
 exception Inflate_error of Decompress.Gzip_inflate.error
 
-let compress ?(level = 4) ?(wbits = 15) data =
+let compress ?(level = 4) ?wbits:_ data =
   let open Decompress in
   let input_buffer = Bytes.create 0xFFFF in
   let output_buffer = Bytes.create 0xFFFF in
@@ -27,7 +27,7 @@ let compress ?(level = 4) ?(wbits = 15) data =
     (fun output_buffer len ->
       Buffer.add_subbytes res output_buffer 0 len ;
       0xFFFF )
-    (Gzip_deflate.default ~witness:B.bytes ~wbits level)
+    (Gzip_deflate.default ~witness:B.bytes level)
   |> function
   | Ok _ -> Buffer.contents res | Error exn -> raise (Deflate_error exn)
 
@@ -35,7 +35,7 @@ let decompress data =
   let open Decompress in
   let input_buffer = Bytes.create 0xFFFF in
   let output_buffer = Bytes.create 0xFFFF in
-  let window = Window.create ~witness:B.bytes in
+  let window = Window.create ~crc:Window.crc32 ~witness:B.bytes in
   let pos = ref 0 in
   let res = Buffer.create (String.length data) in
   Gzip_inflate.bytes input_buffer output_buffer
