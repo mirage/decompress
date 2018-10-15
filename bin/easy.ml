@@ -67,7 +67,7 @@ let compress ?(level = 4) data =
     (fun output_buffer len ->
       Buffer.add_subbytes res output_buffer 0 len ;
       0xFFFF )
-    (Zlib_deflate.default ~proof:B.proof_bytes level)
+    (Zlib_deflate.default ~witness:B.bytes level)
   (* We can specify the level of the compression, see the documentation to know
      what we use for each level. The default is 4. *)
   |> function
@@ -79,7 +79,7 @@ let uncompress data =
      your reading. *)
   let output_buffer = Bytes.create 0xFFFF in
   (* Same as [compress]. *)
-  let window = Window.create ~proof:B.proof_bytes in
+  let window = Window.create ~witness:B.bytes in
   (* We allocate a window. We let the user to do that to reuse the window if
      it's needed. In fact, the window is a big buffer ([size = (1 << 15)]) and
      allocate this buffer costs.
@@ -98,7 +98,7 @@ let uncompress data =
     (fun output_buffer len ->
       Buffer.add_subbytes res output_buffer 0 len ;
       0xFFFF )
-    (Zlib_inflate.default window)
+    (Zlib_inflate.default ~witness:B.bytes window)
   |> function
   | Ok _ -> Buffer.contents res | Error exn -> raise (Inflate_error exn)
 
