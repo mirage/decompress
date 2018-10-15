@@ -9,8 +9,8 @@ doc:          "https://mirage.github.io/decompress/"
 license:      "MIT"
 
 build: [
-  [ "dune" "subst" "--only-packages" name "--root" "." "-j" jobs ]
-  [ "dune" "build" "--only-packages" name "--root" "." "-j" jobs ]
+  [ "dune" "subst" ]
+  [ "dune" "build" "-p" name "-j" jobs ]
 ]
 build-test: [[ "dune" "runtest" "--only-packages" name "--root" "." "-j" jobs ]]
 
