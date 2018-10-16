@@ -23,5 +23,5 @@
 (library
  (name rfc1951)
  (modules rfc1951)
- (public_name decompress.rfc1951)
+ (public_name rfc1951)
  (libraries checkseum decompress.impl))

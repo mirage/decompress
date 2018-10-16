@@ -1,9 +1,11 @@
 (test
  (name test_on_files)
+ (package decompress)
  (modules test_on_files)
  (libraries checkseum.c decompress re.str camlzip alcotest))
 
 (test
  (name test_rfc1951)
+ (package rfc1951)
  (modules test_rfc1951)
  (libraries checkseum.c rfc1951 alcotest))
