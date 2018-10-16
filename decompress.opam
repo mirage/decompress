@@ -1,29 +1,33 @@
-opam-version: "1.2"
+opam-version: "2.0"
 name:         "decompress"
 maintainer:   "Romain Calascibetta <romain.calascibetta@gmail.com>"
 authors:      "Romain Calascibetta <romain.calascibetta@gmail.com>"
 homepage:     "https://github.com/mirage/decompress"
 bug-reports:  "https://github.com/mirage/decompress/issues"
-dev-repo:     "https://github.com/mirage/decompress.git"
+dev-repo:     "git+https://github.com/mirage/decompress.git"
 doc:          "https://mirage.github.io/decompress/"
 license:      "MIT"
+synopsis:     "Implementation of Zlib in OCaml"
+description: """Decompress is an implementation of Zlib in OCaml
+
+It provides a pure non-blocking interface to inflate and deflate data flow.
+"""
 
 build: [
   [ "dune" "subst" ]
   [ "dune" "build" "-p" name "-j" jobs ]
+  [ "dune" "runtest" "--only-packages" name "--root" "." "-j" jobs ] {with-test}
 ]
-build-test: [[ "dune" "runtest" "--only-packages" name "--root" "." "-j" jobs ]]
 
 depends: [
+  "ocaml"      {>= "4.03.0"}
   "dune"       {build}
   "base-bytes"
   "base-bigarray"
   "optint"
   "checkseum"
-  "camlzip"    {test & >= "1.07"}
-  "re"         {test & >= "1.7.2"}
-  "alcotest"   {test}
+  "camlzip"    {with-test & >= "1.07"}
+  "re"         {with-test & >= "1.7.2"}
+  "alcotest"   {with-test}
   "cmdliner"
 ]
-
-available: [ocaml-version >= "4.03.0"]
