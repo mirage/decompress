@@ -1,3 +1,13 @@
+v0.8.1 2018-10-16 Paris (France)
+------------------------------------
+
+* _Dunify_ project (@dinosaure)
+* *breaking-change* Unbox `Bytes.t` and `Bigstring.t` as I/O buffer (@dinosaure)
+* Add foreign tests vectors (@cfcs, @dinosaure)
+* Catch invalid distance (@XVilka, @dinosaure)
+* Better check on dictionaries (@XVilka, @dinosaure)
+* *breaking-change* Add [wbits] argument to check Window size on RFC1951 (@XVilka, @dinosaure)
+
 v0.8 2018-07-09 Paris (France)
 ------------------------------------
 
