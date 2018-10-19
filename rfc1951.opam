@@ -1,24 +1,33 @@
-opam-version: "1.2"
+opam-version: "2.0"
 name:         "rfc1951"
 maintainer:   "Romain Calascibetta <romain.calascibetta@gmail.com>"
 authors:      "Romain Calascibetta <romain.calascibetta@gmail.com>"
 homepage:     "https://github.com/mirage/decompress"
 bug-reports:  "https://github.com/mirage/decompress/issues"
-dev-repo:     "https://github.com/mirage/decompress.git"
+dev-repo:     "git+https://github.com/mirage/decompress.git"
 doc:          "https://mirage.github.io/decompress/"
 license:      "MIT"
+synopsis:     "Implementation of RFC1951 in OCaml"
+description: """This package provide an implementation of RFC1951 in OCaml.
 
-build: [[ "dune" "build" "--only-packages" name "--root" "." "-j" jobs ]]
-build-test: [[ "dune" "runtest" "--only-packages" name "--root" "." "-j" jobs ]]
+We provide a pure non-blocking interface to inflate and deflate data flow.
+"""
 
-depends: [
-  "jbuilder"   {build}
-  "base-bytes"
-  "optint"
-  "checkseum"
-  "camlzip"    {test}
-  "re"         {test & >= "1.7.2"}
-  "alcotest"   {test}
+build: [
+  [ "dune" "subst" ]
+  [ "dune" "build" "-p" name "-j" jobs ]
+  [ "dune" "runtest" "-p" name "-j" jobs ] {with-test}
 ]
 
-available: [ocaml-version >= "4.03.0"]
+depends: [
+  "ocaml"      {>= "4.03.0"}
+  "dune"       {build}
+  "base-bytes"
+  "base-bigarray"
+  "optint"
+  "checkseum"
+  "decompress"
+  "camlzip"    {with-test}
+  "re"         {with-test & >= "1.7.2"}
+  "alcotest"   {with-test}
+]
