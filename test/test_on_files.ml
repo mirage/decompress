@@ -65,7 +65,7 @@ module type GCOMMON = sig
     -> ?name:string
     -> ?comment:string
     -> ?mtime:int
-    -> ?os:Decompress.Gzip_deflate.os
+    -> ?os:Decompress.OS.t
     -> ?meth:Decompress.Gzip_deflate.meth * int
     -> in_channel
     -> out_channel

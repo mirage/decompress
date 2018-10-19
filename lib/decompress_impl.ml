@@ -1567,6 +1567,65 @@ module Option = struct
   | None -> None
 end
 
+module OS = struct
+  type t = FAT | AMIGA | VMS | UNIX | VM_CMS | ATARI | HPFS | MAC | Z_SYS |
+  CP_M | TOPS | NTFS | QDOS | ACORN | UNKNOWN
+
+  let default = UNKNOWN
+
+  let of_int = function
+  | 0 -> Some FAT
+  | 1 -> Some AMIGA
+  | 2 -> Some VMS
+  | 3 -> Some UNIX
+  | 4 -> Some VM_CMS
+  | 5 -> Some ATARI
+  | 6 -> Some HPFS
+  | 7 -> Some MAC
+  | 8 -> Some Z_SYS
+  | 9 -> Some CP_M
+  | 10 -> Some TOPS
+  | 11 -> Some NTFS
+  | 12 -> Some QDOS
+  | 13 -> Some ACORN
+  | 255 -> Some UNKNOWN
+  | _ -> None
+
+  let to_int = function
+  | FAT -> 0
+  | AMIGA -> 1
+  | VMS -> 2
+  | UNIX -> 3
+  | VM_CMS -> 4
+  | ATARI -> 5
+  | HPFS -> 6
+  | MAC -> 7
+  | Z_SYS -> 8
+  | CP_M -> 9
+  | TOPS -> 10
+  | NTFS -> 11
+  | QDOS -> 12
+  | ACORN -> 13
+  | UNKNOWN -> 255
+
+  let to_string = function
+  | FAT -> "FAT filesystem (MS-DOS, OS/2, NT/Win32)"
+  | AMIGA -> "Amiga"
+  | VMS -> "VMS (or OpenVMS)"
+  | UNIX -> "Unix"
+  | VM_CMS -> "VM/CMS"
+  | ATARI -> "Atari TOS"
+  | HPFS -> "HPFS filesystem (OS/2, NT)"
+  | MAC -> "Macintosh"
+  | Z_SYS -> "Z-System"
+  | CP_M -> "CP/M"
+  | TOPS -> "TOPS-20"
+  | NTFS -> "NTFS filesystem (NT)"
+  | QDOS -> "QDOS"
+  | ACORN -> "Acorn RISCOS"
+  | UNKNOWN -> "unknown"
+end
+
 type error_g_deflate = RFC1951 of error_rfc1951_deflate
 
 module Gzip_deflate = struct
@@ -1583,7 +1642,7 @@ module Gzip_deflate = struct
     ; name: string option
     ; comment: string option
     ; mtime: int
-    ; os: os }
+    ; os: OS.t }
 
   and ('i, 'o) k =
     (Safe.ro, 'i) Safe.t -> (Safe.wo, 'o) Safe.t -> ('i, 'o) t -> ('i, 'o) res
@@ -1602,8 +1661,6 @@ module Gzip_deflate = struct
     | Flush of ('i, 'o) t
     | Ok of ('i, 'o) t
     | Error of ('i, 'o) t * error
-
-  and os = int
 
   and meth = RFC1951_deflate.meth = PARTIAL | SYNC | FULL
 
@@ -1804,7 +1861,7 @@ module Gzip_deflate = struct
     let mt2 = (t.mtime lsr 16) land 0xFF in
     let mt3 = t.mtime lsr 24 in
     let xfl = 0 in
-    let os = t.os in
+    let os = OS.to_int t.os in
     let fextra = Option.(map (apply fextra) t.extra |> get ~def:nop) in
     let fname = Option.(map (apply fname) t.name |> get ~def:nop) in
     let fcomment = Option.(map (apply fcomment) t.comment |> get ~def:nop) in
@@ -1855,7 +1912,7 @@ module Gzip_deflate = struct
     loop t
 
   let default ~witness ?(text = false) ?(header_crc = false) ?extra
-      ?name ?comment ?(mtime = 0) ?(os = 255) level =
+      ?name ?comment ?(mtime = 0) ?(os = OS.default) level =
     let crc16 = if header_crc then Some Optint.zero else None in
     { d= RFC1951_deflate.default ~witness ~wbits:15 level
     ; z= Header header
@@ -1887,30 +1944,6 @@ module Gzip_deflate = struct
   let flush off len t = {t with d= RFC1951_deflate.flush off len t.d}
   let used_in t = RFC1951_deflate.used_in t.d
   let used_out t = RFC1951_deflate.used_out t.d
-
-  let os_of_int = function
-  | n when n >= 0 && n <= 13 || n = 255 -> Some n
-  | _ -> None
-
-  let int_of_os os = os
-
-  let string_of_os = function
-  | 0 -> "FAT filesystem (MS-DOS, OS/2, NT/Win32)"
-  | 1 -> "Amiga"
-  | 2 -> "VMS (or OpenVMS)"
-  | 3 -> "Unix"
-  | 4 -> "VM/CMS"
-  | 5 -> "Atari TOS"
-  | 6 -> "HPFS filesystem (OS/2, NT)"
-  | 7 -> "Macintosh"
-  | 8 -> "Z-System"
-  | 9 -> "CP/M"
-  | 10 -> "TOPS-20"
-  | 11 -> "NTFS filesystem (NT)"
-  | 12 -> "QDOS"
-  | 13 -> "Acorn RISCOS"
-  | 255 -> "unknown"
-  | _ -> ""
 
   include Convenience_deflate (struct
     type nonrec ('i, 'o) t = ('i, 'o) t
@@ -3353,14 +3386,9 @@ module Gzip_inflate = struct
   type ('i, 'o) t =
     { d: ('i, 'o, crc) RFC1951_inflate.t
     ; z: ('i, 'o) state
-    ; ftext: bool
-    ; fhcrc: bool
-    ; fextra: bool
-    ; fname: bool
-    ; fcomment: bool
     ; mtime: Optint.t
     ; xfl: int
-    ; os: int
+    ; os: OS.t
     ; extra_l: int option
     ; extra: string option
     ; name: string option
@@ -3676,6 +3704,7 @@ module Gzip_inflate = struct
     let mt2 = Optint.of_int mt2 in
     let mt3 = Optint.of_int mt3 in
     let mtime = Optint.Infix.(mt3 << 24 || mt2 << 16 || mt1 << 8 || mt0) in
+    let os = Option.get ~def:OS.default (OS.of_int os) in
     if id1 = 31 && id2 = 139 && cm = 8 then
       let fcrc16 = if flg land 0b10 <> 0 then fcrc16 else nop in
       let fextra = if flg land 0b100 <> 0 then fextra else nop in
@@ -3686,11 +3715,6 @@ module Gzip_inflate = struct
       options src dst
         { t with
           d= {t.d with RFC1951_inflate.wbits= 15}
-        ; ftext= flg land 0b1 <> 0
-        ; fhcrc= flg land 0b10 <> 0
-        ; fextra= flg land 0b100 <> 0
-        ; fname= flg land 0b1000 <> 0
-        ; fcomment= flg land 0b10000 <> 0
         ; mtime
         ; xfl
         ; os }
@@ -3722,14 +3746,9 @@ module Gzip_inflate = struct
   let default ~witness ?wbits window =
     { d= RFC1951_inflate.default ~witness ?wbits window
     ; z= Header header
-    ; ftext= false
-    ; fhcrc= false
-    ; fextra= false
-    ; fname= false
-    ; fcomment= false
     ; mtime= Optint.zero
     ; xfl= 0
-    ; os= 255
+    ; os= OS.default
     ; extra_l= None
     ; extra= None
     ; name= None

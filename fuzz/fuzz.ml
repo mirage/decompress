@@ -11,7 +11,7 @@ end
 
 module Make (A : ALGORITHM) = struct
   let pp_chr =
-    Fmt.using (function '\032' .. '\126' as x -> x | _ -> '.') Fmt.char
+    Fmt.using Char.escaped Fmt.string
 
   let pp_scalar : type buffer.
       get:(buffer -> int -> char) -> length:(buffer -> int) -> buffer Fmt.t =

@@ -47,7 +47,7 @@ let do_command input_size output_size mode level algo wbits =
       | None ->  unix_read B.bigstring Unix.stdin src 0 input_size in
       match count with
         | -1 -> raise (Failure "Error occure: unix read returned -1")
-        | _ -> output_size
+        | _ -> count
     in
     begin
     match algo with
@@ -81,7 +81,7 @@ let do_command input_size output_size mode level algo wbits =
       let count = unix_read B.bigstring Unix.stdin src 0 input_size in
       match count with
         | -1 -> raise (Failure "Error occure: read write returned -1")
-        | _ -> output_size
+        | _ -> count
     in
     begin
     match algo with

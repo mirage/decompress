@@ -76,6 +76,15 @@ module L : sig
       the frequencies of the [Literal] and [Match]. *)
 end
 
+module OS : sig
+  type t
+
+  val default: t
+  val of_int: int -> t option
+  val to_int: t -> int
+  val to_string: t -> string
+end
+
 (** Deflate algorithm.
 
     A functionnal non-blocking implementation of Zlib algorithm. *)
@@ -243,8 +252,6 @@ type error_g_deflate = RFC1951 of RFC1951_deflate.error
 module Gzip_deflate : sig
   include DEFLATE with type error = error_g_deflate
 
-  type os
-
   val default :
        witness:'a B.t
     -> ?text:bool
@@ -253,13 +260,10 @@ module Gzip_deflate : sig
     -> ?name:string
     -> ?comment:string
     -> ?mtime:int
-    -> ?os:os
+    -> ?os:OS.t
     -> int
     -> ('a, 'a) t
 
-  val os_of_int : int -> os option
-  val int_of_os : os -> int
-  val string_of_os : os -> string
   (** [default] uses a constant value for wbit. *)
 end
 
@@ -424,7 +428,7 @@ module Gzip_inflate : sig
   include INFLATE with type error = error_g_inflate and type crc = Window.crc32
 
   val xfl : ('a, 'b) t -> int
-  val os : ('a, 'b) t -> int
+  val os : ('a, 'b) t -> OS.t
   val mtime : ('a, 'b) t -> Optint.t
   val extra : ('a, 'b) t -> string option
   val name : ('a, 'b) t -> string option

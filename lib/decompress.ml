@@ -160,6 +160,8 @@ module RFC1951_inflate = struct
   let pp_error = pp_error
 end
 
+module OS = Decompress_impl.OS
+
 type error_z_inflate = Decompress_impl.error_z_inflate =
   | RFC1951 of RFC1951_inflate.error
   | Invalid_header
