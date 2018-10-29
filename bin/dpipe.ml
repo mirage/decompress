@@ -25,48 +25,95 @@ let unix_write : type a. a B.t -> Unix.file_descr -> a -> int -> int -> int =
 
 let _chunk = 0xFFFF
 
-let do_command input_size output_size mode level wbits =
+let do_command input_size output_size mode level algo wbits =
   let src =
     Bigarray.Array1.create Bigarray.Char Bigarray.c_layout input_size
   in
   let dst =
     Bigarray.Array1.create Bigarray.Char Bigarray.c_layout output_size
   in
+  let refill dst len =
+    let count = unix_write B.bigstring Unix.stdout dst 0 len in
+    match count with
+      | -1 -> raise (Failure "Error occure: unix write returned -1")
+      | _ -> output_size
+  in
   match mode with
-  | `Compression -> (
-      let t =
-        Decompress.Zlib_deflate.default ~witness:B.bigstring ~wbits level
-      in
-      let r =
-        Decompress.Zlib_deflate.to_result src dst
-          (fun src -> function
-            | Some max ->
-                unix_read B.bigstring Unix.stdin src 0 (min max input_size)
-            | None -> unix_read B.bigstring Unix.stdin src 0 input_size )
-          (fun dst len ->
-            let _ = unix_write B.bigstring Unix.stdout dst 0 len in
-            output_size )
-          t
-      in
-      match r with
-      | Ok _ -> ()
-      | Error exn ->
-          Format.eprintf "%a\n%!" Decompress.Zlib_deflate.pp_error exn )
-  | `Decompression -> (
-      let w = Decompress.Window.create ~witness:B.bigstring in
-      let t = Decompress.Zlib_inflate.default ~witness:B.bigstring w in
-      let r =
-        Decompress.Zlib_inflate.to_result src dst
-          (fun src -> unix_read B.bigstring Unix.stdin src 0 input_size)
-          (fun dst len ->
-            let _ = unix_write B.bigstring Unix.stdout dst 0 len in
-            output_size )
-          t
-      in
-      match r with
-      | Ok _ -> ()
-      | Error exn ->
-          Format.eprintf "%a\n%!" Decompress.Zlib_inflate.pp_error exn )
+  | `Compression ->
+    let flush src max =
+      let count =
+      match max with
+      | Some max -> unix_read B.bigstring Unix.stdin src 0 (min max input_size)
+      | None ->  unix_read B.bigstring Unix.stdin src 0 input_size in
+      match count with
+        | -1 -> raise (Failure "Error occure: unix read returned -1")
+        | _ -> count
+    in
+    begin
+    match algo with
+    | `Gzip ->
+        let t =
+          Decompress.Gzip_deflate.default ~witness:B.bigstring
+            ~name:"README.md" ~extra:"lolilol" ~header_crc:true
+            level
+        in
+        let r = Decompress.Gzip_deflate.to_result src dst flush refill t in
+        begin
+        match r with
+        | Ok _ -> ()
+        | Error exn ->
+            Format.eprintf "%a\n%!" Decompress.Gzip_deflate.pp_error exn
+        end
+    | `Zlib ->
+        let t =
+          Decompress.Zlib_deflate.default ~witness:B.bigstring ~wbits level
+        in
+        let r = Decompress.Zlib_deflate.to_result src dst flush refill t in
+        begin
+        match r with
+        | Ok _ -> ()
+        | Error exn ->
+            Format.eprintf "%a\n%!" Decompress.Zlib_deflate.pp_error exn
+        end
+    end
+  | `Decompression ->
+    let flush src =
+      let count = unix_read B.bigstring Unix.stdin src 0 input_size in
+      match count with
+        | -1 -> raise (Failure "Error occure: read write returned -1")
+        | _ -> count
+    in
+    begin
+    match algo with
+    | `Gzip ->
+        let w =
+          Decompress.Window.create ~crc:Decompress.Window.crc32
+            ~witness:B.bigstring
+        in
+        let t = Decompress.Gzip_inflate.default ~witness:B.bigstring w in
+        let r = Decompress.Gzip_inflate.to_result src dst flush refill t
+        in
+        begin
+        match r with
+        | Ok _ -> ()
+        | Error exn ->
+            Format.eprintf "%a\n%!" Decompress.Gzip_inflate.pp_error exn
+        end
+    | `Zlib ->
+        let w =
+          Decompress.Window.create ~crc:Decompress.Window.adler32
+            ~witness:B.bigstring
+        in
+        let t = Decompress.Zlib_inflate.default ~witness:B.bigstring w in
+        let r = Decompress.Zlib_inflate.to_result src dst flush refill t
+        in
+        begin
+        match r with
+        | Ok _ -> ()
+        | Error exn ->
+            Format.eprintf "%a\n%!" Decompress.Zlib_inflate.pp_error exn
+        end
+    end
 
 open Cmdliner
 
@@ -75,7 +122,7 @@ let nat a b =
     try
       let v = int_of_string s in
       let p = Printf.sprintf in
-      match v, a, b with
+      match (v, a, b) with
       | v, Some a, Some b when a <= v && v <= b -> `Ok v
       | v, Some a, None when a <= v -> `Ok v
       | v, None, Some b when v <= b -> `Ok v
@@ -85,7 +132,7 @@ let nat a b =
       | _, None, Some b -> failwith (p "%s must be <= %d" s b)
     with Failure e -> `Error e
   in
-  parse, Format.pp_print_int
+  (parse, Format.pp_print_int)
 
 let mode =
   let parse = function
@@ -98,12 +145,27 @@ let mode =
       | `Compression -> Format.pp_print_string fmt "compression"
       | `Decompression -> Format.pp_print_string fmt "decompression" )
 
+let algo =
+  let parse = function
+    | "zlib" -> `Ok `Zlib
+    | "gzip" -> `Ok `Gzip
+    | _ -> `Error "Invalid algorithm"
+  in
+  ( parse
+  , fun fmt -> function
+      | `Zlib -> Format.pp_print_string fmt "zlib"
+      | `Gzip -> Format.pp_print_string fmt "gzip" )
+
 let mode =
   let doc = "Compression or decompression" in
   Arg.(value & opt mode `Compression & info ["mode"] ~doc)
 
+let algo =
+  let doc = "Zlib or Gzip" in
+  Arg.(value & opt algo `Zlib & info ["algo"] ~doc)
+
 let wbits =
-  let doc = "Size of window (window bits between 8 and 15)" in
+  let doc = "Size of window (window bits between 8 and 15) (Zlib only)" in
   Arg.(value & opt (nat (Some 8) (Some 15)) 15 & info ["wbits"] ~doc)
 
 let level =
@@ -126,7 +188,8 @@ let command =
         "$(tname) takes a standard input and write in standard output the \
          compressed/uncompressed data." ]
   in
-  ( Term.(pure do_command $ input_size $ output_size $ mode $ level $ wbits)
+  ( Term.(
+      pure do_command $ input_size $ output_size $ mode $ level $ algo $ wbits)
   , Term.info "dpipe" ~doc ~man )
 
 let () = match Term.eval command with `Error _ -> exit 1 | _ -> exit 0

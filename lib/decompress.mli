@@ -76,6 +76,15 @@ module L : sig
       the frequencies of the [Literal] and [Match]. *)
 end
 
+module OS : sig
+  type t
+
+  val default: t
+  val of_int: int -> t option
+  val to_int: t -> int
+  val to_string: t -> string
+end
+
 (** Deflate algorithm.
 
     A functionnal non-blocking implementation of Zlib algorithm. *)
@@ -237,6 +246,27 @@ type error_z_deflate = RFC1951 of RFC1951_deflate.error
 
 module Zlib_deflate : DEFLATE with type error = error_z_deflate
 
+type error_g_deflate = RFC1951 of RFC1951_deflate.error
+
+(* module Gzip_deflate : DEFLATE with type error = error_g_deflate *)
+module Gzip_deflate : sig
+  include DEFLATE with type error = error_g_deflate
+
+  val default :
+       witness:'a B.t
+    -> ?text:bool
+    -> ?header_crc:bool
+    -> ?extra:string
+    -> ?name:string
+    -> ?comment:string
+    -> ?mtime:int
+    -> ?os:OS.t
+    -> int
+    -> ('a, 'a) t
+
+  (** [default] uses a constant value for wbit. *)
+end
+
 (** Window used by the Inflate algorithm.
 
     A functionnal implementation of window to use with the inflate algorithm.
@@ -244,15 +274,24 @@ module Zlib_deflate : DEFLATE with type error = error_z_deflate
     This API is available to limit the allocation by Decompress. *)
 module Window : sig
   (** The Window specialized by ['o] (see {!B.st} and {!B.bs}). *)
-  type 'o t
+  type ('o, 'k) t
 
-  val create : witness:'o B.t -> 'o t
+  type 'k checksum
+  type adler32
+  type crc32
+  type none
+
+  val adler32 : adler32 checksum
+  val crc32 : crc32 checksum
+  val none : none checksum
+
+  val create : crc:'k checksum -> witness:'o B.t -> ('o, 'k) t
   (** [create ~proof] creates a new window. *)
 
-  val reset : 'o t -> 'o t
+  val reset : ('o, 'k) t -> ('o, 'k) t
   (** [reset window] resets a window to be reused by an Inflate algorithm. *)
 
-  val crc : 'o t -> Checkseum.Adler32.t
+  val crc : ('o, 'k) t -> Optint.t
   (** [crc window] returns the checksum computed by the window. *)
 end
 
@@ -262,6 +301,8 @@ end
 module type INFLATE = sig
   (** Inflate error. *)
   type error
+
+  type crc
 
   (** The state of the inflate algorithm. ['i] and ['o] are the implementation
       used respectively for the input and the output, see {!B.st} and {!B.bs}.
@@ -350,9 +391,11 @@ type error_rfc1951_inflate =
   | Invalid_distance of {distance: int; max: int}
 
 module RFC1951_inflate : sig
-  include INFLATE with type error = error_rfc1951_inflate
+  include
+    INFLATE with type error = error_rfc1951_inflate and type crc = Window.none
 
-  val default : witness:'a B.t -> ?wbits:int -> 'a Window.t -> ('a, 'a) t
+  val default :
+    witness:'a B.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
   (** [default] makes a new state [t]. *)
 
   val bits_remaining : ('x, 'x) t -> int
@@ -364,9 +407,34 @@ type error_z_inflate =
   | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
 
 module Zlib_inflate : sig
-  include INFLATE with type error = error_z_inflate
+  include
+    INFLATE with type error = error_z_inflate and type crc = Window.adler32
 
   val default :
-    witness:'a B.t -> ?wbits:int option -> 'a Window.t -> ('a, 'a) t
+    witness:'a B.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
+  (** [default] makes a new state [t]. *)
+end
+
+type error_g_inflate =
+  | RFC1951 of RFC1951_inflate.error
+  | Invalid_header
+  | Invalid_header_checksum of
+      { have: Checkseum.Adler32.t
+      ; expect: Checkseum.Adler32.t }
+  | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
+  | Invalid_size of {have: Optint.t; expect: Optint.t}
+
+module Gzip_inflate : sig
+  include INFLATE with type error = error_g_inflate and type crc = Window.crc32
+
+  val xfl : ('a, 'b) t -> int
+  val os : ('a, 'b) t -> OS.t
+  val mtime : ('a, 'b) t -> Optint.t
+  val extra : ('a, 'b) t -> string option
+  val name : ('a, 'b) t -> string option
+  val comment : ('a, 'b) t -> string option
+
+  val default :
+    witness:'a B.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
   (** [default] makes a new state [t]. *)
 end

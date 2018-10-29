@@ -9,12 +9,12 @@ let walk directory pattern =
           List.fold_left
             (fun (dirs, files) kind ->
               match (Unix.stat kind).Unix.st_kind with
-              | Unix.S_REG -> dirs, kind :: files
-              | Unix.S_DIR -> kind :: dirs, files
+              | Unix.S_REG -> (dirs, kind :: files)
+              | Unix.S_DIR -> (kind :: dirs, files)
               | Unix.S_BLK | Unix.S_CHR | Unix.S_FIFO | Unix.S_LNK
                |Unix.S_SOCK ->
-                  dirs, files
-              | exception Unix.Unix_error _ -> dirs, files )
+                  (dirs, files)
+              | exception Unix.Unix_error _ -> (dirs, files) )
             ([], []) contents
         in
         let matched = List.filter select files in
@@ -40,7 +40,7 @@ let bigstring_of_file filename =
 let () = Random.self_init ()
 let () = Printexc.record_backtrace true
 
-module type COMMON = sig
+module type ZCOMMON = sig
   type t
 
   val compress :
@@ -54,7 +54,27 @@ module type COMMON = sig
   val uncompress : (t -> int) -> (t -> int -> unit) -> unit
 end
 
-module D : COMMON with type t = Bytes.t = struct
+module type GCOMMON = sig
+  type t
+
+  val compress :
+       ?level:int
+    -> ?text:bool
+    -> ?header_crc:bool
+    -> ?extra:string
+    -> ?name:string
+    -> ?comment:string
+    -> ?mtime:int
+    -> ?os:Decompress.OS.t
+    -> ?meth:Decompress.Gzip_deflate.meth * int
+    -> in_channel
+    -> out_channel
+    -> unit
+
+  val uncompress : in_channel -> out_channel -> unit
+end
+
+module ZD : ZCOMMON with type t = Bytes.t = struct
   type t = Bytes.t
 
   exception Decompress_inflate of Decompress.Zlib_inflate.error
@@ -70,7 +90,10 @@ module D : COMMON with type t = Bytes.t = struct
 
   let input = Bytes.create 0xFFFF
   let output = Bytes.create 0xFFFF
-  let window = Decompress.Window.create ~witness:Decompress.B.bytes
+
+  let window =
+    Decompress.Window.create ~crc:Decompress.Window.adler32
+      ~witness:Decompress.B.bytes
 
   let compress ?(level = 4) ?(wbits = 15) ?meth refill flush =
     Decompress.Zlib_deflate.bytes input output ?meth refill
@@ -86,7 +109,50 @@ module D : COMMON with type t = Bytes.t = struct
     |> function Ok _ -> () | Error exn -> raise (Decompress_inflate exn)
 end
 
-module C : COMMON with type t = Bytes.t = struct
+module GD : GCOMMON with type t = Bytes.t = struct
+  type t = Bytes.t
+
+  exception Decompress_inflate of Decompress.Gzip_inflate.error
+  exception Decompress_deflate of Decompress.Gzip_deflate.error
+
+  let () =
+    Printexc.register_printer (function
+      | Decompress_inflate err ->
+          Some (Format.asprintf "%a" Decompress.Gzip_inflate.pp_error err)
+      | Decompress_deflate err ->
+          Some (Format.asprintf "%a" Decompress.Gzip_deflate.pp_error err)
+      | _ -> None )
+
+  let in_buf = Bytes.create 0xFFFF
+  let out_buf = Bytes.create 0xFFFF
+
+  let window =
+    Decompress.Window.create ~crc:Decompress.Window.crc32
+      ~witness:Decompress.B.bytes
+
+  let compress ?(level = 4) ?(text = false) ?(header_crc = false)
+      ?extra ?name ?comment ?(mtime = 0) ?os
+      ?meth in_chan out_chan =
+    let refill buf = function
+      | Some max -> input in_chan buf 0 (min max 0xFFFF)
+      | None -> input in_chan buf 0 0xFFFF
+    in
+    let flush buf len = output out_chan buf 0 len ; 0xFFFF in
+    Decompress.Gzip_deflate.bytes in_buf out_buf ?meth refill flush
+      (Decompress.Gzip_deflate.default ~witness:Decompress.B.bytes ~text
+         ~header_crc ?extra ?name ?comment ~mtime ?os level)
+    |> function Ok _ -> () | Error exn -> raise (Decompress_deflate exn)
+
+  let uncompress in_chan out_chan =
+    let refill buf = input in_chan buf 0 0xFFFF in
+    let flush buf len = output out_chan buf 0 len ; 0xFFFF in
+    Decompress.Gzip_inflate.bytes in_buf out_buf refill flush
+      (Decompress.Gzip_inflate.default ~witness:Decompress.B.bytes
+         (Decompress.Window.reset window))
+    |> function Ok _ -> () | Error exn -> raise (Decompress_inflate exn)
+end
+
+module ZC : ZCOMMON with type t = Bytes.t = struct
   type t = Bytes.t
 
   let compress ?level ?wbits:_ ?meth:_ refill flush =
@@ -95,7 +161,33 @@ module C : COMMON with type t = Bytes.t = struct
   let uncompress refill flush = Zlib.uncompress refill flush
 end
 
-module Z (I : COMMON with type t = Bytes.t) = struct
+module GC : GCOMMON with type t = Bytes.t = struct
+  type t = Bytes.t
+
+  let buf = Bytes.create 0xFFFF
+
+  let compress ?(level = 4) ?text:_ ?header_crc:_ ?extra:_ ?name:_ ?comment:_
+      ?mtime:_ ?os:_ ?meth:_ in_chan out_chan =
+    let out_chan = Gzip.open_out_chan ~level out_chan in
+    let rec compress () =
+      let n = input in_chan buf 0 0xFFFF in
+      if n = 0 then ()
+      else (
+        Gzip.output out_chan buf 0 n ;
+        compress () )
+    in
+    compress () ; Gzip.flush out_chan
+
+  let uncompress in_chan out_chan =
+    let in_chan = Gzip.open_in_chan in_chan in
+    let rec decompress () =
+      let n = Gzip.input in_chan buf 0 0xFFFF in
+      if n = 0 then () else ( output out_chan buf 0 n ; decompress () )
+    in
+    decompress () ; Gzip.dispose in_chan
+end
+
+module Z (I : ZCOMMON with type t = Bytes.t) = struct
   module Deflate = struct
     let string ?level ?wbits ?meth content =
       let result = Buffer.create (String.length content) in
@@ -137,44 +229,120 @@ module Z (I : COMMON with type t = Bytes.t) = struct
   end
 end
 
-module Decompress' = Z (D)
-module Camlzip = Z (C)
+module G (I : GCOMMON with type t = Bytes.t) = struct
+  module Deflate = struct let compress = I.compress end
+  module Inflate = struct let decompress = I.uncompress end
+end
 
-let c2d ?level ?wbits content =
-  Camlzip.Deflate.string ?level ?wbits content |> Decompress'.Inflate.string
+module ZDecompress' = Z (ZD)
+module ZCamlzip = Z (ZC)
+module GDecompress' = G (GD)
+module GCamlzip = G (GC)
 
-let d2c ?level ?wbits content =
-  Decompress'.Deflate.string ?level ?wbits content |> Camlzip.Inflate.string
+let zc2d ?level ?wbits content =
+  ZCamlzip.Deflate.string ?level ?wbits content |> ZDecompress'.Inflate.string
 
-let d2d ?level ?wbits content =
-  Decompress'.Deflate.string ?level ?wbits content
-  |> Decompress'.Inflate.string
+let zd2c ?level ?wbits content =
+  ZDecompress'.Deflate.string ?level ?wbits content |> ZCamlzip.Inflate.string
 
-let level = [0; 1; 2; 3; 4; 5; 6; 7; 8; 9]
+let zd2d ?level ?wbits content =
+  ZDecompress'.Deflate.string ?level ?wbits content
+  |> ZDecompress'.Inflate.string
+
+let gc2d ?level in_file =
+  let tmp_file =
+    match Bos.OS.File.tmp "tmp_%s" with
+    | Ok p -> Fpath.to_string p
+    | Error _ -> raise (Failure "Tmp file creation failed")
+  in
+  let out_file =
+    match Bos.OS.File.tmp "tmp_%s" with
+    | Ok p -> Fpath.to_string p
+    | Error _ -> raise (Failure "Tmp file creation failed")
+  in
+  let in_chan = open_in in_file in
+  let tmp_out = open_out tmp_file in
+  GCamlzip.Deflate.compress ?level in_chan tmp_out ;
+  close_in in_chan ;
+  close_out tmp_out ;
+  let tmp_in = open_in tmp_file in
+  let out_chan = open_out out_file in
+  GDecompress'.Inflate.decompress tmp_in out_chan ;
+  close_in tmp_in ;
+  close_out out_chan ;
+  out_file
+
+let gd2c ?level in_file =
+  let tmp_file =
+    match Bos.OS.File.tmp "tmp_%s" with
+    | Ok p -> Fpath.to_string p
+    | Error _ -> raise (Failure "Tmp file creation failed")
+  in
+  let out_file =
+    match Bos.OS.File.tmp "tmp_%s" with
+    | Ok p -> Fpath.to_string p
+    | Error _ -> raise (Failure "Tmp file creation failed")
+  in
+  let in_chan = open_in in_file in
+  let tmp_out = open_out tmp_file in
+  GDecompress'.Deflate.compress ?level in_chan tmp_out ;
+  close_in in_chan ;
+  close_out tmp_out ;
+  let tmp_in = open_in tmp_file in
+  let out_chan = open_out out_file in
+  GCamlzip.Inflate.decompress tmp_in out_chan ;
+  close_in tmp_in ;
+  close_out out_chan ;
+  out_file
+
+let gd2d ?level in_file =
+  let tmp_file =
+    match Bos.OS.File.tmp "tmp_%s" with
+    | Ok p -> Fpath.to_string p
+    | Error _ -> raise (Failure "Tmp file creation failed")
+  in
+  let out_file =
+    match Bos.OS.File.tmp "tmp_%s" with
+    | Ok p -> Fpath.to_string p
+    | Error _ -> raise (Failure "Tmp file creation failed")
+  in
+  let in_chan = open_in in_file in
+  let tmp_out = open_out tmp_file in
+  GDecompress'.Deflate.compress ?level in_chan tmp_out ;
+  close_in in_chan ;
+  close_out tmp_out ;
+  let tmp_in = open_in tmp_file in
+  let out_chan = open_out out_file in
+  GDecompress'.Inflate.decompress tmp_in out_chan ;
+  close_in tmp_in ;
+  close_out out_chan ;
+  out_file
+
+let level = [1; 2; 3; 4; 5; 6; 7; 8; 9]
 let wbits = [15]
 
 (* XXX(dinosaure): we need to avoid alcotest to write a file output, otherwise
    we have an I/O error. *)
 
-let make_test filename =
+let zmake_test filename =
   let make level wbits =
-    [ ( Printf.sprintf "c2d level:%d wbits:%d %s" level wbits filename
+    [ ( Printf.sprintf "zlib c2d level:%d wbits:%d %s" level wbits filename
       , `Slow
       , fun () ->
           let content = string_of_file filename in
-          Alcotest.(check string) content (c2d ~level ~wbits content) content
+          Alcotest.(check string) content (zc2d ~level ~wbits content) content
       )
-    ; ( Printf.sprintf "d2c level:%d wbits:%d %s" level wbits filename
+    ; ( Printf.sprintf "zlib d2c level:%d wbits:%d %s" level wbits filename
       , `Slow
       , fun () ->
           let content = string_of_file filename in
-          Alcotest.(check string) content (d2c ~level ~wbits content) content
+          Alcotest.(check string) content (zd2c ~level ~wbits content) content
       )
-    ; ( Printf.sprintf "d2d level:%d wbits:%d %s" level wbits filename
+    ; ( Printf.sprintf "zlib d2d level:%d wbits:%d %s" level wbits filename
       , `Slow
       , fun () ->
           let content = string_of_file filename in
-          Alcotest.(check string) content (d2d ~level ~wbits content) content
+          Alcotest.(check string) content (zd2d ~level ~wbits content) content
       ) ]
   in
   List.map make level
@@ -182,6 +350,35 @@ let make_test filename =
   |> List.concat
   |> List.concat
 
+let gmake_test filename =
+  let make level =
+    [ ( Printf.sprintf "gzip c2d level:%d %s" level filename
+      , `Slow
+      , fun () ->
+          let out_file = gc2d ~level filename in
+          let content_in = string_of_file filename in
+          let content_out = string_of_file out_file in
+          Alcotest.(check string) filename content_in content_out )
+    ; ( Printf.sprintf "gzip d2c level:%d %s" level filename
+      , `Slow
+      , fun () ->
+          let out_file = gd2c ~level filename in
+          let content_in = string_of_file filename in
+          let content_out = string_of_file out_file in
+          Alcotest.(check string) filename content_in content_out )
+    ; ( Printf.sprintf "gzip d2d level:%d %s" level filename
+      , `Slow
+      , fun () ->
+          let out_file = gd2d ~level filename in
+          let content_in = string_of_file filename in
+          let content_out = string_of_file out_file in
+          Alcotest.(check string) filename content_in content_out ) ]
+  in
+  List.map make level |> List.concat
+
 let () =
   Alcotest.run "decompress test"
-    ["files", List.concat @@ List.map make_test (walk "/bin/" ".*")]
+    [ ( "files"
+      , List.concat
+        @@ List.map zmake_test (walk "/bin/" ".*")
+        @ List.map gmake_test (walk "/bin/" ".*") ) ]

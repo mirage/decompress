@@ -79,7 +79,7 @@ let uncompress data =
      your reading. *)
   let output_buffer = Bytes.create 0xFFFF in
   (* Same as [compress]. *)
-  let window = Window.create ~witness:B.bytes in
+  let window = Window.create ~crc:Window.adler32 ~witness:B.bytes in
   (* We allocate a window. We let the user to do that to reuse the window if
      it's needed. In fact, the window is a big buffer ([size = (1 << 15)]) and
      allocate this buffer costs.

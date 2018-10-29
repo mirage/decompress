@@ -15,7 +15,9 @@ let make_expected_error_inflate_test ~name input =
   (* XXX(dinosaure): we don't care about output, we expect an error. *)
   let i = Bytes.create 0x800 in
   let o = Bytes.create 0x800 in
-  let w = Rfc1951.Window.create ~witness:Rfc1951.B.bytes in
+  let w =
+    Rfc1951.Window.create ~crc:Rfc1951.Window.none ~witness:Rfc1951.B.bytes
+  in
   (* XXX(dinosaure): in infcover.c, [zlib] allocates in any case a 32kbits
      window. *)
   let t = Rfc1951.Inflate.default ~witness:Rfc1951.B.bytes w in
@@ -39,7 +41,9 @@ let make_expected_ok_inflate_test ~name input =
   (* XXX(dinosaure): we just want to see if [decompress] works on [input]. *)
   let i = Bytes.create 0x800 in
   let o = Bytes.create 0x800 in
-  let w = Rfc1951.Window.create ~witness:Rfc1951.B.bytes in
+  let w =
+    Rfc1951.Window.create ~crc:Rfc1951.Window.none ~witness:Rfc1951.B.bytes
+  in
   (* XXX(dinosaure): in infcover.c, [zlib] allocates in any case a 32kbits
      window. *)
   let t = Rfc1951.Inflate.default ~witness:Rfc1951.B.bytes w in

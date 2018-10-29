@@ -63,19 +63,19 @@ let rec take_front_exn : 'a. 'a t -> 'a * 'a t =
  fun q ->
   match q with
   | Shallow Zero -> raise Empty
-  | Shallow (One x) -> x, empty
-  | Shallow (Two (x, y)) -> x, Shallow (One y)
-  | Shallow (Three (x, y, z)) -> x, Shallow (Two (y, z))
+  | Shallow (One x) -> (x, empty)
+  | Shallow (Two (x, y)) -> (x, Shallow (One y))
+  | Shallow (Three (x, y, z)) -> (x, Shallow (Two (y, z)))
   | Deep (_, Zero, _, _) -> assert false
   | Deep (n, One x, (lazy _middle), _tail) ->
-      if is_empty _middle then x, Shallow _tail
+      if is_empty _middle then (x, Shallow _tail)
       else
         let (y, z), _middle = take_front_exn _middle in
-        x, _deep (n - 1) (Two (y, z)) (Lazy.from_val _middle) _tail
+        (x, _deep (n - 1) (Two (y, z)) (Lazy.from_val _middle) _tail)
   | Deep (n, Two (x, y), _middle, _tail) ->
-      x, _deep (n - 1) (One y) _middle _tail
+      (x, _deep (n - 1) (One y) _middle _tail)
   | Deep (n, Three (x, y, z), _middle, _tail) ->
-      x, _deep (n - 1) (Two (y, z)) _middle _tail
+      (x, _deep (n - 1) (Two (y, z)) _middle _tail)
 
 let take_front q = try Some (take_front_exn q) with Empty -> None
 

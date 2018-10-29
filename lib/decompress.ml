@@ -76,10 +76,16 @@ type error_z_deflate = Decompress_impl.error_z_deflate =
   | RFC1951 of error_rfc1951_deflate
 
 module Zlib_deflate = Decompress_impl.Zlib_deflate
+
+type error_g_deflate = Decompress_impl.error_g_deflate =
+  | RFC1951 of error_rfc1951_deflate
+
+module Gzip_deflate = Decompress_impl.Gzip_deflate
 module Window = Decompress_impl.Window
 
 module type INFLATE = sig
   type error
+  type crc
   type ('i, 'o) t
 
   val pp_error : Format.formatter -> error -> unit
@@ -132,7 +138,29 @@ type error_rfc1951_inflate = Decompress_impl.error_rfc1951_inflate =
   | Invalid_distance_code
   | Invalid_distance of {distance: int; max: int}
 
-module RFC1951_inflate = Decompress_impl.RFC1951_inflate
+module RFC1951_inflate = struct
+  open Decompress_impl.RFC1951_inflate
+
+  type crc = Window.none
+  type nonrec ('i, 'o) t = ('i, 'o, crc) t
+  type nonrec error = error
+
+  let eval = eval
+  let used_in = used_in
+  let used_out = used_out
+  let bits_remaining = bits_remaining
+  let bigstring = bigstring
+  let bytes = bytes
+  let to_result = to_result
+  let default = default
+  let write = write
+  let flush = flush
+  let refill = refill
+  let pp = pp
+  let pp_error = pp_error
+end
+
+module OS = Decompress_impl.OS
 
 type error_z_inflate = Decompress_impl.error_z_inflate =
   | RFC1951 of RFC1951_inflate.error
@@ -140,3 +168,14 @@ type error_z_inflate = Decompress_impl.error_z_inflate =
   | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
 
 module Zlib_inflate = Decompress_impl.Zlib_inflate
+
+type error_g_inflate = Decompress_impl.error_g_inflate =
+  | RFC1951 of RFC1951_inflate.error
+  | Invalid_header
+  | Invalid_header_checksum of
+      { have: Checkseum.Adler32.t
+      ; expect: Checkseum.Adler32.t }
+  | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
+  | Invalid_size of {have: Optint.t; expect: Optint.t}
+
+module Gzip_inflate = Decompress_impl.Gzip_inflate

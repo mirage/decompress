@@ -20,11 +20,22 @@ let blit = B.blit
 let blit2 = B.blit2
 let pp = B.pp
 let to_string = B.to_string
+let of_string : string -> (ro, string) t = fun x -> x
+
+let blit_string : type a.
+    a B.t -> ([> ro], string) t -> int -> ([> wo], a) t -> int -> int -> unit =
+  B.blit_string
 
 let adler32 : type a.
     a B.t -> a -> int -> int -> Checkseum.Adler32.t -> Checkseum.Adler32.t =
   function
   | B.Bytes -> Checkseum.Adler32.digest_bytes
   | B.Bigstring -> Checkseum.Adler32.digest_bigstring
+
+let crc32 : type a.
+    a B.t -> a -> int -> int -> Checkseum.Crc32.t -> Checkseum.Crc32.t =
+  function
+  | B.Bytes -> Checkseum.Crc32.digest_bytes
+  | B.Bigstring -> Checkseum.Crc32.digest_bigstring
 
 external unsafe : ('a, 'i) t -> 'i = "%identity"
