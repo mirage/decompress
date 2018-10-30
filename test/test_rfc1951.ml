@@ -16,11 +16,12 @@ let make_expected_error_inflate_test ~name input =
   let i = Bytes.create 0x800 in
   let o = Bytes.create 0x800 in
   let w =
-    Rfc1951.Window.create ~crc:Rfc1951.Window.none ~witness:Rfc1951.B.bytes
+    Rfc1951.Window.create ~crc:Rfc1951.Window.none
+      ~witness:Rfc1951.Buffer.bytes
   in
   (* XXX(dinosaure): in infcover.c, [zlib] allocates in any case a 32kbits
      window. *)
-  let t = Rfc1951.Inflate.default ~witness:Rfc1951.B.bytes w in
+  let t = Rfc1951.Inflate.default ~witness:Rfc1951.Buffer.bytes w in
   match Rfc1951.Inflate.bytes i o refiller flusher t with
   | Ok _ -> Alcotest.failf "Expected error."
   | Error _exn -> ()
@@ -42,11 +43,12 @@ let make_expected_ok_inflate_test ~name input =
   let i = Bytes.create 0x800 in
   let o = Bytes.create 0x800 in
   let w =
-    Rfc1951.Window.create ~crc:Rfc1951.Window.none ~witness:Rfc1951.B.bytes
+    Rfc1951.Window.create ~crc:Rfc1951.Window.none
+      ~witness:Rfc1951.Buffer.bytes
   in
   (* XXX(dinosaure): in infcover.c, [zlib] allocates in any case a 32kbits
      window. *)
-  let t = Rfc1951.Inflate.default ~witness:Rfc1951.B.bytes w in
+  let t = Rfc1951.Inflate.default ~witness:Rfc1951.Buffer.bytes w in
   match Rfc1951.Inflate.bytes i o refiller flusher t with
   | Ok _ -> ()
   | Error exn ->

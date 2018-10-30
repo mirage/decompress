@@ -1,7 +1,7 @@
 module Safe = Decompress_safe
 module Seq = Decompress_seq
 module Hunk = Decompress_hunk
-module B = Decompress_b
+module Buffer = Decompress_buffer
 
 let pf = Format.fprintf
 
@@ -35,7 +35,7 @@ type 'i t =
   ; level: int
   ; on: Hunk.t -> unit
   ; state: 'i state
-  ; witness: 'i B.t }
+  ; witness: 'i Buffer.t }
 
 and 'i state =
   | Deflate of int

@@ -93,18 +93,19 @@ module ZD : ZCOMMON with type t = Bytes.t = struct
 
   let window =
     Decompress.Window.create ~crc:Decompress.Window.adler32
-      ~witness:Decompress.B.bytes
+      ~witness:Decompress.Buffer.bytes
 
   let compress ?(level = 4) ?(wbits = 15) ?meth refill flush =
     Decompress.Zlib_deflate.bytes input output ?meth refill
       (fun buf len -> flush buf len ; 0xFFFF)
-      (Decompress.Zlib_deflate.default ~witness:Decompress.B.bytes level ~wbits)
+      (Decompress.Zlib_deflate.default ~witness:Decompress.Buffer.bytes level
+         ~wbits)
     |> function Ok _ -> () | Error exn -> raise (Decompress_deflate exn)
 
   let uncompress refill flush =
     Decompress.Zlib_inflate.bytes input output refill
       (fun buf len -> flush buf len ; 0xFFFF)
-      (Decompress.Zlib_inflate.default ~witness:Decompress.B.bytes
+      (Decompress.Zlib_inflate.default ~witness:Decompress.Buffer.bytes
          (Decompress.Window.reset window))
     |> function Ok _ -> () | Error exn -> raise (Decompress_inflate exn)
 end
@@ -128,18 +129,17 @@ module GD : GCOMMON with type t = Bytes.t = struct
 
   let window =
     Decompress.Window.create ~crc:Decompress.Window.crc32
-      ~witness:Decompress.B.bytes
+      ~witness:Decompress.Buffer.bytes
 
-  let compress ?(level = 4) ?(text = false) ?(header_crc = false)
-      ?extra ?name ?comment ?(mtime = 0) ?os
-      ?meth in_chan out_chan =
+  let compress ?(level = 4) ?(text = false) ?(header_crc = false) ?extra ?name
+      ?comment ?(mtime = 0) ?os ?meth in_chan out_chan =
     let refill buf = function
       | Some max -> input in_chan buf 0 (min max 0xFFFF)
       | None -> input in_chan buf 0 0xFFFF
     in
     let flush buf len = output out_chan buf 0 len ; 0xFFFF in
     Decompress.Gzip_deflate.bytes in_buf out_buf ?meth refill flush
-      (Decompress.Gzip_deflate.default ~witness:Decompress.B.bytes ~text
+      (Decompress.Gzip_deflate.default ~witness:Decompress.Buffer.bytes ~text
          ~header_crc ?extra ?name ?comment ~mtime ?os level)
     |> function Ok _ -> () | Error exn -> raise (Decompress_deflate exn)
 
@@ -147,7 +147,7 @@ module GD : GCOMMON with type t = Bytes.t = struct
     let refill buf = input in_chan buf 0 0xFFFF in
     let flush buf len = output out_chan buf 0 len ; 0xFFFF in
     Decompress.Gzip_inflate.bytes in_buf out_buf refill flush
-      (Decompress.Gzip_inflate.default ~witness:Decompress.B.bytes
+      (Decompress.Gzip_inflate.default ~witness:Decompress.Buffer.bytes
          (Decompress.Window.reset window))
     |> function Ok _ -> () | Error exn -> raise (Decompress_inflate exn)
 end

@@ -1,4 +1,4 @@
-module B : sig
+module Buffer : sig
   module Bigstring : sig
     type t =
       (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
@@ -38,7 +38,7 @@ end
     replaced by your implemenation by a functor.
 
     The functor was not done now but may be soonly. So, TODO! *)
-module L : sig
+module Lz77 : sig
   (** Lz77 error. *)
   type error =
     | Invalid_level of int
@@ -62,7 +62,7 @@ module L : sig
       input. *)
 
   val default :
-    witness:'i B.t -> ?level:int -> ?on:(Hunk.t -> unit) -> int -> 'i t
+    witness:'i Buffer.t -> ?level:int -> ?on:(Hunk.t -> unit) -> int -> 'i t
   (** [default ~level ~on wbits] produces a new state to compute the Lz77
       algorithm in an input. [level] means the level of the compression
       (between 0 and 9), [on] is a function called when the algorithm produce
@@ -92,8 +92,8 @@ module type DEFLATE = sig
   end
 
   (** The state of the deflate algorithm. ['i] and ['o] are the implementation
-      used respectively for the input and the ouput, see {!B.st} and {!B.bs}.
-      The typer considers than ['i = 'o]. *)
+      used respectively for the input and the ouput, see {!Buffer.st} and
+      {!Buffer.bs}. The typer considers than ['i = 'o]. *)
   type ('i, 'o) t
 
   val pp_error : Format.formatter -> error -> unit
@@ -175,13 +175,13 @@ module type DEFLATE = sig
 
   val bits_remaining : ('x, 'x) t -> int
 
-  val default : witness:'a B.t -> ?wbits:int -> int -> ('a, 'a) t
+  val default : witness:'a Buffer.t -> ?wbits:int -> int -> ('a, 'a) t
   (** [default ~proof ?wbits level] makes a new state [t]. [~proof] is an ['a
-      B.t] specialized with an implementation (see {!B.st} or {!B.bs}) to
-      informs the state wich implementation you use.
+      Buffer.t] specialized with an implementation (see {!Buffer.st} or
+      {!Buffer.bs}) to informs the state wich implementation you use.
 
       [?wbits] (by default, [wbits = 15]) it's the size of the window used by
-      the Lz77 algorithm (see {!L.default}).
+      the Lz77 algorithm (see {!Lz77.default}).
 
       [?meth] can be specified to flush the internal buffer of the compression
       and create a new zlib block at [n] bytes specified.
@@ -214,20 +214,20 @@ module type DEFLATE = sig
     -> (Bytes.t -> int -> int)
     -> (Bytes.t, Bytes.t) t
     -> ((Bytes.t, Bytes.t) t, error) result
-  (** Specialization of {!to_result} with {!B.Bytes.t}. *)
+  (** Specialization of {!to_result} with {!Buffer.Bytes.t}. *)
 
   val bigstring :
-       B.Bigstring.t
-    -> B.Bigstring.t
+       Buffer.Bigstring.t
+    -> Buffer.Bigstring.t
     -> ?meth:meth * int
-    -> (B.Bigstring.t -> int option -> int)
-    -> (B.Bigstring.t -> int -> int)
-    -> (B.Bigstring.t, B.Bigstring.t) t
-    -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
-  (** Specialization of {!to_result} with {!B.Bigstring.t}. *)
+    -> (Buffer.Bigstring.t -> int option -> int)
+    -> (Buffer.Bigstring.t -> int -> int)
+    -> (Buffer.Bigstring.t, Buffer.Bigstring.t) t
+    -> ((Buffer.Bigstring.t, Buffer.Bigstring.t) t, error) result
+  (** Specialization of {!to_result} with {!Buffer.Bigstring.t}. *)
 end
 
-type error_deflate = Lz77 of L.error
+type error_deflate = Lz77 of Lz77.error
 
 module Deflate : DEFLATE with type error = error_deflate
 
@@ -237,7 +237,7 @@ module Deflate : DEFLATE with type error = error_deflate
     After one process, you can [reset] and reuse the window for a new process.
     This API is available to limit the allocation by Decompress. *)
 module Window : sig
-  (** The Window specialized by ['o] (see {!B.st} and {!B.bs}). *)
+  (** The Window specialized by ['o] (see {!Buffer.st} and {!Buffer.bs}). *)
   type ('o, 'k) t
 
   type 'k checksum
@@ -249,7 +249,7 @@ module Window : sig
   val crc32 : crc32 checksum
   val none : none checksum
 
-  val create : crc:'k checksum -> witness:'o B.t -> ('o, 'k) t
+  val create : crc:'k checksum -> witness:'o Buffer.t -> ('o, 'k) t
   (** [create ~proof] creates a new window. *)
 
   val reset : ('o, 'k) t -> ('o, 'k) t
@@ -269,8 +269,8 @@ module type INFLATE = sig
   type crc
 
   (** The state of the inflate algorithm. ['i] and ['o] are the implementation
-      used respectively for the input and the output, see {!B.st} and {!B.bs}.
-      The typer considers than ['i = 'o]. *)
+      used respectively for the input and the output, see {!Buffer.st} and
+      {!Buffer.bs}. The typer considers than ['i = 'o]. *)
   type ('i, 'o) t
 
   val pp_error : Format.formatter -> error -> unit
@@ -317,7 +317,7 @@ module type INFLATE = sig
   val bits_remaining : ('x, 'x) t -> int
 
   val default :
-    witness:'a B.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
+    witness:'a Buffer.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
   (** [default] makes a new state [t]. *)
 
   val to_result :
@@ -341,16 +341,16 @@ module type INFLATE = sig
     -> (Bytes.t -> int -> int)
     -> (Bytes.t, Bytes.t) t
     -> ((Bytes.t, Bytes.t) t, error) result
-  (** Specialization of {!to_result} with {!B.Bytes.t}. *)
+  (** Specialization of {!to_result} with {!Buffer.Bytes.t}. *)
 
   val bigstring :
-       B.Bigstring.t
-    -> B.Bigstring.t
-    -> (B.Bigstring.t -> int)
-    -> (B.Bigstring.t -> int -> int)
-    -> (B.Bigstring.t, B.Bigstring.t) t
-    -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
-  (** Specialization of {!to_result} with {!B.Bigstring.t}. *)
+       Buffer.Bigstring.t
+    -> Buffer.Bigstring.t
+    -> (Buffer.Bigstring.t -> int)
+    -> (Buffer.Bigstring.t -> int -> int)
+    -> (Buffer.Bigstring.t, Buffer.Bigstring.t) t
+    -> ((Buffer.Bigstring.t, Buffer.Bigstring.t) t, error) result
+  (** Specialization of {!to_result} with {!Buffer.Bigstring.t}. *)
 end
 
 type error_inflate =

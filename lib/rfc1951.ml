@@ -1,6 +1,7 @@
-module B = Decompress_impl.B
-module Hunk = Decompress_impl.Hunk
-module L = Decompress_impl.L
+open Impl
+module Buffer = Decompress_buffer
+module Hunk = Decompress_hunk
+module Lz77 = Decompress_lz77
 
 module type DEFLATE = sig
   type error
@@ -38,7 +39,7 @@ module type DEFLATE = sig
   val used_in : ('i, 'o) t -> int
   val used_out : ('i, 'o) t -> int
   val bits_remaining : ('x, 'x) t -> int
-  val default : witness:'a B.t -> ?wbits:int -> int -> ('a, 'a) t
+  val default : witness:'a Buffer.t -> ?wbits:int -> int -> ('a, 'a) t
 
   val to_result :
        'a
@@ -59,19 +60,19 @@ module type DEFLATE = sig
     -> ((Bytes.t, Bytes.t) t, error) result
 
   val bigstring :
-       B.Bigstring.t
-    -> B.Bigstring.t
+       Buffer.Bigstring.t
+    -> Buffer.Bigstring.t
     -> ?meth:meth * int
-    -> (B.Bigstring.t -> int option -> int)
-    -> (B.Bigstring.t -> int -> int)
-    -> (B.Bigstring.t, B.Bigstring.t) t
-    -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
+    -> (Buffer.Bigstring.t -> int option -> int)
+    -> (Buffer.Bigstring.t -> int -> int)
+    -> (Buffer.Bigstring.t, Buffer.Bigstring.t) t
+    -> ((Buffer.Bigstring.t, Buffer.Bigstring.t) t, error) result
 end
 
-type error_deflate = Decompress_impl.error_rfc1951_deflate = Lz77 of L.error
+type error_deflate = Decompress_deflate.error_rfc1951 = Lz77 of Lz77.error
 
-module Deflate = Decompress_impl.RFC1951_deflate
-module Window = Decompress_impl.Window
+module Deflate = Decompress_deflate.RFC1951
+module Window = Decompress_window
 
 module type INFLATE = sig
   type error
@@ -98,7 +99,7 @@ module type INFLATE = sig
   val bits_remaining : ('x, 'x) t -> int
 
   val default :
-    witness:'a B.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
+    witness:'a Buffer.t -> ?wbits:int -> ('a, crc) Window.t -> ('a, 'a) t
 
   val to_result :
        'a
@@ -117,15 +118,15 @@ module type INFLATE = sig
     -> ((Bytes.t, Bytes.t) t, error) result
 
   val bigstring :
-       B.Bigstring.t
-    -> B.Bigstring.t
-    -> (B.Bigstring.t -> int)
-    -> (B.Bigstring.t -> int -> int)
-    -> (B.Bigstring.t, B.Bigstring.t) t
-    -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
+       Buffer.Bigstring.t
+    -> Buffer.Bigstring.t
+    -> (Buffer.Bigstring.t -> int)
+    -> (Buffer.Bigstring.t -> int -> int)
+    -> (Buffer.Bigstring.t, Buffer.Bigstring.t) t
+    -> ((Buffer.Bigstring.t, Buffer.Bigstring.t) t, error) result
 end
 
-type error_inflate = Decompress_impl.error_rfc1951_inflate =
+type error_inflate = Decompress_inflate.error_rfc1951 =
   | Invalid_kind_of_block
   | Invalid_complement_of_length
   | Invalid_dictionary
@@ -133,7 +134,7 @@ type error_inflate = Decompress_impl.error_rfc1951_inflate =
   | Invalid_distance of {distance: int; max: int}
 
 module Inflate = struct
-  open Decompress_impl.RFC1951_inflate
+  open Decompress_inflate.RFC1951
 
   type crc = Window.none
   type nonrec ('i, 'o) t = ('i, 'o, crc) t

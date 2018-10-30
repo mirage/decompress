@@ -21,7 +21,7 @@ let compress ?(level = 4) data =
   (* We need to allocate an output buffer, is like you can. it's depends your
      capabilities of your writing. *)
   let pos = ref 0 in
-  let res = Buffer.create (String.length data) in
+  let res = Stdlib.Buffer.create (String.length data) in
   (* The buffer is not a good idea. In fact, we can have a memory problem with
      that (like if the output is too big). You need to keep in your mind that
      is insecure to let a buffer to grow automatically (an attacker can use
@@ -65,13 +65,13 @@ let compress ?(level = 4) data =
           pos := !pos + n ;
           n )
     (fun output_buffer len ->
-      Buffer.add_subbytes res output_buffer 0 len ;
+      Stdlib.Buffer.add_subbytes res output_buffer 0 len ;
       0xFFFF )
-    (Zlib_deflate.default ~witness:B.bytes level)
+    (Zlib_deflate.default ~witness:Buffer.bytes level)
   (* We can specify the level of the compression, see the documentation to know
      what we use for each level. The default is 4. *)
   |> function
-  | Ok _ -> Buffer.contents res | Error exn -> raise (Deflate_error exn)
+  | Ok _ -> Stdlib.Buffer.contents res | Error exn -> raise (Deflate_error exn)
 
 let uncompress data =
   let input_buffer = Bytes.create 0xFFFF in
@@ -79,7 +79,7 @@ let uncompress data =
      your reading. *)
   let output_buffer = Bytes.create 0xFFFF in
   (* Same as [compress]. *)
-  let window = Window.create ~crc:Window.adler32 ~witness:B.bytes in
+  let window = Window.create ~crc:Window.adler32 ~witness:Buffer.bytes in
   (* We allocate a window. We let the user to do that to reuse the window if
      it's needed. In fact, the window is a big buffer ([size = (1 << 15)]) and
      allocate this buffer costs.
@@ -87,7 +87,7 @@ let uncompress data =
      So in this case, we decompress only one time but if you want to decompress
      some flows, you can reuse this window after a [Window.reset]. *)
   let pos = ref 0 in
-  let res = Buffer.create (String.length data) in
+  let res = Stdlib.Buffer.create (String.length data) in
   Zlib_inflate.bytes input_buffer output_buffer
     (* Same logic as [compress]. *)
       (fun input_buffer ->
@@ -96,11 +96,11 @@ let uncompress data =
       pos := !pos + n ;
       n )
     (fun output_buffer len ->
-      Buffer.add_subbytes res output_buffer 0 len ;
+      Stdlib.Buffer.add_subbytes res output_buffer 0 len ;
       0xFFFF )
-    (Zlib_inflate.default ~witness:B.bytes window)
+    (Zlib_inflate.default ~witness:Buffer.bytes window)
   |> function
-  | Ok _ -> Buffer.contents res | Error exn -> raise (Inflate_error exn)
+  | Ok _ -> Stdlib.Buffer.contents res | Error exn -> raise (Inflate_error exn)
 
 let () =
   let example = "Wesh gro bi1 ? Toujours en place." in
