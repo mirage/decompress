@@ -6,76 +6,105 @@ type 'a t = Bytes : Bytes.t t | Bigstring : Bigstring.t t
 let bytes = Bytes
 let bigstring = Bigstring
 
-let create : type a. a t -> int -> a = function
-  | Bytes -> Bytes.create
-  | Bigstring -> Bigstring.create
+let create : type a. a t -> int -> a =
+ fun witness len ->
+  match witness with
+  | Bytes -> Bytes.create len
+  | Bigstring -> Bigstring.create len
 
-let length : type a. a t -> a -> int = function
-  | Bytes -> Bytes.length
-  | Bigstring -> Bigstring.length
+let length : type a. a t -> a -> int =
+ fun witness a ->
+  match witness with
+  | Bytes -> Bytes.length a
+  | Bigstring -> Bigstring.length a
 
-let get : type a. a t -> a -> int -> char = function
-  | Bytes -> Bytes.get
-  | Bigstring -> Bigstring.get
+let get : type a. a t -> a -> int -> char =
+ fun witness a i ->
+  match witness with Bytes -> Bytes.get a i | Bigstring -> Bigstring.get a i
 
-let set : type a. a t -> a -> int -> char -> unit = function
-  | Bytes -> Bytes.set
-  | Bigstring -> Bigstring.set
+let set : type a. a t -> a -> int -> char -> unit =
+ fun witness a i v ->
+  match witness with
+  | Bytes -> Bytes.set a i v
+  | Bigstring -> Bigstring.set a i v
 
-let get_16 : type a. a t -> a -> int -> int = function
-  | Bytes -> Bytes.get_16
-  | Bigstring -> Bigstring.get_16
+let get_16 : type a. a t -> a -> int -> int =
+ fun witness a i ->
+  match witness with
+  | Bytes -> Bytes.get_16 a i
+  | Bigstring -> Bigstring.get_16 a i
 
-let get_32 : type a. a t -> a -> int -> int32 = function
-  | Bytes -> Bytes.get_32
-  | Bigstring -> Bigstring.get_32
+let get_32 : type a. a t -> a -> int -> int32 =
+ fun witness a i ->
+  match witness with
+  | Bytes -> Bytes.get_32 a i
+  | Bigstring -> Bigstring.get_32 a i
 
-let get_64 : type a. a t -> a -> int -> int64 = function
-  | Bytes -> Bytes.get_64
-  | Bigstring -> Bigstring.get_64
+let get_64 : type a. a t -> a -> int -> int64 =
+ fun witness a i ->
+  match witness with
+  | Bytes -> Bytes.get_64 a i
+  | Bigstring -> Bigstring.get_64 a i
 
-let set_16 : type a. a t -> a -> int -> int -> unit = function
-  | Bytes -> Bytes.set_16
-  | Bigstring -> Bigstring.set_16
+let set_16 : type a. a t -> a -> int -> int -> unit =
+ fun witness a i v ->
+  match witness with
+  | Bytes -> Bytes.set_16 a i v
+  | Bigstring -> Bigstring.set_16 a i v
 
-let set_u32 : type a. a t -> a -> int -> int32 -> unit = function
-  | Bytes -> Bytes.set_32
-  | Bigstring -> Bigstring.set_32
+let set_32 : type a. a t -> a -> int -> int32 -> unit =
+ fun witness a i v ->
+  match witness with
+  | Bytes -> Bytes.set_32 a i v
+  | Bigstring -> Bigstring.set_32 a i v
 
-let set_64 : type a. a t -> a -> int -> int64 -> unit = function
-  | Bytes -> Bytes.set_64
-  | Bigstring -> Bigstring.set_64
+let set_64 : type a. a t -> a -> int -> int64 -> unit =
+ fun witness a i v ->
+  match witness with
+  | Bytes -> Bytes.set_64 a i v
+  | Bigstring -> Bigstring.set_64 a i v
 
-let sub : type a. a t -> a -> int -> int -> a = function
-  | Bytes -> Bytes.sub
-  | Bigstring -> Bigstring.sub
+let sub : type a. a t -> a -> int -> int -> a =
+ fun witness a o l ->
+  match witness with
+  | Bytes -> Bytes.sub a o l
+  | Bigstring -> Bigstring.sub a o l
 
-let fill : type a. a t -> a -> int -> int -> char -> unit = function
-  | Bytes -> Bytes.fill
-  | Bigstring ->
-      fun v off len chr -> Bigstring.fill (Bigstring.sub v off len) chr
+let fill : type a. a t -> a -> int -> int -> char -> unit =
+ fun witness a o l v ->
+  match witness with
+  | Bytes -> Bytes.fill a o l v
+  | Bigstring -> Bigstring.fill (Bigstring.sub a o l) v
 
-let blit : type a. a t -> a -> int -> a -> int -> int -> unit = function
-  | Bytes -> Bytes.blit
-  | Bigstring -> Bigstring.blit
+let blit : type a. a t -> a -> int -> a -> int -> int -> unit =
+ fun witness src src_off dst dst_off len ->
+  match witness with
+  | Bytes -> Bytes.blit src src_off dst dst_off len
+  | Bigstring -> Bigstring.blit src src_off dst dst_off len
 
 let blit2 : type a. a t -> a -> int -> a -> int -> a -> int -> int -> unit =
-  function
-  | Bytes -> Bytes.blit2
-  | Bigstring -> Bigstring.blit2
+ fun witness src src_off dst0 dst0_off dst1 dst1_off len ->
+  match witness with
+  | Bytes -> Bytes.blit2 src src_off dst0 dst0_off dst1 dst1_off len
+  | Bigstring -> Bigstring.blit2 src src_off dst0 dst0_off dst1 dst1_off len
 
 let blit_string : type a. a t -> string -> int -> a -> int -> int -> unit =
-  function
-  | Bytes -> Bytes.blit_string
-  | Bigstring -> Bigstring.blit_string
+ fun witness src src_off dst dst_off len ->
+  match witness with
+  | Bytes -> Bytes.blit_string src src_off dst dst_off len
+  | Bigstring -> Bigstring.blit_string src src_off dst dst_off len
 
-let pp : type a. a t -> Format.formatter -> a -> unit = function
-  | Bytes -> Bytes.pp
-  | Bigstring -> Bigstring.pp
+let pp : type a. a t -> Format.formatter -> a -> unit =
+ fun witness ppf a ->
+  match witness with
+  | Bytes -> Bytes.pp ppf a
+  | Bigstring -> Bigstring.pp ppf a
 
-let to_string : type a. a t -> a -> string = function
-  | Bytes -> Bytes.to_string
-  | Bigstring -> Bigstring.to_string
+let to_string : type a. a t -> a -> string =
+ fun witness a ->
+  match witness with
+  | Bytes -> Bytes.to_string a
+  | Bigstring -> Bigstring.to_string a
 
 let empty : type a. a t -> a = function
   | Bytes -> Bytes.empty

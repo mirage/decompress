@@ -4,23 +4,35 @@ open Bigarray
 
 type t = (char, int8_unsigned_elt, c_layout) Array1.t
 
-let length a = Array1.dim a
-let create l = Array1.create Char c_layout l
-let get a i = Array1.get a i
-let set a i v = Array1.set a i v
-let sub v o l = Array1.sub v o l
-let fill a v = Array1.fill a v
+let length (a : t) = Array1.dim a
+let create l : t = Array1.create Char c_layout l
+let get (a : t) i = Array1.get a i
+let set (a : t) i v = Array1.set a i v
+let sub (v : t) o l = Array1.sub v o l
+let fill (a : t) v = Array1.fill a v
 
-external unsafe_get : t -> int -> char = "%caml_ba_unsafe_ref_1"
+external unsafe_get : t -> int -> char = "%caml_ba_unsafe_ref_1" [@@noalloc]
+
 external unsafe_set : t -> int -> char -> unit = "%caml_ba_unsafe_set_1"
+  [@@noalloc]
 
-let copy v =
+let copy (v : t) =
   let v' = create (length v) in
   Array1.blit v v' ; v'
 
 external get_unsafe_16 : t -> int -> int = "%caml_bigstring_get16u"
 external get_unsafe_32 : t -> int -> int32 = "%caml_bigstring_get32u"
 external get_unsafe_64 : t -> int -> int64 = "%caml_bigstring_get64u"
+(* specialization: polymorphic compiler primitives can't be aliases as this
+   does not play well with inlining - if aliased without a type annotation, the
+   compiler would implement them using the generic code doing a C call, and
+   it's this code that would be inlined - as a result we have to copy the
+   declaration here. *)
+external ( < ) : 'a -> 'a -> bool = "%lessthan"
+external ( > ) : 'a -> 'a -> bool = "%greaterthan"
+
+let ( > ) (x : int) y = x > y
+let ( < ) (x : int) y = x < y
 
 let get_16 t i =
   if i < 0 || i > length t - 2 then invalid_arg "Bigstring.get_16"
@@ -28,27 +40,27 @@ let get_16 t i =
 
 let get_32 t i =
   if i < 0 || i > length t - 4 then invalid_arg "Bigstring.get_32"
-  else get_unsafe_32 t i
+  else (* allocation *) get_unsafe_32 t i
 
 let get_64 t i =
   if i < 0 || i > length t - 8 then invalid_arg "Bigstring.get_64"
-  else get_unsafe_64 t i
+  else (* allocation *) get_unsafe_64 t i
 
 external set_unsafe_16 : t -> int -> int -> unit = "%caml_bigstring_set16u"
 external set_unsafe_32 : t -> int -> int32 -> unit = "%caml_bigstring_set32u"
 external set_unsafe_64 : t -> int -> int64 -> unit = "%caml_bigstring_set64u"
 
-let set_16 t i =
+let set_16 t i v =
   if i < 0 || i > length t - 2 then invalid_arg "Bigstring.set_16"
-  else set_unsafe_16 t i
+  else set_unsafe_16 t i v
 
-let set_32 t i =
+let set_32 t i v =
   if i < 0 || i > length t - 4 then invalid_arg "Bigstring.set_32"
-  else set_unsafe_32 t i
+  else set_unsafe_32 t i v
 
-let set_64 t i =
+let set_64 t i v =
   if i < 0 || i > length t - 8 then invalid_arg "Bigstring.set_64"
-  else set_unsafe_64 t i
+  else set_unsafe_64 t i v
 
 let to_string v =
   let buf = Bytes.create (length v) in
