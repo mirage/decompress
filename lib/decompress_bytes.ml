@@ -2,9 +2,19 @@ let invalid_arg fmt = Format.ksprintf (fun s -> invalid_arg s) fmt
 
 include Bytes
 
-external get_unsafe_16 : t -> int -> int = "%caml_string_get16u"
+external get_unsafe_16 : t -> int -> int = "%caml_string_get16u" [@@noalloc]
 external get_unsafe_32 : t -> int -> int32 = "%caml_string_get32u"
 external get_unsafe_64 : t -> int -> int64 = "%caml_string_get64u"
+(* specialization: polymorphic compiler primitives can't be aliases as this
+   does not play well with inlining - if aliased without a type annotation, the
+   compiler would implement them using the generic code doing a C call, and
+   it's this code that would be inlined - as a result we have to copy the
+   declaration here. *)
+external ( < ) : 'a -> 'a -> bool = "%lessthan"
+external ( > ) : 'a -> 'a -> bool = "%greaterthan"
+
+let ( > ) (x : int) y = x > y
+let ( < ) (x : int) y = x < y
 
 let get_16 t i =
   if i < 0 || i > length t - 2 then invalid_arg "Bytes.get_16"
@@ -12,27 +22,32 @@ let get_16 t i =
 
 let get_32 t i =
   if i < 0 || i > length t - 4 then invalid_arg "Bytes.get_32"
-  else get_unsafe_32 t i
+  else (* allocation *) get_unsafe_32 t i
 
 let get_64 t i =
   if i < 0 || i > length t - 8 then invalid_arg "Bytes.get_64"
-  else get_unsafe_64 t i
+  else (* allocation *) get_unsafe_64 t i
 
 external set_unsafe_16 : t -> int -> int -> unit = "%caml_string_set16u"
+  [@@noalloc]
+
 external set_unsafe_32 : t -> int -> int32 -> unit = "%caml_string_set32u"
+  [@@noalloc]
+
 external set_unsafe_64 : t -> int -> int64 -> unit = "%caml_string_set64u"
+  [@@noalloc]
 
-let set_16 t i =
+let set_16 t i v =
   if i < 0 || i > length t - 2 then invalid_arg "Bytes.set_16"
-  else set_unsafe_16 t i
+  else set_unsafe_16 t i v
 
-let set_32 t i =
+let set_32 t i v =
   if i < 0 || i > length t - 4 then invalid_arg "Bytes.set_32"
-  else set_unsafe_32 t i
+  else set_unsafe_32 t i v
 
-let set_64 t i =
+let set_64 t i v =
   if i < 0 || i > length t - 8 then invalid_arg "Bytes.set_64"
-  else set_unsafe_64 t i
+  else set_unsafe_64 t i v
 
 let unsafe_blit src src_off dst dst_off len =
   for i = 0 to len - 1 do
