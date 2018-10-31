@@ -1,41 +1,41 @@
-module B = Decompress_b
+module Buffer = Decompress_buffer
 
 type ro = [`Rd]
 type wo = [`Wr]
 type ('a, 'i) t = 'i constraint 'a = [< `Rd | `Wr]
 
-let rw : 'i B.t -> 'i -> ([ro | wo], 'i) t = fun _p v -> v
-let ro : 'i B.t -> 'i -> (ro, 'i) t = fun _p v -> v
-let wo : 'i B.t -> 'i -> (wo, 'i) t = fun _p v -> v
-let length = B.length
-let get = B.get
-let set = B.set
-let get_16 = B.get_16
-let get_32 = B.get_32
-let get_64 = B.get_64
-let sub_ro = B.sub
-let sub_rw = B.sub
-let fill = B.fill
-let blit = B.blit
-let blit2 = B.blit2
-let pp = B.pp
-let to_string = B.to_string
+let rw : 'i Buffer.t -> 'i -> ([ro | wo], 'i) t = fun _p v -> v
+let ro : 'i Buffer.t -> 'i -> (ro, 'i) t = fun _p v -> v
+let wo : 'i Buffer.t -> 'i -> (wo, 'i) t = fun _p v -> v
+let length = Buffer.length
+let get = Buffer.get
+let set = Buffer.set
+let get_16 = Buffer.get_16
+let get_32 = Buffer.get_32
+let get_64 = Buffer.get_64
+let sub_ro = Buffer.sub
+let sub_rw = Buffer.sub
+let fill = Buffer.fill
+let blit = Buffer.blit
+let blit2 = Buffer.blit2
+let pp = Buffer.pp
+let to_string = Buffer.to_string
 let of_string : string -> (ro, string) t = fun x -> x
 
 let blit_string : type a.
-    a B.t -> ([> ro], string) t -> int -> ([> wo], a) t -> int -> int -> unit =
-  B.blit_string
+    a Buffer.t -> ([> ro], string) t -> int -> ([> wo], a) t -> int -> int -> unit =
+  Buffer.blit_string
 
 let adler32 : type a.
-    a B.t -> a -> int -> int -> Checkseum.Adler32.t -> Checkseum.Adler32.t =
+    a Buffer.t -> a -> int -> int -> Checkseum.Adler32.t -> Checkseum.Adler32.t =
   function
-  | B.Bytes -> Checkseum.Adler32.digest_bytes
-  | B.Bigstring -> Checkseum.Adler32.digest_bigstring
+  | Buffer.Bytes -> Checkseum.Adler32.digest_bytes
+  | Buffer.Bigstring -> Checkseum.Adler32.digest_bigstring
 
 let crc32 : type a.
-    a B.t -> a -> int -> int -> Checkseum.Crc32.t -> Checkseum.Crc32.t =
+    a Buffer.t -> a -> int -> int -> Checkseum.Crc32.t -> Checkseum.Crc32.t =
   function
-  | B.Bytes -> Checkseum.Crc32.digest_bytes
-  | B.Bigstring -> Checkseum.Crc32.digest_bigstring
+  | Buffer.Bytes -> Checkseum.Crc32.digest_bytes
+  | Buffer.Bigstring -> Checkseum.Crc32.digest_bigstring
 
 external unsafe : ('a, 'i) t -> 'i = "%identity"

@@ -1,6 +1,10 @@
-module B = Decompress_impl.B
-module Hunk = Decompress_impl.Hunk
-module L = Decompress_impl.L
+open Impl
+module Buffer = Decompress_buffer
+module Hunk = Decompress_hunk
+module Lz77 = Decompress_lz77
+module OS = Decompress_os
+module Inflate = Decompress_inflate
+module Deflate = Decompress_deflate
 
 module type DEFLATE = sig
   type error
@@ -37,7 +41,7 @@ module type DEFLATE = sig
 
   val used_in : ('i, 'o) t -> int
   val used_out : ('i, 'o) t -> int
-  val default : witness:'a B.t -> ?wbits:int -> int -> ('a, 'a) t
+  val default : witness:'a Buffer.t -> ?wbits:int -> int -> ('a, 'a) t
 
   val to_result :
        'a
@@ -58,30 +62,27 @@ module type DEFLATE = sig
     -> ((Bytes.t, Bytes.t) t, error) result
 
   val bigstring :
-       B.Bigstring.t
-    -> B.Bigstring.t
+       Buffer.Bigstring.t
+    -> Buffer.Bigstring.t
     -> ?meth:meth * int
-    -> (B.Bigstring.t -> int option -> int)
-    -> (B.Bigstring.t -> int -> int)
-    -> (B.Bigstring.t, B.Bigstring.t) t
-    -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
+    -> (Buffer.Bigstring.t -> int option -> int)
+    -> (Buffer.Bigstring.t -> int -> int)
+    -> (Buffer.Bigstring.t, Buffer.Bigstring.t) t
+    -> ((Buffer.Bigstring.t, Buffer.Bigstring.t) t, error) result
 end
 
-type error_rfc1951_deflate = Decompress_impl.error_rfc1951_deflate =
-  | Lz77 of L.error
+type error_rfc1951_deflate = Deflate.error_rfc1951 = Lz77 of Lz77.error
 
-module RFC1951_deflate = Decompress_impl.RFC1951_deflate
+module RFC1951_deflate = Deflate.RFC1951
 
-type error_z_deflate = Decompress_impl.error_z_deflate =
-  | RFC1951 of error_rfc1951_deflate
+type error_z_deflate = Deflate.error_z = RFC1951 of error_rfc1951_deflate
 
-module Zlib_deflate = Decompress_impl.Zlib_deflate
+module Zlib_deflate = Deflate.Zlib
 
-type error_g_deflate = Decompress_impl.error_g_deflate =
-  | RFC1951 of error_rfc1951_deflate
+type error_g_deflate = Deflate.error_g = RFC1951 of error_rfc1951_deflate
 
-module Gzip_deflate = Decompress_impl.Gzip_deflate
-module Window = Decompress_impl.Window
+module Gzip_deflate = Deflate.Gzip
+module Window = Decompress_window
 
 module type INFLATE = sig
   type error
@@ -123,15 +124,15 @@ module type INFLATE = sig
     -> ((Bytes.t, Bytes.t) t, error) result
 
   val bigstring :
-       B.Bigstring.t
-    -> B.Bigstring.t
-    -> (B.Bigstring.t -> int)
-    -> (B.Bigstring.t -> int -> int)
-    -> (B.Bigstring.t, B.Bigstring.t) t
-    -> ((B.Bigstring.t, B.Bigstring.t) t, error) result
+       Buffer.Bigstring.t
+    -> Buffer.Bigstring.t
+    -> (Buffer.Bigstring.t -> int)
+    -> (Buffer.Bigstring.t -> int -> int)
+    -> (Buffer.Bigstring.t, Buffer.Bigstring.t) t
+    -> ((Buffer.Bigstring.t, Buffer.Bigstring.t) t, error) result
 end
 
-type error_rfc1951_inflate = Decompress_impl.error_rfc1951_inflate =
+type error_rfc1951_inflate = Inflate.error_rfc1951 =
   | Invalid_kind_of_block
   | Invalid_complement_of_length
   | Invalid_dictionary
@@ -139,7 +140,7 @@ type error_rfc1951_inflate = Decompress_impl.error_rfc1951_inflate =
   | Invalid_distance of {distance: int; max: int}
 
 module RFC1951_inflate = struct
-  open Decompress_impl.RFC1951_inflate
+  open Inflate.RFC1951
 
   type crc = Window.none
   type nonrec ('i, 'o) t = ('i, 'o, crc) t
@@ -160,16 +161,14 @@ module RFC1951_inflate = struct
   let pp_error = pp_error
 end
 
-module OS = Decompress_impl.OS
-
-type error_z_inflate = Decompress_impl.error_z_inflate =
+type error_z_inflate = Inflate.error_z =
   | RFC1951 of RFC1951_inflate.error
   | Invalid_header
   | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
 
-module Zlib_inflate = Decompress_impl.Zlib_inflate
+module Zlib_inflate = Inflate.Zlib
 
-type error_g_inflate = Decompress_impl.error_g_inflate =
+type error_g_inflate = Inflate.error_g =
   | RFC1951 of RFC1951_inflate.error
   | Invalid_header
   | Invalid_header_checksum of
@@ -178,4 +177,4 @@ type error_g_inflate = Decompress_impl.error_g_inflate =
   | Invalid_checksum of {have: Checkseum.Adler32.t; expect: Checkseum.Adler32.t}
   | Invalid_size of {have: Optint.t; expect: Optint.t}
 
-module Gzip_inflate = Decompress_impl.Gzip_inflate
+module Gzip_inflate = Inflate.Gzip
