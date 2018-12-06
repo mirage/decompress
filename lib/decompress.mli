@@ -19,11 +19,11 @@ end
 module Hunk : sig
   type t =
     | Match of (int * int)
-        (** [Match (len, dist)] where [len] and [dist] are biased. The really
-            [len] is [len + 3] and the really [dist] is [dist + 1].
+        (** [Match (len, dist)] where [len] and [dist] are biased. The really [len]
+            is [len + 3] and the really [dist] is [dist + 1].
 
-            A [Match] means a repeating previous pattern of [len + 3] byte(s)
-            at [dist + 1] before the current cursor. *)
+            A [Match] means a repeating previous pattern of [len + 3] byte(s) at
+            [dist + 1] before the current cursor. *)
     | Literal of char  (** [Literal chr] means a character. *)
 end
 
@@ -35,9 +35,7 @@ end
     This algorithm is the same as {{:blosclz}https://github.com/Blosc/c-blosc}.
     So the implementation is an imperative hack in OCaml. May be it's not the
     best in the functionnal world but it works. The interface was thinked to be
-    replaced by your implemenation by a functor.
-
-    The functor was not done now but may be soonly. So, TODO! *)
+    replaced by your implemenation by a functor. *)
 module Lz77 : sig
   (** Lz77 error. *)
   type error =
@@ -45,8 +43,7 @@ module Lz77 : sig
         (** This error appears when you try to compute the Lz77 algorithm with
             a wrong level ([level >= 0 && level <= 9]). *)
     | Invalid_wbits of int
-        (** This error appears when you specify a bad wbits: [wbits >= 8 &&
-            wbits <= 15] *)
+        (** This error appears when you specify a bad wbits: [wbits >= 8 && wbits <= 15] *)
 
   (** The state of the Lz77 algorithm. *)
   type 'i t
@@ -63,8 +60,8 @@ module Lz77 : sig
 
   val default :
     witness:'i Buffer.t -> ?level:int -> ?on:(Hunk.t -> unit) -> int -> 'i t
-  (** [default ~level ~on wbits] produces a new state to compute the Lz77
-      algorithm in an input. [level] means the level of the compression
+  (** [default ~witness ~level ~on wbits] produces a new state to compute the
+      Lz77 algorithm in an input. [level] means the level of the compression
       (between 0 and 9), [on] is a function called when the algorithm produce
       one [Hunk.t] and [wbits] is the window size allowed.
 
@@ -73,7 +70,7 @@ module Lz77 : sig
       the window size.
 
       [on] is a function to interact fastly with your data-structure and keep
-      the frequencies of the [Literal] and [Match]. *)
+      frequencies of [Literal] and [Match]. *)
 end
 
 module OS : sig
@@ -101,8 +98,8 @@ module type DEFLATE = sig
   end
 
   (** The state of the deflate algorithm. ['i] and ['o] are the implementation
-      used respectively for the input and the ouput, see {!Buffer.st} and
-      {!Buffer.bs}. The typer considers than ['i = 'o]. *)
+      used respectively for the input and the ouput, see {!Buffer.bytes} and
+      {!Buffer.bigstring}. The typer considers than ['i = 'o]. *)
   type ('i, 'o) t
 
   val pp_error : Format.formatter -> error -> unit
@@ -116,9 +113,9 @@ module type DEFLATE = sig
       See {!F.t}. *)
 
   val set_frequencies : ?paranoid:bool -> F.t -> ('i, 'o) t -> ('i, 'o) t
-  (** [set_frequencies f t] replaces the frequencies of the state [t] by [f].
-      The paranoid mode (if [paranoid = true]) checks if the frequencies can be
-      used with the internal [Hunk.t list]. That means, for all characters and
+  (** [set_frequencies f t] replaces frequencies of the state [t] by [f]. The
+      paranoid mode (if [paranoid = true]) checks if the frequencies can be used
+      with the internal [Hunk.t list]. That means, for all characters and
       patterns (see {!Hunk.t}), the binding frequencie must be [> 0] (however,
       this check takes a long time).
 
@@ -170,11 +167,14 @@ module type DEFLATE = sig
        | `End of ('a, 'a) t
        | `Error of ('a, 'a) t * error ]
   (** [eval i o t] computes the state [t] with the input [i] and the ouput [o].
-      This function returns: - [`Await t]: the state [t] waits a new input -
-      [`Flush t]: the state [t] completes the output, may be you use {!flush}.
-      - [`End t]: means that the deflate algorithm is done in your input. May
-      be [t] writes something in your output. You can check with {!used_out}. -
-      [`Error (t, exn)]: the algorithm catches an error [exn]. *)
+      This function returns:
+
+      {ul
+      {- [`Await t]: the state [t] waits a new input}
+      {- [`Flush t]: the state [t] completes the output, may be you use {!flush}.}
+      {- [`End t]: means that the deflate algorithm is done in your input. May
+         be [t] writes something in your output. You can check with {!used_out}.}
+      {- [`Error (t, exn)]: the algorithm catches an error [exn].}} *)
 
   val used_in : ('i, 'o) t -> int
   (** [used_in t] returns how many byte(s) was used by [t] in the input. *)
@@ -183,9 +183,9 @@ module type DEFLATE = sig
   (** [used_out t] returns how many byte(s) was used by [t] in the output. *)
 
   val default : witness:'a Buffer.t -> ?wbits:int -> int -> ('a, 'a) t
-  (** [default ~proof ?wbits level] makes a new state [t]. [~proof] is an ['a
-      Buffer.t] specialized with an implementation (see {!Buffer.st} or
-      {!Buffer.bs}) to informs the state wich implementation you use.
+  (** [default ~witness ?wbits level] makes a new state [t]. [~witness] is an
+      ['a Buffer.t] specialized with an implementation (see {!Buffer.bytes} or
+      {!Buffer.bigstring}) to informs the state wich implementation you use.
 
       [?wbits] (by default, [wbits = 15]) it's the size of the window used by
       the Lz77 algorithm (see {!Lz77.default}).
@@ -193,10 +193,12 @@ module type DEFLATE = sig
       [?meth] can be specified to flush the internal buffer of the compression
       and create a new zlib block at [n] bytes specified.
 
-      [level] is level compression: - 0: a stored compression (no compression)
-      - 1 .. 3: a fixed compression (compression with a static huffman tree) -
-      4 .. 9: a dynamic compression (compression with a canonic huffman tree
-      produced by the input) *)
+      [level] is level compression:
+      {ul
+      {- 0: a stored compression (no compression)}
+      {- 1 .. 3: a fixed compression (compression with a static huffman tree)}
+      {- 4 .. 9: a dynamic compression (compression with a canonic huffman tree
+         produced by the input)}} *)
 
   val to_result :
        'a
@@ -263,8 +265,7 @@ module Gzip_deflate : sig
     -> ?os:OS.t
     -> int
     -> ('a, 'a) t
-
-  (** [default] uses a constant value for wbit. *)
+  (** [default] uses a constant value for [wbit]. *)
 end
 
 (** Window used by the Inflate algorithm.
@@ -273,7 +274,7 @@ end
     After one process, you can [reset] and reuse the window for a new process.
     This API is available to limit the allocation by Decompress. *)
 module Window : sig
-  (** The Window specialized by ['o] (see {!Buffer.st} and {!Buffer.bs}). *)
+  (** The Window specialized by ['o] (see {!Buffer.bytes} and {!Buffer.bigstring}). *)
   type ('o, 'k) t
 
   type 'k checksum
@@ -282,11 +283,17 @@ module Window : sig
   type none
 
   val adler32 : adler32 checksum
+  (** Adler-32 algorithm. *)
+
   val crc32 : crc32 checksum
+  (** CRC-32 algorithm. *)
+
   val none : none checksum
+  (** Avoid checksum computation (no algorithm). *)
 
   val create : crc:'k checksum -> witness:'o Buffer.t -> ('o, 'k) t
-  (** [create ~proof] creates a new window. *)
+  (** [create ~crc ~witness] creates a new window with a specific [crc]
+      algorithm (see {!adler32}, {!crc32} and {!none}). *)
 
   val reset : ('o, 'k) t -> ('o, 'k) t
   (** [reset window] resets a window to be reused by an Inflate algorithm. *)
@@ -305,8 +312,8 @@ module type INFLATE = sig
   type crc
 
   (** The state of the inflate algorithm. ['i] and ['o] are the implementation
-      used respectively for the input and the output, see {!Buffer.st} and
-      {!Buffer.bs}. The typer considers than ['i = 'o]. *)
+      used respectively for the input and the output, see {!Buffer.bytes} and
+      {!Buffer.bigstring}. The typer considers than ['i = 'o]. *)
   type ('i, 'o) t
 
   val pp_error : Format.formatter -> error -> unit
@@ -326,12 +333,12 @@ module type INFLATE = sig
   (** [eval i o t] computes the state [t] with the input [i] and the output
       [o]. This function returns:
 
-      {ul {- [`Await t]: the state [t] waits a new input, may be you use
-      {!refill}.} {- [`Flush t]: the state [t] completes the output, may be you
-      use {!flush}.} {- [`End t]: means that the deflate algorithm is done in
-      your input. May be [t] writes something in your output. You can check
-      with {!used_out}.} {- [`Error (t, exn)]: the algorithm catches an error
-      [exn].}} *)
+      {ul
+      {- [`Await t]: the state [t] waits a new input, may be you use {!refill}.}
+      {- [`Flush t]: the state [t] completes the output, may be you use {!flush}.}
+      {- [`End t]: means that the deflate algorithm is done in your input.
+         May be [t] writes something in your output. You can check with {!used_out}.}
+      {- [`Error (t, exn)]: the algorithm catches an error [exn].}} *)
 
   val refill : int -> int -> ('i, 'o) t -> ('i, 'o) t
   (** [refill off len t] allows the state [t] to use an output at [off] on
