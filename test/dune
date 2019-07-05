@@ -2,7 +2,7 @@
  (name test_on_files)
  (package decompress)
  (modules test_on_files)
- (libraries checkseum.c decompress re.str camlzip alcotest bos unix))
+ (libraries mmap checkseum.c decompress re.str camlzip alcotest bos))
 
 (test
  (name test_rfc1951)
