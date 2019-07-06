@@ -24,6 +24,7 @@ depends: [
   "dune"       {build}
   "base-bytes"
   "base-bigarray"
+  "mmap"
   "optint"
   "checkseum"
   "camlzip"    {with-test & >= "1.07"}

@@ -31,7 +31,7 @@ let string_of_file filename =
 let bigstring_of_file filename =
   let i = Unix.openfile filename [Unix.O_RDONLY] 0o644 in
   let m =
-    Bigarray.array1_of_genarray (Unix.map_file i ~pos:0L
+    Bigarray.array1_of_genarray (Mmap.V1.map_file i ~pos:0L
       Bigarray.Char Bigarray.c_layout false [|(-1)|])
   in
   at_exit (fun () -> Unix.close i) ;
