@@ -2,7 +2,7 @@
 
 * Add support of 4.07 and 4.08 in Travis (@XVilka, @dinosaure, #70, #71)
 * Use `mmap` (@XVilka, @dinosaure, @hannesm, #68, #69, #71)
-* Update documenation (@yurug, @dinosaure, #65, #66)
+* Update documentation (@yurug, @dinosaure, #65, #66)
 * Micro-optimization about specialization (@dinosaure, #64)
 * Re-organize internals of `decompress` (@dinosaure, #63) 
 * GZIP support (@clecat, review by @dinosaure, @cfcs, @hannesm, #60)
