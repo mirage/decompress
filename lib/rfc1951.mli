@@ -1,7 +1,7 @@
 module Buffer : sig
   module Bigstring : sig
     type t =
-      (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+      (char, Bigarray_compat.int8_unsigned_elt, Bigarray_compat.c_layout) Bigarray_compat.Array1.t
   end
 
   type 'a t = Bytes : Bytes.t t | Bigstring : Bigstring.t t
