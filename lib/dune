@@ -19,7 +19,7 @@
  (flags (:standard -w +1..49 -w -4-41-44))
  (ocamlopt_flags (:standard -unbox-closures -unbox-closures-factor 20))
  (public_name decompress.impl)
- (libraries bigarray checkseum))
+ (libraries bigarray-compat checkseum))
 
 (library
  (name decompress)
