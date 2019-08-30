@@ -3,7 +3,7 @@
 ** breaking changes **
 
 `decompress.1.0.0` is 3 times faster about decompression than before. A huge
-work was done to improve performance and coverage.
+[amount of work was done](https://tarides.com/blog/2019-08-26-decompress-the-new-decompress-api.html) to improve performance and coverage.
 
 The main reason to update the API is to fix a bad design about encoder and split
 compression and encoding. User is able to implement a new compression algorithm
