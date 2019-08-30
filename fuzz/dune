@@ -1,14 +1,3 @@
-(library
+(executable
  (name fuzz)
- (modules fuzz)
- (libraries checkseum.c decompress fmt crowbar))
-
-(executable
- (name fuzz_zlib)
- (modules fuzz_zlib)
- (libraries fuzz))
-
-(executable
- (name fuzz_gzip)
- (modules fuzz_gzip)
- (libraries fuzz))
+ (libraries bigstringaf camlzip hxd.string checkseum.c dd crowbar))

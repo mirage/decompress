@@ -1,11 +1,16 @@
-(test
- (name test_on_files)
- (package decompress)
- (modules test_on_files)
- (libraries mmap checkseum.c decompress re.str camlzip alcotest bos))
+(executable
+ (name test)
+ (modules test)
+ (libraries hxd.string bigstringaf checkseum.c dd zz alcotest))
 
-(test
- (name test_rfc1951)
- (package rfc1951)
- (modules test_rfc1951)
- (libraries checkseum.c rfc1951 alcotest))
+(alias
+ (name runtest)
+ (package decompress)
+ (deps (:test test.exe) (source_tree corpus))
+ (action (run %{test} --color=always)))
+
+(alias
+ (name runtest)
+ (package decompress)
+ (deps (:test test_h.exe))
+ (action (run %{test} --color=always)))

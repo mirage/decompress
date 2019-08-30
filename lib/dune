@@ -1,34 +1,11 @@
 (library
- (name impl)
- (modules decompress_buffer
-          decompress_bigstring
-          decompress_bytes
-          decompress_hunk
-          decompress_lz77
-          decompress_q
-          decompress_safe
-          decompress_seq
-          decompress_os
-          decompress_tree
-          decompress_window
-          decompress_inflate
-          decompress_deflate
-          decompress_heap
-          decompress_option
-          decompress_tables)
- (flags (:standard -w +1..49 -w -4-41-44))
- (ocamlopt_flags (:standard -unbox-closures -unbox-closures-factor 20))
- (public_name decompress.impl)
- (libraries bigarray checkseum))
+ (name dd)
+ (public_name decompress.dd)
+ (modules dd)
+ (libraries checkseum fmt bigarray-compat))
 
 (library
- (name decompress)
- (modules decompress)
- (public_name decompress)
- (libraries checkseum decompress.impl))
-
-(library
- (name rfc1951)
- (modules rfc1951)
- (public_name rfc1951)
- (libraries checkseum decompress.impl))
+ (name zz)
+ (public_name decompress.zz)
+ (modules zz)
+ (libraries dd))
