@@ -23,7 +23,7 @@ depends: [
   "bigarray-compat"
   "optint"
   "checkseum"   {>= "0.1.0"}
-  "bigstringaf" {with-test & >= "1.07"}
+  "bigstringaf" {with-test}
   "alcotest"    {with-test}
   "hxd"         {with-test}
 ]
