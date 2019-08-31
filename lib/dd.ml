@@ -2094,7 +2094,7 @@ module N = struct
            ; hold := !hold lsr 16
            ; bits := !bits - 16
            ; o_pos := !o_pos + 2
-           ; emit e ) in
+           ; if e.o_max - !o_pos + 1 > 1 then emit e ) in
     (* [emit] is recursive to consume until [!bits] >= 16. Otherwise, process
        can overflow [!hold]. *)
 
