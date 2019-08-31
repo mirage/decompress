@@ -5,12 +5,12 @@
 `decompress.1.0.0` is 3 times faster about decompression than before. A huge
 [amount of work was done](https://tarides.com/blog/2019-08-26-decompress-the-new-decompress-api.html) to improve performance and coverage.
 
-The main reason to update the API is to fix a bad design about encoder and split
+The main reason to update the API is to fix a bad design decision regarding split
 compression and encoding. User is able to implement a new compression algorithm
 and use it.
 
 Release comes with regressions:
-- `decompress` only support `Bigarray` now
+- `decompress` only supports `Bigarray` now, not `Bytes`
 - GZIP layer does not exist anymore
 - state of RFC1951 encoder/decoder is not referentially transparent anymore
 
@@ -28,11 +28,11 @@ Of course, v1.0.0 comes with fixes and improvements:
 
 API of them are pretty-close to what `decompress.v0.9.0` does with some
 advantages on `dd`:
-- User can use his compression algorithm instead to use `Dd.L`
-- encoder allows a better control about what it emits (which block, when, where)
+- User can use their own compression algorithm instead of `Dd.L`
+- encoder exposes more granular control over what it emits (which block, when, where)
 - Huffman tree generation is out of `dd`
 
-As a response of #25, `dd` provides an _higher_ API like `camlzip`.
+As a response to #25, `dd` provides a _higher_ level API resembling `camlzip`.
 
 ### v0.9.0 2019-07-10 Paris (France)
 
