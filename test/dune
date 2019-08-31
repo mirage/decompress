@@ -8,9 +8,3 @@
  (package decompress)
  (deps (:test test.exe) (source_tree corpus))
  (action (run %{test} --color=always)))
-
-(alias
- (name runtest)
- (package decompress)
- (deps (:test test_h.exe))
- (action (run %{test} --color=always)))
