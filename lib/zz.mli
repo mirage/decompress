@@ -1,6 +1,6 @@
 (** {1 ZLIB layer.}
 
-    ZLIB is a standard on top of RFC1951. It uses [dd] implementation with LZ77
+    ZLIB is a standard on top of RFC1951. It uses the {!Dd} implementation with the LZ77
    compression algorithm. Module provides non-blocking streaming codec to
    {{:#decode}decode} and {{:#encode}encode} ZLIB encoding. It can efficiently
    work payload by payload without blocking IO. *)
@@ -12,7 +12,7 @@ type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.
 (** The type for [bigstring]. *)
 
 type window = Dd.window
-(** The type for windows. *)
+(** The type for sliding windows. *)
 
 val io_buffer_size : int
 (** IO_BUFFER_SIZE 4.0.0 *)
@@ -20,11 +20,11 @@ val io_buffer_size : int
 (** {2:decode ZLIB Decoder.}
 
     Despite [dd], [zz] provides a referentially transparent {!M.decoder}. The client
-   must use [decoder] given {b by} {!M.decode} instead [decoder] given {b to}
+   must use a {!M.decoder} given {b by} {!M.decode} instead of a [decoder] given {b to}
    {!M.decode}. A common use of [zz] is:
 
      {[
-let rec go d0 = match M.decod d0 with
+let rec go d0 = match M.decode d0 with
   | `Await d1 -> ... go d1
   | `Flush d1 -> ... go d1
   | _ -> ... in
@@ -48,13 +48,13 @@ module M : sig
 
       [zz], as [dd], uses [o] buffer as internal buffer to store output. We
      recommend to allocate an {!io_buffer_size} buffer as output buffer. Then,
-     {!dst_rem} gives you how many bytes it remains in [o].
+     {!dst_rem}[ decoder] tells you how many unused bytes remain in [o].
 
       {b Window.}
 
-      ZLIB has an header to notice length of window needed to inflate given
+      ZLIB has a header to specify the window size needed to inflate a given
      input. When [zz] knows that, it calls [allocate] with a number [bits] so
-     that [1 lsl bits] is length of window. [bits] can not be upper than 15 and
+     that [1 lsl bits] is the size of the window. [bits] can not be larger than 15 nor
      lower than 8. [allocate] can be [fun bits -> Dd.make_window ~bits] or a
      previously allocated window. [decoder] will take the ownership on it! *)
 
@@ -63,18 +63,18 @@ module M : sig
 
       {ul
       {- [`Await d1] if [d0] has a [`Manual] input source and awaits for more
-     input. The client must use {!src} with [d1] to provide it.}
+     input. The client must use a {!src} with [d1] to provide it.}
       {- [`Flush d1] if given output buffer [o] (see {!decoder}) is full. The
      client must use {!flush} with [d1] to {b completely} flush [o]. {!dst_rem}
-     gives you how many bytes it remains in [o]. [M.dst_rem d1 - bigstring_length o]
+     gives you how many bytes it remains in [o]. [bigstring_length o - M.dst_rem d1]
      gives you how many bytes are available.}
       {- [`Malformed err] if given input is malformed. [err] is a human-readable
-     error.}
+     error message.}
       {- [`End d1] if given input notify end of flow. [o] is possibly not
      empty (it can be check with {!dst_rem}).}} *)
 
   val reset : decoder -> decoder
-  (** [reset d] is a decoder as is when it was created by {!decoder}. *)
+  (** [reset d] is a [d] in its original state, as it was initialized by {!decoder}. *)
 
   val src : decoder -> bigstring -> int -> int -> decoder
   (** [src d s j l] provides [d] with [l] bytes to read, starting at [j] in [s].
@@ -85,10 +85,10 @@ module M : sig
      range. *)
 
   val dst_rem : decoder -> int
-  (** [dst_rem d] is how many bytes it remains in given output buffer [o]. *)
+  (** [dst_rem d] is how many unused bytes remain in the output buffer of [d]. *)
 
   val src_rem : decoder -> int
-  (** [src_rem d] is how many bytes it remains in given input buffer. *)
+  (** [src_rem d] is how many unprocessed bytes remain in the input buffer of [d]. *)
 
   val write : decoder -> int
   (** [write d] is how many bytes [d] emitted since it was created. *)
@@ -100,12 +100,12 @@ end
 
 (** {2:encode ZLIB Encoder.}
 
-    ZLIB encoder is glue between LZ77 algorithm and DEFLATE encoder surrounded
-   by ZLIB header. Any deal with compression algorithm is not possible on this
-   layer (see [dd] for more details). As {!M} and despite [dd], [zz] provides a
+    ZLIB encoder is glue between the LZ77 algorithm and the DEFLATE encoder, prefixed with a
+   ZLIB header. Any deal with compression algorithm is not possible on this
+   layer (see {!Dd} for more details). As {!M}, and unlike {!Dd}, {!Zz} provides a
    referentially transparent encoder.
 
-    The client must use [encoder] given {b by} {!N.encode} instead [encoder]
+    The client must use the {!N.encoder} given {b by} {!N.encode} instead a [encoder]
    given {b to} {!N.encode}. *)
 
 module N : sig
@@ -132,14 +132,15 @@ module N : sig
 
       [encoder] deals internally with compression algorithm and DEFLATE encoder.
      To pass compression values to DEFLATE encoder, we need a queue [q]. Length
-     of it can be a bottleneck where a small one will let {!encode} to emit too
+     of [q] has an impact on performance, and small lengths can be a bottleneck, leading {!encode} to emit
      many [`Flush]. We recommend a queue as large as output buffer.
 
       {b Window.}
 
       ZLIB is able to constrain length of window used to do LZ77 compression.
      However, small window can slow-down LZ77 compression algorithm. Small
-     window is mostly used to be able to inflate output into hostile
+     windows are mostly used to enable inflation of output in memory-constrained environments,
+     for example when compressed data from untrusted sources must be processed.
      environment.
 
       {b Level.}

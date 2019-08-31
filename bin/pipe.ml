@@ -145,7 +145,7 @@ let command =
   let exits = Term.default_exits in
   let man =
     [ `S "Description"
-    ; `P "$(tname) takes a standard input and write in standard output the compressed/uncompressed data." ] in
+    ; `P "$(tname) reads from standard input and writes the compressed/decompressed data to standard output." ] in
   Term.(pure run $ deflate $ format),
   Term.info "pipe" ~exits ~doc ~man
 
