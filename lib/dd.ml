@@ -427,7 +427,7 @@ module Window = struct
   let mask = (1 lsl 15) - 1
 
   let[@warning "-32"] make () =
-    { raw= Bigarray.Array1.create Bigarray.char Bigarray.c_layout max
+    { raw= bigstring_create max
     ; w= 0
     ; c= Checkseum.Adler32.default }
 
