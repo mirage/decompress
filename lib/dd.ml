@@ -2688,8 +2688,8 @@ module Higher = struct
       | `Malformed err -> failwith err in
     decompress ()
 
-  let to_string ~i ~w ~q ~refill =
-    let buf = Buffer.create 4096 in
+  let to_string ?(buffer= 4096) ~i ~w ~q ~refill =
+    let buf = Buffer.create buffer in
     let state = L.state `Manual ~q ~w in
     let encoder = N.encoder (`Buffer buf) ~q in
     let kind = ref N.Fixed in

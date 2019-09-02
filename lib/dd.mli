@@ -449,7 +449,7 @@ module Higher : sig
      how many bytes it wrote. *)
 
   val of_string : o:bigstring -> w:window -> string -> flush:(bigstring -> int -> unit) -> unit
-  val to_string : i:bigstring -> w:window -> q:B.t -> refill:(bigstring -> int) -> string
+  val to_string : ?buffer:int -> i:bigstring -> w:window -> q:B.t -> refill:(bigstring -> int) -> string
 end
 
 (** / **)
