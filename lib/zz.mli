@@ -15,7 +15,6 @@ type window = Dd.window
 (** The type for sliding windows. *)
 
 val io_buffer_size : int
-(** IO_BUFFER_SIZE 4.0.0 *)
 
 (** {2:decode ZLIB Decoder.}
 

@@ -34,7 +34,6 @@ val bigstring_length : bigstring -> int
 (** [bigtring_length t] is the length of the bigstring, in bytes. *)
 
 val io_buffer_size : int
-(** IO_BUFFER_SIZE 4.0.0 *)
 
 (** {2 Window.} *)
 
