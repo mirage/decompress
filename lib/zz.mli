@@ -18,7 +18,7 @@ val io_buffer_size : int
 
 (** {2:decode ZLIB Decoder.}
 
-    Despite [dd], [zz] provides a referentially transparent {!M.decoder}. The client
+    Unlike [dd], [zz] provides a referentially transparent {!M.decoder}. The client
    must use a {!M.decoder} given {b by} {!M.decode} instead of a [decoder] given {b to}
    {!M.decode}. A common use of [zz] is:
 
@@ -55,7 +55,10 @@ module M : sig
      input. When [zz] knows that, it calls [allocate] with a number [bits] so
      that [1 lsl bits] is the size of the window. [bits] can not be larger than 15 nor
      lower than 8. [allocate] can be [fun bits -> Dd.make_window ~bits] or a
-     previously allocated window. [decoder] will take the ownership on it! *)
+     previously allocated window. [decoder] will take the {i ownership} on it!
+
+      Ownership in our case means that {!decode} will mutate it in-place and expet
+     it to remain unchanged between invocations. *)
 
   val decode : decoder -> decode
   (** [decode d0] is:
@@ -63,14 +66,19 @@ module M : sig
       {ul
       {- [`Await d1] if [d0] has a [`Manual] input source and awaits for more
      input. The client must use a {!src} with [d1] to provide it.}
-      {- [`Flush d1] if given output buffer [o] (see {!decoder}) is full. The
-     client must use {!flush} with [d1] to {b completely} flush [o]. {!dst_rem}
-     gives you how many bytes it remains in [o]. [bigstring_length o - M.dst_rem d1]
-     gives you how many bytes are available.}
+      {- [`Flush d1] if given output buffer [o] (see {!decoder}) needs to be
+     drained before work ca be resumed. The client must use {!flush} with [d1]
+     to {b completely} flush [o]. Usually [o] will be full and consist fully of
+     bytes that need to be copied from the buffer, but sometimes only the first
+     part of the buffer is used. In those cases {!dst_rem} will give you the
+     amount of free/unused bytes remain in [o]. These shoud {b not} be copied
+     since their contents are not part of the output. Instead, the first
+     [bigstring_length o - M.dst_rem d1] bytes should be copied when flushing
+     [o].}
       {- [`Malformed err] if given input is malformed. [err] is a human-readable
      error message.}
-      {- [`End d1] if given input notify end of flow. [o] is possibly not
-     empty (it can be check with {!dst_rem}).}} *)
+      {- [`End d1] if given input notify end of flow. [o] is possibly not empty
+     (it can be check with {!dst_rem}).}} *)
 
   val reset : decoder -> decoder
   (** [reset d] is a [d] in its original state, as it was initialized by {!decoder}. *)
