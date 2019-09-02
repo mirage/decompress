@@ -1875,6 +1875,8 @@ module N = struct
     | `Literal chr, Dynamic dynamic ->
       dynamic.ltree.T.tree.Lookup.t.(Char.code chr) lsr _max_bits > 0
     | `Copy (off, len), Dynamic dynamic ->
+      (* assert (len >= 3 && len <= 255 + 3) ; *)
+      (* assert (off >= 1 && off <= 32767 + 1) ; *)
       dynamic.ltree.T.tree.Lookup.t.(256 + 1 + _length.(len - 3)) lsr _max_bits > 0
       && dynamic.dtree.T.tree.Lookup.t.(_distance (pred off)) lsr _max_bits > 0
     | `End, (Fixed | Dynamic _) | `Literal _, (Flat _ | Fixed) | `Copy _, Fixed -> true
