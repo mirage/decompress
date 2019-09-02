@@ -15,7 +15,7 @@ Release comes with regressions:
 - state of RFC1951 encoder/decoder is not referentially transparent anymore
 
 Of course, v1.0.0 comes with fixes and improvements:
-- `decompress` is able to compress/uncompress Calgary corpus
+- `decompress` is able to compress/uncompress [Calgary corpus](https://en.wikipedia.org/wiki/Calgary_corpus)
 - tests are improved and they include all coverage tests from `zlib`
 - compression algorithm has a fuzzer
 - encoder has a fuzzer
