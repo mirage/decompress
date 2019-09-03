@@ -57,7 +57,7 @@ module M : sig
      lower than 8. [allocate] can be [fun bits -> Dd.make_window ~bits] or a
      previously allocated window. [decoder] will take the {i ownership} on it!
 
-      Ownership in our case means that {!decode} will mutate it in-place and expet
+      Ownership in our case means that {!decode} will mutate it in-place and expect
      it to remain unchanged between invocations. *)
 
   val decode : decoder -> decode
@@ -184,8 +184,7 @@ module N : sig
       {- [`Await e1] if [e0] has a [`Manual] input source and awaits for more
      input. The client must use {!src} with [e1] to provide it.}
       {- [`Flush e1] if [e1] has a [`Manual] destination and needs more output
-     storage. The client must use {!dst} with [e1] to provide new buffer and
-     then call {!encode}.}
+     storage. The client must drain the buffer before resuming operation.}
       {- [`End e1] if [e1] encoded all input. Output buffer is possibly not
      empty (it can be check with {!dst_rem}).}} *)
 end
