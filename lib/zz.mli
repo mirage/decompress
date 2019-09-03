@@ -159,7 +159,7 @@ module N : sig
   (** [src_rem e] is how many bytes it remains in given input buffer. *)
 
   val dst_rem : encoder -> int
-  (** [dst_rem e] is how many bytes it remains in given output buffer. *)
+  (** [dst_rem e] is how many unused bytes remain in the output buffer of [e]. *)
 
   val src : encoder -> bigstring -> int -> int -> encoder
   (** [src e s j l] provides [e] with [l] bytes to read, starting at [j] in [s].
