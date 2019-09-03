@@ -31,7 +31,7 @@ val bigstring_create : int -> bigstring
 (** [bigstring_create len] returns a uninitialized bigstring of length [len]. *)
 
 val bigstring_length : bigstring -> int
-(** [bigtring_length t] is the length of the bigstring, in bytes. *)
+(** [bigstring_length t] is the length of the bigstring [t], in bytes. *)
 
 val io_buffer_size : int
 

@@ -71,7 +71,7 @@ module M : sig
      to {b completely} flush [o]. Usually [o] will be full and consist fully of
      bytes that need to be copied from the buffer, but sometimes only the first
      part of the buffer is used. In those cases {!dst_rem} will give you the
-     amount of free/unused bytes remain in [o]. These shoud {b not} be copied
+     amount of free/unused bytes remain in [o]. These should {b not} be copied
      since their contents are not part of the output. Instead, the first
      [bigstring_length o - M.dst_rem d1] bytes should be copied when flushing
      [o].}
