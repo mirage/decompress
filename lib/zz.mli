@@ -38,7 +38,7 @@ module M : sig
      provide input with {!src}. With [`String] or [`Channel] source the client
      can safely discard [`Await] case (with [assert false]). *)
 
-  type decode = [ `Await of decoder | `Flush of decoder | `End of decoder | `Malformed of string ]
+  type signal = [ `Await of decoder | `Flush of decoder | `End of decoder | `Malformed of string ]
 
   val decoder : src -> o:bigstring -> allocate:(int -> window) -> decoder
   (** [decoder src ~o ~allocate] is a decoder that inputs from [src].
@@ -60,7 +60,7 @@ module M : sig
       Ownership in our case means that {!decode} will mutate it in-place and expect
      it to remain unchanged between invocations. *)
 
-  val decode : decoder -> decode
+  val decode : decoder -> signal
   (** [decode d0] is:
 
       {ul

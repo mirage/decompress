@@ -141,13 +141,13 @@ module M = struct
     ; t : bigstring
     ; t_need : int
     ; t_len : int
-    ; k : decoder -> decode }
+    ; k : decoder -> signal }
   and dd =
     | Dd of { state : Dd.M.decoder
             ; window : Dd.window
             ; o : Dd.bigstring }
     | Hd of { o : Dd.bigstring }
-  and decode =
+  and signal =
     [ `Await of decoder
     | `Flush of decoder
     | `End of decoder
