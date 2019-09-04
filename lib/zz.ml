@@ -358,7 +358,7 @@ module N = struct
     ; w : Dd.window
     ; state : state
     ; k : encoder -> [ `Await of encoder | `Flush of encoder | `End of encoder ] }
-  and state = Hd | Dd
+  and state = Hd (* header process *)| Dd (* DEFLATE process *)
 
   type ret = [ `Await of encoder | `End of encoder | `Flush of encoder ]
 
