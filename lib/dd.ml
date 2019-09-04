@@ -815,10 +815,17 @@ module M = struct
       if !nlen != 0xffff - !len
       then err_invalid_complement_of_length d
       else ( d.hold <- 0 ; d.bits <- 0 ; d.l <- !len ; d.s <- Flat ; flat d ) in
-    let bits = d.bits in
-    d.bits <- (d.bits / 8) * 8 ;
-    d.hold <- d.hold asr (bits - d.bits) ;
-    let required = 4 - (d.bits / 8) in
+    d.hold <- d.hold asr (d.bits land 7) ;
+    (* XXX(cfcs): diff between [d.bits] and [d.bits rounede down to nearest multiple of 8]. *)
+    let truncated_bits = d.bits land (lnot 7) in
+    (* XXX(cfcs): round down to nearest multiple of 8, logical equivalents:
+       d.bits land (lnot (8 - 1))
+       d.bits land (lnot 7)
+
+       For some reason saving this variable locally instead of accessing [d.bits] twice
+       shaves off one instruction when compiling with [flambda]. *)
+    d.bits <- truncated_bits ;
+    let required = 4 - (truncated_bits asr 3) in
     d.s <- Flat_header ;
     t_need d required ; t_fill k d
 
