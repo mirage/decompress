@@ -491,3 +491,34 @@ module N = struct
 
   let encode e = e.k e
 end
+
+module Higher = struct
+  let compress ?(level= 4) ~w ~q ~i ~o ~refill ~flush =
+    let encoder = N.encoder `Manual `Manual ~q ~w ~level in
+    let rec go encoder = match N.encode encoder with
+      | `Await encoder ->
+        let len = refill i in
+        go (N.src encoder i 0 len)
+      | `Flush encoder ->
+        let len = bigstring_length o - N.dst_rem encoder in
+        flush o len ; go (N.dst encoder o 0 (bigstring_length o))
+      | `End encoder ->
+        let len = bigstring_length o - N.dst_rem encoder in
+        if len > 0 then flush o len in
+    go (N.dst encoder o 0 (bigstring_length o))
+
+  let uncompress ~allocate ~i ~o ~refill ~flush =
+    let decoder = M.decoder `Manual ~allocate ~o in
+    let rec go decoder = match M.decode decoder with
+      | `Await decoder ->
+        let len = refill i in
+        go (M.src decoder i 0 len)
+      | `Flush decoder ->
+        let len = bigstring_length o - M.dst_rem decoder in
+        flush o len ; go (M.flush decoder)
+      | `End decoder ->
+        let len = bigstring_length o - M.dst_rem decoder in
+        if len > 0 then flush o len
+      | `Malformed err -> failwith err in
+    go decoder
+end

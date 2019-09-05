@@ -188,3 +188,50 @@ module N : sig
       {- [`End e1] if [e1] encoded all input. Output buffer is possibly not
      empty (it can be check with {!dst_rem}).}} *)
 end
+
+module Higher : sig
+  val compress :
+    ?level:int ->
+    w:window ->
+    q:Dd.B.t ->
+    i:bigstring ->
+    o:bigstring ->
+    refill:(bigstring -> int) ->
+    flush:(bigstring -> int -> unit) -> unit
+  (** [compress ?level ~w ~q ~i ~o ~refill ~flush] is [Zlib.compress] (with
+     [~header:true]) provided by [camlzip] package.
+
+      {ul
+      {- [w] is the window used by LZ77 compression algorithm.}
+      {- [q] is shared-queue between compression algorithm and DEFLATE encoder.}
+      {- [i] is input buffer.}
+      {- [o] is output buffer.}}
+
+      When [compress] wants more input, it calls [refill] with [i]. The client
+     returns how many bytes he wrote into [i]. If he returns 0, he signals end
+     of input.
+
+      When [compress] has written output buffer, it calls [flush] with [o] and
+     how many bytes it wrote. *)
+
+  val uncompress :
+    allocate:(int -> window) ->
+    i:bigstring ->
+    o:bigstring ->
+    refill:(bigstring -> int) ->
+    flush:(bigstring -> int -> unit) -> unit
+  (** [uncompress ~allocate ~i ~o ~refill ~flush] is [Zlib.uncompress] (with
+     [~header:true]) provided by [camlzip] package.
+
+      {ul
+      {- [allocate] is the allocator of window used by LZ77 uncompression algorithm}
+      {- [i] is input buffer.}
+      {- [o] is output buffer.}}
+
+      When [compress] wants more input, it calls [refill] with [i]. The client
+     returns how many bytes he wrote into [i]. If he returns 0, he signals end
+     of input.
+
+      When [compress] has written output buffer, it calls [flush] with [o] and
+     how many bytes it wrote. *)
+end

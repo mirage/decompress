@@ -1,6 +1,7 @@
 open Dd (* au detail *)
 
 let w = make_window ~bits:15
+let i = bigstring_create io_buffer_size
 let o = bigstring_create io_buffer_size
 let q = B.create 4096
 
@@ -1076,6 +1077,34 @@ let git_object () =
     | `End _ -> () in
   go_i0 decoder
 
+let emitter_from_string x =
+  let pos = ref 0 in
+  (fun i ->
+     let len = min (String.length x - !pos) (Bigstringaf.length i) in
+     Bigstringaf.blit_from_string x ~src_off:!pos i ~dst_off:0 ~len ;
+     pos := !pos + len ; len)
+
+let producer_to_string () =
+  let buf = Buffer.create 0x100 in
+  (fun o len -> Buffer.add_string buf (Bigstringaf.substring o ~off:0 ~len)),
+  (fun () -> Buffer.contents buf)
+
+let higher_zlib input =
+  Alcotest.test_case "higher" `Quick @@ fun () ->
+  let refill = emitter_from_string input in
+  let flush, contents = producer_to_string () in
+  Zz.Higher.compress ~level:0 ~w ~q ~i ~o ~refill ~flush ;
+  Fmt.epr "%S\n%!" (contents ()) ;
+  let refill = emitter_from_string (contents ()) in
+  let flush, contents = producer_to_string () in
+  Zz.Higher.uncompress ~allocate:(fun _ -> w) ~i ~o ~refill ~flush ;
+  Alcotest.(check string) "higher" input (contents ())
+
+let higher_zlib0 () = higher_zlib "aaaa"
+let higher_zlib1 () = higher_zlib "bbbb"
+let higher_zlib2 () = higher_zlib "abcd"
+let higher_zlib3 () = higher_zlib "Le diable me remet dans le mal"
+
 let () =
   Alcotest.run "z"
     [ "invalids", [ invalid_complement_of_length ()
@@ -1160,4 +1189,8 @@ let () =
               ; test_corpus_with_zlib "progp"
               ; test_corpus_with_zlib "trans" ]
     ; "hang", [ hang0 () ]
-    ; "git", [ git_object () ] ]
+    ; "git", [ git_object () ]
+    ; "higher", [ higher_zlib0 ()
+                ; higher_zlib1 ()
+                ; higher_zlib2 ()
+                ; higher_zlib3 () ] ]
