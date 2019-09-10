@@ -5,6 +5,12 @@
  (libraries checkseum fmt bigarray-compat))
 
 (library
+ (name rfc1951)
+ (public_name rfc1951)
+ (modules dd)
+ (libraries checkseum fmt bigarray-compat))
+
+(library
  (name zz)
  (public_name decompress.zz)
  (modules zz)
