@@ -2061,18 +2061,18 @@ module N = struct
 
     if e.bits > 8
     then ( let k e =
-              e.hold <- 0 ;
-              e.bits_rem <- `Rem (16 - e.bits) ;
-              e.bits <- 0 ;
-              k e in
-            c_short (e.hold land 0xffff) k e )
+             e.hold <- 0 ;
+             e.bits_rem <- `Rem (16 - e.bits) ;
+             e.bits <- 0 ;
+             k e in
+           c_short (e.hold land 0xffff) k e )
     else if e.bits > 0
     then ( let k e =
-              e.hold <- 0 ;
-              e.bits_rem <- `Rem (8 - e.bits) ;
-              e.bits <- 0 ;
-              k e in
-            c_byte (e.hold land 0xff) k e )
+             e.hold <- 0 ;
+             e.bits_rem <- `Rem (8 - e.bits) ;
+             e.bits <- 0 ;
+             k e in
+           c_byte (e.hold land 0xff) k e )
     else k e
 
   let rec block e = function
@@ -2144,6 +2144,14 @@ module N = struct
           let len1, v1 = _extra_lbits.(code), len - _base_length.(code)  in
           (* len1_max: 5 *)
 
+          hold :=
+                  (v1 lsl (!bits + len0))
+              lor (v0 lsl !bits)
+              lor !hold ;
+          bits := !bits + len0 + len1 ;
+
+          emit e ;
+
           let code = _distance off in
           let len2, v2 = Lookup.get dtree code in
           (* len2_max: 15 *)
@@ -2151,14 +2159,11 @@ module N = struct
           (* len3_max: 13 *)
 
           hold :=
-                  (v3 lsl (!bits + len0 + len1 + len2))
-              lor (v2 lsl (!bits + len0 + len1))
-              lor (v1 lsl (!bits + len0))
-              lor (v0 lsl !bits)
+                  (v3 lsl (!bits + len2))
+              lor (v2 lsl !bits)
               lor !hold ;
-          bits := !bits + len0 + len1 + len2 + len3 ;
+          bits := !bits + len2 + len3 ;
           (* len_max: 48 *)
-          emit e
       done ;
 
       e.hold <- !hold ;
