@@ -2075,6 +2075,8 @@ module N = struct
            c_byte (e.hold land 0xff) k e )
     else k e
 
+  exception Flush_bits of { hold : int; bits : int }
+
   let rec block e = function
     | `Block block ->
       let k e = match block.kind with
@@ -2086,6 +2088,44 @@ module N = struct
       e.blk <- block ; k e
     | (`Flush | `Await) as v -> encode e v (* TODO: not really clear. *)
 
+  and flush_bits ~bits ~hold k e =
+    let bits = ref bits in
+    let hold = ref hold in
+    let rem = o_rem e in
+
+    if rem > 2
+    then
+      ( if e.bits >= 16
+        then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
+             ; e.hold <- e.hold lsr 16
+             ; e.bits <- e.bits - 16
+             ; e.o_pos <- e.o_pos + 2 ) ;
+
+        e.hold <- ((!hold land 0xffff) lsl e.bits) lor e.hold ;
+        e.bits <- e.bits + (min 16 !bits) ;
+        hold := !hold lsr (min 16 !bits) ;
+        bits := !bits - (min 16 !bits) ;
+
+        if e.bits >= 16
+        then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
+             ; e.hold <- e.hold lsr 16
+             ; e.bits <- e.bits - 16
+             ; e.o_pos <- e.o_pos + 2 ) ;
+
+        e.hold <- ((!hold land 0xffff) lsl e.bits) lor e.hold ;
+        e.bits <- e.bits + (min 16 !bits) ;
+        hold := !hold lsr (min 16 !bits) ;
+        bits := !bits - (min 16 !bits) ;
+
+        if e.bits >= 16
+        then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
+             ; e.hold <- e.hold lsr 16
+             ; e.bits <- e.bits - 16
+             ; e.o_pos <- e.o_pos + 2 ) ;
+
+        k e )
+      else Fmt.failwith "Dd.flush_bits"
+
   and write e =
     let o_pos = ref e.o_pos in
     let hold = ref e.hold in
@@ -2096,6 +2136,7 @@ module N = struct
 
     let k_ok e = e.k <- encode ; `Ok in
     let k_nw e = e.k <- block ; `Block in
+    let k_flush_bits ~bits ~hold e = flush (flush_bits ~bits ~hold k_ok) e in
 
     let rec emit e =
       if !bits >= 16
@@ -2133,37 +2174,66 @@ module N = struct
           bits := !bits + len ;
           emit e
         | false ->
-          (* XXX(dinosaue): this code (in the worst case) works only on a
-             64-bits platform where [!hold] should be able to store at least 48
-             bits. TODO! *)
+          (* XXX(dinosaure): explanation is needed here.
+
+             At the beginning, encode was made on a 64-bit processor. [int] is 63-bit
+             in this architecture. By this way, in ANY context, any _op-code_ can fit
+             into [hold] (bigger _op-code_ is 48 bits).
+
+             However, in 32-bit processor, this assertion is false. We reach sometimes
+             the limit (31 bits) and must emit [short] to avoid overflow. However, in
+             some cases, we can not:
+             - store more bits into [hold]
+             - emit [short] into output
+
+             In this REAL bad case, we raise [Flush_bits] with delayed bits. Then, we ask
+             the client to flush output and store current [hold] and delayed bits into new output.
+             An final assertion is to have an output bigger than 2 bytes in any case
+             which is fair enough, I think ...
+
+             [flush_bits] can be reached with [news] Calgary file. *)
           let off, len = cmd land 0xffff, (cmd lsr 16) land 0x1ff in
 
           let code = _length.(len) in
           let len0, v0 = Lookup.get ltree (code + 256 + 1) in
-          (* len0_max: 15 *)
           let len1, v1 = _extra_lbits.(code), len - _base_length.(code)  in
-          (* len1_max: 5 *)
-
-          hold :=
-                  (v1 lsl (!bits + len0))
-              lor (v0 lsl !bits)
-              lor !hold ;
-          bits := !bits + len0 + len1 ;
-
-          emit e ;
 
           let code = _distance off in
           let len2, v2 = Lookup.get dtree code in
-          (* len2_max: 15 *)
           let len3, v3 = _extra_dbits.(code), off - _base_dist.(code) in
-          (* len3_max: 13 *)
 
-          hold :=
-                  (v3 lsl (!bits + len2))
-              lor (v2 lsl !bits)
-              lor !hold ;
-          bits := !bits + len2 + len3 ;
-          (* len_max: 48 *)
+          (* len0_max: 15, 15 + 15 = 30. *)
+
+          hold := (v0 lsl !bits) lor !hold ;
+          bits := !bits + len0 ;
+          emit e ;
+
+          (* len1_max: 5, 15 + 5 = 20 *)
+
+          hold := (v1 lsl !bits) lor !hold ;
+          bits := !bits + len1 ;
+          if e.o_max - !o_pos + 1 > 1
+          then emit e
+          else raise_notrace (Flush_bits { bits= len2 + len3; hold= (v3 lsl len2) lor v2 } ) ;
+
+          (* len2_max: 15, 15 + 15 = 30 *)
+
+          hold := (v2 lsl !bits) lor !hold ;
+          bits := !bits + len2 ;
+          if e.o_max - !o_pos + 1 > 1
+          then emit e
+          else if !bits + len3 + 15 > 31
+          then raise_notrace (Flush_bits { bits= len3; hold= v3 } ) ;
+
+          (* len3_max: 13, 15 + 13 = 28 *)
+
+          hold := (v3 lsl !bits) lor !hold ;
+          bits := !bits + len3 ;
+
+          if e.o_max - !o_pos + 1 > 1
+          then emit e
+          else if !bits + 15 > 31
+          then raise_notrace (Flush_bits { bits= 0; hold= 0 } ) ;
       done ;
 
       e.hold <- !hold ;
@@ -2173,6 +2243,12 @@ module N = struct
       (* XXX(dinosaure): at least we need 2 bytes in any case. *)
       if o_rem e > 1 then k_ok e else flush write e
     with
+    | Flush_bits { bits= bits'; hold= hold' } ->
+      e.hold <- !hold ;
+      e.bits <- !bits ;
+      e.o_pos <- !o_pos ;
+
+      k_flush_bits ~bits:bits' ~hold:hold' e
     | Leave ->
       ( match e.blk with
         | { kind= Dynamic dynamic; _ } ->
