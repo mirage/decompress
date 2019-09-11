@@ -977,7 +977,7 @@ let compress_and_uncompress ic =
     | `Ok -> partial pending @@ M.decode decoder
     | `Block -> assert false in
 
-  compress () ; Pervasives.seek_in ic 0 ;
+  compress () ; Stdlib.seek_in ic 0 ;
   let contents = Buffer.contents b in
 
   let rec slow_compare pos =
