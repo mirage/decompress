@@ -1,17 +1,17 @@
 (library
- (name dd)
- (public_name decompress.dd)
- (modules dd)
+ (name de)
+ (public_name decompress.de)
+ (modules de)
  (libraries checkseum fmt bigarray-compat))
 
 (library
  (name rfc1951)
  (public_name rfc1951)
- (modules dd)
+ (modules de)
  (libraries checkseum fmt bigarray-compat))
 
 (library
- (name zz)
- (public_name decompress.zz)
- (modules zz)
- (libraries dd))
+ (name zl)
+ (public_name decompress.zl)
+ (modules zl)
+ (libraries de))

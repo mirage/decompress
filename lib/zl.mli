@@ -11,25 +11,25 @@ module Bigarray = Bigarray_compat
 type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 (** The type for [bigstring]. *)
 
-type window = Dd.window
+type window = De.window
 (** The type for sliding windows. *)
 
 val io_buffer_size : int
 
 (** {2:decode ZLIB Decoder.}
 
-    Unlike [dd], [zz] provides a referentially transparent {!M.decoder}. The client
-   must use a {!M.decoder} given {b by} {!M.decode} instead of a [decoder] given {b to}
-   {!M.decode}. A common use of [zz] is:
+    Unlike [de], [zl] provides a referentially transparent {!Inf.decoder}. The client
+   must use a {!Inf.decoder} given {b by} {!Inf.decode} instead of a [decoder] given {b to}
+   {!Inf.decode}. A common use of [zl] is:
 
      {[
-let rec go d0 = match M.decode d0 with
+let rec go d0 = match Inf.decode d0 with
   | `Await d1 -> ... go d1
   | `Flush d1 -> ... go d1
   | _ -> ... in
      ]} *)
 
-module M : sig
+module Inf : sig
   type decoder
   (** The type for decoders. *)
 
@@ -45,16 +45,16 @@ module M : sig
 
       {b Output buffer.}
 
-      [zz], as [dd], uses [o] buffer as internal buffer to store output. We
+      [zl], as [de], uses [o] buffer as internal buffer to store output. We
      recommend to allocate an {!io_buffer_size} buffer as output buffer. Then,
      {!dst_rem}[ decoder] tells you how many unused bytes remain in [o].
 
       {b Window.}
 
       ZLIB has a header to specify the window size needed to inflate a given
-     input. When [zz] knows that, it calls [allocate] with a number [bits] so
+     input. When [zl] knows that, it calls [allocate] with a number [bits] so
      that [1 lsl bits] is the size of the window. [bits] can not be larger than 15 nor
-     lower than 8. [allocate] can be [fun bits -> Dd.make_window ~bits] or a
+     lower than 8. [allocate] can be [fun bits -> De.make_window ~bits] or a
      previously allocated window. [decoder] will take the {i ownership} on it!
 
       Ownership in our case means that {!decode} will mutate it in-place and expect
@@ -73,7 +73,7 @@ module M : sig
      part of the buffer is used. In those cases {!dst_rem} will give you the
      amount of free/unused bytes remain in [o]. These should {b not} be copied
      since their contents are not part of the output. Instead, the first
-     [bigstring_length o - M.dst_rem d1] bytes should be copied when flushing
+     [bigstring_length o - Inf.dst_rem d1] bytes should be copied when flushing
      [o].}
       {- [`Malformed err] if given input is malformed. [err] is a human-readable
      error message.}
@@ -112,10 +112,10 @@ end
    layer (see {!Dd} for more details). As {!M}, and unlike {!Dd}, {!Zz} provides a
    referentially transparent encoder.
 
-    The client must use the {!N.encoder} given {b by} {!N.encode} instead a [encoder]
-   given {b to} {!N.encode}. *)
+    The client must use the {!Def.encoder} given {b by} {!Def.encode} instead a [encoder]
+   given {b to} {!Def.encode}. *)
 
-module N : sig
+module Def : sig
   type src = [ `Channel of in_channel | `String of string | `Manual ]
   (** The type for input sources. With a [`Manual] source the client must
      provide input with {!src}. With [`String] or [`Channel] source the client
@@ -131,7 +131,7 @@ module N : sig
 
   type ret = [ `Await of encoder | `End of encoder | `Flush of encoder ]
 
-  val encoder : src -> dst -> q:Dd.B.t -> w:window -> level:int -> encoder
+  val encoder : src -> dst -> q:De.Queue.t -> w:window -> level:int -> encoder
   (** [encoder src dst ~q ~w ~level] is an encoder that inputs from [src] and
      that outputs to [dst].
 
@@ -195,7 +195,7 @@ module Higher : sig
   val compress :
     ?level:int ->
     w:window ->
-    q:Dd.B.t ->
+    q:De.Queue.t ->
     i:bigstring ->
     o:bigstring ->
     refill:(bigstring -> int) ->

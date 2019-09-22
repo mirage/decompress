@@ -417,7 +417,7 @@ module Heap = struct
     | Node (p, e, _, _) as queue -> (p, e, remove queue)
 end
 
-module Window = struct
+module WInf = struct
   type t =
     { raw : bigstring
     ; mutable w : int
@@ -494,7 +494,7 @@ module Window = struct
   let checksum w = w.c
 end
 
-module M = struct
+module Inf = struct
   (* à la dbuenzli *)
 
   type src = [ `Channel of in_channel | `String of string | `Manual ]
@@ -587,7 +587,7 @@ module M = struct
     ; mutable literal : Lookup.t
     ; mutable distance : Lookup.t
     ; mutable jump : jump
-    ; w : Window.t
+    ; w : WInf.t
     ; mutable s : state
     ; mutable k : decoder -> ret }
   and state =
@@ -754,11 +754,11 @@ module M = struct
     Lookup.make tbl_lit max_lit, Lookup.make tbl_dist 5
 
   let checksum d =
-    Window.checksum d.w
+    WInf.checksum d.w
 
   let rec flat d =
     let len = min (min (i_rem d) d.l) (bigstring_length d.o - d.o_pos) in
-    Window.blit d.w d.i d.i_pos d.o d.o_pos len ;
+    WInf.blit d.w d.i d.i_pos d.o d.o_pos len ;
 
     d.o_pos <- d.o_pos + len ;
     d.i_pos <- d.i_pos + len ;
@@ -832,7 +832,7 @@ module M = struct
   let rec c_put_byte byte k d =
     if d.o_pos < bigstring_length d.o
     then ( unsafe_set_uint8 d.o d.o_pos byte
-         ; Window.add d.w byte
+         ; WInf.add d.w byte
          ; d.o_pos <- d.o_pos + 1
          ; k d )
     else ( d.k <- c_put_byte byte k (* allocation *)
@@ -936,17 +936,17 @@ module M = struct
     | Write ->
       if d.d == 0
       then err_invalid_distance_code d
-      else if d.d > Window.have d.w
+      else if d.d > WInf.have d.w
       then err_invalid_distance d
       else
         let len = min d.l (bigstring_length d.o - d.o_pos) in
-        let off = Window.mask (d.w.Window.w - d.d) in
-        let pre = Window.max - off in
+        let off = WInf.mask (d.w.WInf.w - d.d) in
+        let pre = WInf.max - off in
         let rst = len - pre in
         if rst > 0
-        then ( Window.blit d.w d.w.Window.raw off d.o d.o_pos pre
-             ; Window.blit d.w d.w.Window.raw 0 d.o (d.o_pos + pre) rst )
-        else Window.blit d.w d.w.Window.raw off d.o d.o_pos len ;
+        then ( WInf.blit d.w d.w.WInf.raw off d.o d.o_pos pre
+             ; WInf.blit d.w d.w.WInf.raw 0 d.o (d.o_pos + pre) rst )
+        else WInf.blit d.w d.w.WInf.raw off d.o d.o_pos len ;
         d.o_pos <- d.o_pos + len ;
         if d.l - len == 0
         then ( d.jump <- Length
@@ -995,7 +995,7 @@ module M = struct
 
           if value < 256
           then ( unsafe_set_uint8 d.o !o_pos value
-               ; Window.add d.w value
+               ; WInf.add d.w value
                ; incr o_pos
                (* ; jump := Length *) )
           else if value == 256 then raise_notrace End
@@ -1045,27 +1045,27 @@ module M = struct
           jump := Write
         | Write ->
           if d.d == 0 then raise_notrace Invalid_distance_code ;
-          if d.d > Window.have d.w then raise_notrace Invalid_distance ;
+          if d.d > WInf.have d.w then raise_notrace Invalid_distance ;
 
-          (* if d.d > Window.have d.w then raise Invalid_distance ;
-             XXX(dinosaure): [Window.have] does not tell me the truth where
-             we need a read cursor in [Window.t] for that. *)
+          (* if d.d > WInf.have d.w then raise Invalid_distance ;
+             XXX(dinosaure): [WInf.have] does not tell me the truth where
+             we need a read cursor in [WInf.t] for that. *)
 
           let len = min d.l (bigstring_length d.o - !o_pos) in
-          let off = Window.mask (d.w.Window.w - d.d) in
+          let off = WInf.mask (d.w.WInf.w - d.d) in
 
           if d.d == 1
           then
-            ( let v = unsafe_get_uint8 d.w.Window.raw off in
-              Window.fill d.w v d.o !o_pos len )
+            ( let v = unsafe_get_uint8 d.w.WInf.raw off in
+              WInf.fill d.w v d.o !o_pos len )
           else
-            ( let off = Window.mask (d.w.Window.w - d.d) in
-              let pre = Window.max - off in
+            ( let off = WInf.mask (d.w.WInf.w - d.d) in
+              let pre = WInf.max - off in
               let rst = len - pre in
               if rst > 0
-              then ( Window.blit d.w d.w.Window.raw off d.o !o_pos pre
-                   ; Window.blit d.w d.w.Window.raw 0 d.o (!o_pos + pre) rst )
-              else Window.blit d.w d.w.Window.raw off d.o !o_pos len ) ;
+              then ( WInf.blit d.w d.w.WInf.raw off d.o !o_pos pre
+                   ; WInf.blit d.w d.w.WInf.raw 0 d.o (!o_pos + pre) rst )
+              else WInf.blit d.w d.w.WInf.raw off d.o !o_pos len ) ;
           o_pos := !o_pos + len ;
           if d.l - len == 0 then jump := Length else d.l <- d.l - len
       done ;
@@ -1291,7 +1291,7 @@ module M = struct
     | Flat_header -> d.k d
     | Flat -> flat d
     | End_of_inflate ->
-      Window.tail d.w ;
+      WInf.tail d.w ;
 
       if d.bits >= 8
       then ( d.i_pos <- d.i_pos - 1 ; d.bits <- d.bits - 8 ; d.hold <- 0 (* XXX(dinosaure): keep? *) ) ;
@@ -1330,7 +1330,7 @@ module M = struct
     ; literal= fixed_lit
     ; distance= fixed_dist
     ; jump= Length
-    ; w= Window.from w
+    ; w= WInf.from w
     ; s= Header
     ; k= decode_k }
 
@@ -1353,7 +1353,7 @@ module M = struct
     d.jump <- Length ;
     d.s <- Header ;
     d.k <- decode_k ;
-    Window.reset d.w
+    WInf.reset d.w
 end
 
 module T = struct
@@ -1690,7 +1690,7 @@ module T = struct
     !i
 end
 
-module B = struct
+module Queue = struct
   type cmd = int
   type buf = (cmd, Bigarray.int_elt, Bigarray.c_layout) Bigarray.Array1.t
   type t =
@@ -1818,7 +1818,7 @@ let succ_distance distances distance =
   assert (distance >= 1 && distance <= 32767 + 1) ;
   distances.(_distance (pred distance)) <- distances.(_distance (pred distance)) + 1
 
-module N = struct
+module Def = struct
   type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
   type dynamic =
@@ -1898,7 +1898,7 @@ module N = struct
     ; mutable o : bigstring
     ; mutable o_pos : int
     ; mutable o_max : int
-    ; b : B.t
+    ; b : Queue.t
     ; mutable k : encoder -> encode -> [ `Ok | `Partial | `Block ] }
 
   (* remaining bytes to write in [e.o]. *)
@@ -2155,13 +2155,13 @@ module N = struct
         _static_ltree, _static_dtree
       | _ -> assert false in
 
-    try while e.o_max - !o_pos + 1 > 1 && not (B.is_empty e.b) do
-        let cmd = B.peek_exn e.b in
+    try while e.o_max - !o_pos + 1 > 1 && not (Queue.is_empty e.b) do
+        let cmd = Queue.peek_exn e.b in
 
-        if not (exists (B.code cmd) e.blk)
+        if not (exists (Queue.code cmd) e.blk)
         then raise_notrace Leave ;
 
-        B.unsafe_junk e.b ;
+        Queue.unsafe_junk e.b ;
 
         if cmd == 256
         then raise_notrace End ;
@@ -2331,8 +2331,8 @@ module N = struct
     let o_pos = ref e.o_pos in
     let flat = ref e.flat in
 
-    while e.o_max - !o_pos + 1 > 1 && not (B.is_empty e.b) && !flat < max do
-      let cmd = B.pop_exn e.b in
+    while e.o_max - !o_pos + 1 > 1 && not (Queue.is_empty e.b) && !flat < max do
+      let cmd = Queue.pop_exn e.b in
 
       if not (cmd land 0x2000000 == 0) || cmd == 256
       then Fmt.invalid_arg "Impossible to emit a copy code or a EOB in a Flat block" ;
@@ -2346,7 +2346,7 @@ module N = struct
 
     if !flat == max then ( if e.blk.last then flush (fun _ -> `Ok) e else ( e.k <- block ; `Block ) )
     else if o_rem e == 0 then flush write_flat e
-    else ( (* assert (B.is_empty e.b ) *) `Ok )
+    else ( (* assert (Queue.is_empty e.b ) *) `Ok )
 
   and encode e = function
     | `Await -> e.k <- encode ; `Ok (* XXX(dinosaure): do nothing. *)
@@ -2408,7 +2408,7 @@ module N = struct
   let encode e = e.k e
 end
 
-module W = struct
+module WDef = struct
   type t =
     { raw : bigstring
     ; mutable r : int
@@ -2491,7 +2491,7 @@ module W = struct
   let checksum w = w.c
 end
 
-module L = struct
+module Lz77 = struct
   type decode = [ `Await | `Flush | `End ]
 
   type src = [ `Channel of in_channel | `String of string | `Manual ]
@@ -2511,15 +2511,15 @@ module L = struct
     ; mutable i_len : int
     ; l : literals
     ; d : distances
-    ; w : W.t
+    ; w : WDef.t
     ; h : int array
     ; h_msk : int
-    ; b : B.t
+    ; b : Queue.t
     ; mutable k : state -> decode }
 
   let literals s = s.l
   let distances s = s.d
-  let checksum s = W.checksum s.w
+  let checksum s = WDef.checksum s.w
 
   let eoi s =
     s.i <- bigstring_empty ;
@@ -2558,22 +2558,22 @@ module L = struct
   let rec nothing s = s.k <- nothing ; `End
 
   let rec pending s =
-    let len = min (B.available s.b) (W.size s.w) in
+    let len = min (Queue.available s.b) (WDef.size s.w) in
 
-    let msk = W.mask s.w.r in
-    let pre = W.max - msk in
+    let msk = WDef.mask s.w.r in
+    let pre = WDef.max - msk in
     let rst = len - pre in
 
     ( if rst > 0
-      then ( B.blit s.b s.w.raw msk pre
-           ; B.blit s.b s.w.raw 0 rst )
-      else B.blit s.b s.w.raw msk len ) ;
+      then ( Queue.blit s.b s.w.raw msk pre
+           ; Queue.blit s.b s.w.raw 0 rst )
+      else Queue.blit s.b s.w.raw msk len ) ;
 
-    W.iter s.w (succ_literal s.l) ;
-    W.junk s.w len ;
+    WDef.iter s.w (succ_literal s.l) ;
+    WDef.junk s.w len ;
 
-    if W.is_empty s.w
-    then ( W.tail s.w ; s.k <- nothing ; `End )
+    if WDef.is_empty s.w
+    then ( WDef.tail s.w ; s.k <- nothing ; `End )
     else flush pending s
 
   let rec fill s =
@@ -2581,8 +2581,8 @@ module L = struct
 
     if rem <= 0 then ( if rem < 0 then pending s else refill fill s )
     else
-      let len = min (W.available s.w) rem in
-      W.feed s.w s.i s.i_pos len ;
+      let len = min (WDef.available s.w) rem in
+      WDef.feed s.w s.i s.i_pos len ;
       s.i_pos <- s.i_pos + len ;
 
       let k s =
@@ -2590,16 +2590,16 @@ module L = struct
         else fill s in
 
       (* XXX(dinosaure): optimize this branch. TODO! *)
-      if W.size s.w >= 2
-      then ( if B.available s.b < 2
+      if WDef.size s.w >= 2
+      then ( if Queue.available s.b < 2
              then flush fill s
              else deffast k s )
       else refill fill s
 
   and deffast k s =
-    assert (B.available s.b >= 2) ;
-    assert (W.size s.w >= 2) ;
-    assert (W.size s.w <= W.max) ;
+    assert (Queue.available s.b >= 2) ;
+    assert (WDef.size s.w >= 2) ;
+    assert (WDef.size s.w <= WDef.max) ;
 
     let i = ref s.w.r in
     let len = ref 0 in
@@ -2609,32 +2609,32 @@ module L = struct
     let exception Literal in
 
     (* XXX(dinosaure): prelude, a [match] is >= 3.  *)
-    let chr = W.unsafe_get_char s.w !i in
-    B.push_exn s.b (B.cmd (`Literal chr)) ; incr i ;
+    let chr = WDef.unsafe_get_char s.w !i in
+    Queue.push_exn s.b (Queue.cmd (`Literal chr)) ; incr i ;
     succ_literal s.l chr ;
-    let chr = W.unsafe_get_char s.w !i in
-    B.push_exn s.b (B.cmd (`Literal (W.unsafe_get_char s.w !i))) ; incr i ;
+    let chr = WDef.unsafe_get_char s.w !i in
+    Queue.push_exn s.b (Queue.cmd (`Literal (WDef.unsafe_get_char s.w !i))) ; incr i ;
     succ_literal s.l chr ;
 
-    while s.w.w - !i >= 3 && not (B.is_full s.b) do
+    while s.w.w - !i >= 3 && not (Queue.is_full s.b) do
       try
-        if W.unsafe_get_uint8 s.w !i == W.unsafe_get_uint8 s.w (!i - 1)
-           && W.unsafe_get_uint16 s.w (!i - 1) == W.unsafe_get_uint16 s.w (!i + 1)
+        if WDef.unsafe_get_uint8 s.w !i == WDef.unsafe_get_uint8 s.w (!i - 1)
+           && WDef.unsafe_get_uint16 s.w (!i - 1) == WDef.unsafe_get_uint16 s.w (!i + 1)
         then ( len := 3 ; dst := 1 ; raise_notrace Match ) ;
 
         let hash =
-          let v = W.unsafe_get_uint16 s.w !i in
-          W.unsafe_get_uint16 s.w (!i + 1) lxor v in
+          let v = WDef.unsafe_get_uint16 s.w !i in
+          WDef.unsafe_get_uint16 s.w (!i + 1) lxor v in
         let source = s.h.(hash land s.h_msk) in
         s.h.(hash land s.h_msk) <- !i ;
 
         dst := !i - source ; (* XXX(dinosaure): should be safe where [!i] is the newest indice in [w]. *)
 
-        if !dst == 0 || !dst >= W.max (* XXX(dinosaure): deliver only valid distance *)
+        if !dst == 0 || !dst >= WDef.max (* XXX(dinosaure): deliver only valid distance *)
           || source + 3 - min_int >= !i - min_int (* XXX(dinosaure): [source] ∈ no emitted characters *)
           || source - min_int < s.w.r - min_int (* XXX(dinosaure): too old! *)
-          || W.unsafe_get_uint16 s.w !i <> W.unsafe_get_uint16 s.w source
-          || W.unsafe_get_uint16 s.w (!i + 1) <> W.unsafe_get_uint16 s.w (source + 1)
+          || WDef.unsafe_get_uint16 s.w !i <> WDef.unsafe_get_uint16 s.w source
+          || WDef.unsafe_get_uint16 s.w (!i + 1) <> WDef.unsafe_get_uint16 s.w (source + 1)
         then ( raise_notrace Literal ) ;
 
         len := 3 ;
@@ -2642,26 +2642,26 @@ module L = struct
         raise_notrace Match
       with
       | Literal ->
-        let chr = W.unsafe_get_char s.w !i in
-        B.push_exn s.b (B.cmd (`Literal chr)) ; incr i ;
+        let chr = WDef.unsafe_get_char s.w !i in
+        Queue.push_exn s.b (Queue.cmd (`Literal chr)) ; incr i ;
         succ_literal s.l chr
       | Match ->
         if !dst == 1
         then
-          ( let vv = W.unsafe_get_uint16 s.w !i in
-            let v = W.unsafe_get_uint8 s.w !i in
+          ( let vv = WDef.unsafe_get_uint16 s.w !i in
+            let v = WDef.unsafe_get_uint8 s.w !i in
 
             while !len + 2 <= _max_match
                   && s.w.w - (!i + !len + 2) > 0 (* XXX(dinosaure): stay under write cursor. *)
-                  && W.unsafe_get_uint16 s.w (!i + !len) == vv
+                  && WDef.unsafe_get_uint16 s.w (!i + !len) == vv
             do len := !len + 2 done ;
 
             if !len + 1 <= _max_match
             && s.w.w - (!i + !len + 1) > 0
-            && W.unsafe_get_uint8 s.w (!i + !len) == v
+            && WDef.unsafe_get_uint8 s.w (!i + !len) == v
             then incr len ;
 
-            B.push_exn s.b (B.cmd (`Copy (!dst, !len))) ; i := !i + !len ;
+            Queue.push_exn s.b (Queue.cmd (`Copy (!dst, !len))) ; i := !i + !len ;
             succ_length s.l !len ;
             succ_distance s.d !dst )
         else
@@ -2671,23 +2671,23 @@ module L = struct
             while !len + 2 <= _max_match
                   && source + !len + 2 - min_int < !i + !len + 2 - min_int (* XXX(dinosaure): stay outside non-emitted characters. *)
                   && s.w.w - (!i + !len + 2) > 0 (* XXX(dinosaure): stay under write cursor. *)
-                  && W.unsafe_get_uint16 s.w (!i + !len) == W.unsafe_get_uint16 s.w (source + !len)
+                  && WDef.unsafe_get_uint16 s.w (!i + !len) == WDef.unsafe_get_uint16 s.w (source + !len)
             do len := !len + 2 done ;
 
             if !len + 1 <= _max_match
             && source + !len + 1 - min_int < !i - !len + 1 - min_int
             && s.w.w - (!i + !len + 1) > 0
-            && W.unsafe_get_uint8 s.w (!i + !len) == W.unsafe_get_uint8 s.w (source + !len)
+            && WDef.unsafe_get_uint8 s.w (!i + !len) == WDef.unsafe_get_uint8 s.w (source + !len)
             then incr len ;
 
-            B.push_exn s.b (B.cmd (`Copy (!dst, !len))) ; i := !i + !len ;
+            Queue.push_exn s.b (Queue.cmd (`Copy (!dst, !len))) ; i := !i + !len ;
             succ_length s.l !len ;
             succ_distance s.d !dst )
     done ;
 
-    W.junk s.w (!i - s.w.r) ;
+    WDef.junk s.w (!i - s.w.r) ;
 
-    if B.is_full s.b
+    if Queue.is_full s.b
     then flush k s
     else ( if i_rem s == 0 then refill fill s else k s )
 
@@ -2704,7 +2704,7 @@ module L = struct
     ; i_len
     ; l= make_literals ()
     ; d= make_distances ()
-    ; w= W.from w
+    ; w= WDef.from w
     ; h= Array.make (1 lsl 8) 0
     ; h_msk= (1 lsl 8) - 1
     ; b= q
@@ -2713,97 +2713,97 @@ end
 
 module Higher = struct
   let compress ~w ~q ~i ~o ~refill ~flush =
-    let state = L.state `Manual ~w ~q in
-    let encoder = N.encoder `Manual ~q in
-    let kind = ref N.Fixed in
+    let state = Lz77.state `Manual ~w ~q in
+    let encoder = Def.encoder `Manual ~q in
+    let kind = ref Def.Fixed in
 
-    let rec compress () = match L.compress state with
+    let rec compress () = match Lz77.compress state with
       | `Await ->
         let len = refill i in
-        L.src state i 0 len ; compress ()
+        Lz77.src state i 0 len ; compress ()
       | `Flush ->
-        let literals = L.literals state in
-        let distances = L.distances state in
-        kind := N.Dynamic (N.dynamic_of_frequencies ~literals ~distances) ;
-        encode (N.encode encoder (`Block { N.kind= !kind; last= false; }))
+        let literals = Lz77.literals state in
+        let distances = Lz77.distances state in
+        kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances) ;
+        encode (Def.encode encoder (`Block { Def.kind= !kind; last= false; }))
       | `End ->
-        B.push_exn q B.eob ; pending (N.encode encoder (`Block { N.kind= N.Fixed; last= true; }))
+        Queue.push_exn q Queue.eob ; pending (Def.encode encoder (`Block { Def.kind= Def.Fixed; last= true; }))
     and encode = function
       | `Partial ->
-        let len = (bigstring_length o) - N.dst_rem encoder in
-        flush o len ; N.dst encoder o 0 (bigstring_length o) ; encode (N.encode encoder `Await)
+        let len = (bigstring_length o) - Def.dst_rem encoder in
+        flush o len ; Def.dst encoder o 0 (bigstring_length o) ; encode (Def.encode encoder `Await)
       | `Ok -> compress ()
       | `Block ->
-        let literals = L.literals state in
-        let distances = L.distances state in
-        kind := N.Dynamic (N.dynamic_of_frequencies ~literals ~distances) ;
-        encode (N.encode encoder (`Block { N.kind= !kind; last= false; }))
+        let literals = Lz77.literals state in
+        let distances = Lz77.distances state in
+        kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances) ;
+        encode (Def.encode encoder (`Block { Def.kind= !kind; last= false; }))
     and pending = function
       | `Block -> assert false (* XXX(dinosaure): should never appear. *)
       | `Partial ->
-        let len = (bigstring_length o) - N.dst_rem encoder in
-        flush o len ; N.dst encoder o 0 (bigstring_length o) ; pending (N.encode encoder `Await)
+        let len = (bigstring_length o) - Def.dst_rem encoder in
+        flush o len ; Def.dst encoder o 0 (bigstring_length o) ; pending (Def.encode encoder `Await)
       | `Ok -> () in
 
-    B.reset q ; N.dst encoder o 0 (bigstring_length o) ; compress ()
+    Queue.reset q ; Def.dst encoder o 0 (bigstring_length o) ; compress ()
 
   let uncompress ~w ~i ~o ~refill ~flush =
-    let decoder = M.decoder `Manual ~o ~w in
+    let decoder = Inf.decoder `Manual ~o ~w in
 
-    let rec decompress () = match M.decode decoder with
+    let rec decompress () = match Inf.decode decoder with
       | `Await ->
         let len = refill i in
-        M.src decoder i 0 len ; decompress ()
+        Inf.src decoder i 0 len ; decompress ()
       | `End ->
-        let len = bigstring_length o - M.dst_rem decoder in
+        let len = bigstring_length o - Inf.dst_rem decoder in
         if len > 0 then flush o len
       | `Flush ->
-        let len = bigstring_length o - M.dst_rem decoder in
-        flush o len ; M.flush decoder ; decompress ()
+        let len = bigstring_length o - Inf.dst_rem decoder in
+        flush o len ; Inf.flush decoder ; decompress ()
       | `Malformed err -> failwith err in
     decompress ()
 
   let of_string ~o ~w input ~flush =
-    let decoder = M.decoder (`String input) ~o ~w in
-    let rec decompress () = match M.decode decoder with
+    let decoder = Inf.decoder (`String input) ~o ~w in
+    let rec decompress () = match Inf.decode decoder with
       | `Await -> assert false
       | `End ->
-        let len = bigstring_length o - M.dst_rem decoder in
+        let len = bigstring_length o - Inf.dst_rem decoder in
         if len > 0 then flush o len
       | `Flush ->
-        let len = bigstring_length o - M.dst_rem decoder in
-        flush o len ; M.flush decoder ; decompress ()
+        let len = bigstring_length o - Inf.dst_rem decoder in
+        flush o len ; Inf.flush decoder ; decompress ()
       | `Malformed err -> failwith err in
     decompress ()
 
   let to_string ?(buffer= 4096) ~i ~w ~q ~refill =
     let buf = Buffer.create buffer in
-    let state = L.state `Manual ~q ~w in
-    let encoder = N.encoder (`Buffer buf) ~q in
-    let kind = ref N.Fixed in
+    let state = Lz77.state `Manual ~q ~w in
+    let encoder = Def.encoder (`Buffer buf) ~q in
+    let kind = ref Def.Fixed in
 
-    let rec compress () = match L.compress state with
+    let rec compress () = match Lz77.compress state with
       | `Await ->
         let len = refill i in
-        L.src state i 0 len ; compress ()
+        Lz77.src state i 0 len ; compress ()
       | `Flush ->
-        let literals = L.literals state in
-        let distances = L.distances state in
-        kind := N.Dynamic (N.dynamic_of_frequencies ~literals ~distances) ;
-        encode (N.encode encoder (`Block { N.kind= !kind; last= false; }))
+        let literals = Lz77.literals state in
+        let distances = Lz77.distances state in
+        kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances) ;
+        encode (Def.encode encoder (`Block { Def.kind= !kind; last= false; }))
       | `End ->
-        B.push_exn q B.eob ; pending (N.encode encoder (`Block { N.kind= N.Fixed; last= true; }))
+        Queue.push_exn q Queue.eob ; pending (Def.encode encoder (`Block { Def.kind= Def.Fixed; last= true; }))
     and encode = function
       | `Partial -> assert false
       | `Ok -> compress ()
       | `Block ->
-        let literals = L.literals state in
-        let distances = L.distances state in
-        kind := N.Dynamic (N.dynamic_of_frequencies ~literals ~distances) ;
-        encode (N.encode encoder (`Block { N.kind= !kind; last= false; }))
+        let literals = Lz77.literals state in
+        let distances = Lz77.distances state in
+        kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances) ;
+        encode (Def.encode encoder (`Block { Def.kind= !kind; last= false; }))
     and pending = function
       | `Partial | `Block -> assert false
       | `Ok -> () in
 
-    B.reset q ; compress () ; Buffer.contents buf
+    Queue.reset q ; compress () ; Buffer.contents buf
 end

@@ -10,7 +10,7 @@
 
 (** {2 Prelude.}
 
-    [dd] wants to be self-contained. By this constraint, it provides convenience
+    [de] wants to be self-contained. By this constraint, it provides convenience
    values to be used by others (like [zz]). The client should not use these
    functions even if they are available. Others libraries like [Bigstringaf]
    serve the same purpose of a much better way. *)
@@ -52,10 +52,10 @@ val window_bits : window -> int
 
 (** {2:decode DEFLATE Decoder.}
 
-    Decoder of RFC1951 DEFLATE codec. [dd] provides a {!M.decoder} to decode
+    Decoder of RFC1951 DEFLATE codec. [de] provides a {!Inf.decoder} to decode
    DEFLATE input and inflate it. *)
 
-module M : sig
+module Inf : sig
   type src = [ `Channel of in_channel | `String of string | `Manual ]
   (** The type for input sources. With a [`Manual] source the client must
      provide input with {!src}. With [`String] or [`Channel] source the client
@@ -71,13 +71,13 @@ module M : sig
 
       {b Output buffer.}
 
-      [dd] uses [o] buffer as internal buffer to store output. We recommend to
+      [de] uses [o] buffer as internal buffer to store output. We recommend to
      allocate an {!io_buffer_size} buffer as output buffer. Then, {!dst_rem}
      gives you how many bytes it remains in [o].
 
       {b Window.}
 
-      [dd] needs a window to be able to interpret [`Copy] code. Length of window
+      [de] needs a window to be able to interpret [`Copy] code. Length of window
      is commonly 32k bytes (but the client can use a smaller one with some
      assumptions). *)
 
@@ -89,7 +89,7 @@ module M : sig
      The client must use {!src} to provide it.}
       {- [`Flush d] if given output buffer [o] (see {!decoder}) is full. The
      client must use {!flush} to {b completely} flush [o]. {!dst_rem} gives you
-     how many bytes it remains in [o]. [M.dst_rem d - bigstring_length o] gives
+     how many bytes it remains in [o]. [Inf.dst_rem d - bigstring_length o] gives
      you how many bytes are available.}
       {- [`Malformed err] if given input is malformed. [err] is a human-readable
      error.}
@@ -125,14 +125,14 @@ end
     DEFLATE encoder needs a compressed input which can be transmited by a shared
    queue filled by compression algorithm. {!B} is used between {!N} and a
    compression algorithm like {!L}. It provides a small representation of
-   commands (see {!B.cmd}) emitted by compression algorithm.
+   commands (see {!Queue.cmd}) emitted by compression algorithm.
 
-    {!N} encoder interprets {!B.cmd} as fast as it can. Shared queue can be a
+    {!N} encoder interprets {!Queue.cmd} as fast as it can. Shared queue can be a
    bottleneck about the whole compression process. Indeed, it limits encoder on
    how many bytes it can produce. We recommend to make a queue as large as
    output buffer. *)
 
-module B : sig
+module Queue : sig
   type cmd [@@immediate]
   (** The type for commands. *)
 
@@ -240,7 +240,7 @@ val succ_distance : distances -> int -> unit
 
 (** {2:encode DEFLATE Encoder.} *)
 
-module N : sig
+module Def : sig
   type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
   (** The type for output destinations. With a [`Manual] destination the client
      must provide output storage with {!dst}. With [`String] or [`Channel]
@@ -289,7 +289,7 @@ module N : sig
   type encoder
   (** The type for DEFLATE encoders. *)
 
-  val encoder : dst -> q:B.t -> encoder
+  val encoder : dst -> q:Queue.t -> encoder
   (** [encoder dst ~q] is an encoder that outputs to [dst].
 
       {b Internal queue.}
@@ -308,14 +308,14 @@ module N : sig
      storage. The client must use {!dst} to provide a new buffer and then call
      {!encode} with [`Await] until [`Ok] is returned.}
       {- [`Ok] when the encoder is ready to encode a new {!encode} action.}
-      {- [`Block] when the encoder reachs a {!B.cmd} which can not be encoded
+      {- [`Block] when the encoder reachs a {!Queue.cmd} which can not be encoded
      with the current {!block}. The client must respond with [`Block block]
-     where [block] is a new block able to encode current {!B.cmd}.}}
+     where [block] is a new block able to encode current {!Queue.cmd}.}}
 
       {b How to signal end of flow?}
 
       End of flow is characterized by a {!block} where [last = true]. Then, the
-     client must emit into the queue [q] {!B.eob}. *)
+     client must emit into the queue [q] {!Queue.eob}. *)
 
   val dst : encoder -> bigstring -> int -> int -> unit
   (** [dst e s j l] provides [e] with [l] bytes available to write, starting at
@@ -341,7 +341,7 @@ end
    {!N}. However, the client must know others algorithms exist. This algorithm
    is used by [zz] to implement ZLIB layer. *)
 
-module L : sig
+module Lz77 : sig
   type src = [ `Channel of in_channel | `String of string | `Manual ]
   (** The type for input sources. With a [`Manual] source the client must
      provide input with {!src}. With [`String] or [`Channel] source the client
@@ -381,12 +381,12 @@ module L : sig
       {- [`Await] if [s] has a [`Manual] input source and awits for more input.
      The client must use {!src} to provide it.}
       {- [`Flush] if [s] filled completely the shared-queue [q] (given in
-     {!state}). {!B.junk_exn} or {!B.pop_exn} can be used to give some free
+     {!state}). {!Queue.junk_exn} or {!Queue.pop_exn} can be used to give some free
      cells to {!compress}.}
       {- [`End] if [s] compressed all input. Given shared-queue [q] is possibly
      not empty.}} *)
 
-  val state : src -> w:window -> q:B.t -> state
+  val state : src -> w:window -> q:Queue.t -> state
   (** [state src ~w ~q] is an state that inputs from [src] and that outputs to [q].
 
       {b Window.}
@@ -398,7 +398,7 @@ end
 
 (** {2 Higher API.}
 
-    [dd] provides useful but complex API. This sub-module provides an easier way
+    [de] provides useful but complex API. This sub-module provides an easier way
    to compress/uncompress DEFLATE codec. Even if the client still can give some
    details, we recommend to use {!M} and {!N} if you want a precise control
    about memory consumption. *)
@@ -406,7 +406,7 @@ end
 module Higher : sig
   val compress :
     w:window ->
-    q:B.t ->
+    q:Queue.t ->
     i:bigstring ->
     o:bigstring ->
     refill:(bigstring -> int) ->
@@ -449,7 +449,7 @@ module Higher : sig
      how many bytes it wrote. *)
 
   val of_string : o:bigstring -> w:window -> string -> flush:(bigstring -> int -> unit) -> unit
-  val to_string : ?buffer:int -> i:bigstring -> w:window -> q:B.t -> refill:(bigstring -> int) -> string
+  val to_string : ?buffer:int -> i:bigstring -> w:window -> q:Queue.t -> refill:(bigstring -> int) -> string
 end
 
 (** / **)

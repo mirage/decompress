@@ -1,7 +1,7 @@
 (executable
  (name test)
  (modules test)
- (libraries hxd.string bigstringaf checkseum.c dd zz alcotest))
+ (libraries hxd.string bigstringaf checkseum.c de zl alcotest))
 
 (alias
  (name runtest)
