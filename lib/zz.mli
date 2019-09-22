@@ -149,13 +149,13 @@ module N : sig
      However, small window can slow-down LZ77 compression algorithm. Small
      windows are mostly used to enable inflation of output in memory-constrained
      environments, for example when compressed data from untrusted sources must
-     be processed. environment.
+     be processed.
 
       {b Level.}
 
       Current implementation of ZLIB does not handle any compression level.
-     However, the client must give a level between 0 and 3. Otherwise, we raise
-     an [Invalid_argument]. *)
+     However, the client must give a level between 0 and 3, inclusively.
+     Otherwise, we raise an [Invalid_argument]. *)
 
   val src_rem : encoder -> int
   (** [src_rem e] is how many bytes it remains in given input buffer. *)
