@@ -1,3 +1,39 @@
+### v1.0.0 2019-08-30 Paris (France)
+
+** breaking changes **
+
+`decompress.1.0.0` is 3 times faster about decompression than before. A huge
+[amount of work was done](https://tarides.com/blog/2019-08-26-decompress-the-new-decompress-api.html) to improve performance and coverage.
+
+The main reason to update the API is to fix a bad design decision regarding split
+compression and encoding. User is able to implement a new compression algorithm
+and use it.
+
+Release comes with regressions:
+- `decompress` only supports `Bigarray` now, not `Bytes`
+- GZIP layer does not exist anymore
+- state of RFC1951 encoder/decoder is not referentially transparent anymore
+
+Of course, v1.0.0 comes with fixes and improvements:
+- `decompress` is able to compress/uncompress [Calgary corpus](https://en.wikipedia.org/wiki/Calgary_corpus)
+- tests are improved and they include all coverage tests from `zlib`
+- compression algorithm has a fuzzer
+- encoder has a fuzzer
+- performance about decoder is 3 times better than `decompress.v0.9.0` and 3
+  times slower than `zlib`
+
+`decompress` is split into 2 main modules:
+- `dd` which implements RFC1951
+- `zz` which implements ZLIB
+
+API of them are pretty-close to what `decompress.v0.9.0` does with some
+advantages on `dd`:
+- User can use their own compression algorithm instead of `Dd.L`
+- encoder exposes more granular control over what it emits (which block, when, where)
+- Huffman tree generation is out of `dd`
+
+As a response to #25, `dd` provides a _higher_ level API resembling `camlzip`.
+
 ### v0.9.0 2019-07-10 Paris (France)
 
 * Add support of 4.07 and 4.08 in Travis (@XVilka, @dinosaure, #70, #71)
