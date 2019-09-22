@@ -477,6 +477,7 @@ module N = struct
       | `Manual -> bigstring_empty, 1, 0
       | `Buffer _
       | `Channel _ -> bigstring_create io_buffer_size, 0, io_buffer_size - 1 in
+    if level < 0 || level > 3 then Fmt.invalid_arg "Invalid level (must be in 0 and 3, %d)" level ;
     { src
     ; dst
     ; i; i_pos; i_len

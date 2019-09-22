@@ -139,21 +139,23 @@ module N : sig
 
       [encoder] deals internally with compression algorithm and DEFLATE encoder.
      To pass compression values to DEFLATE encoder, we need a queue [q]. Length
-     of [q] has an impact on performance, and small lengths can be a bottleneck, leading {!encode} to emit
-     many [`Flush]. We recommend a queue as large as output buffer.
+     of [q] has an impact on performance, and small lengths can be a bottleneck,
+     leading {!encode} to emit many [`Flush]. We recommend a queue as large as
+     output buffer.
 
       {b Window.}
 
       ZLIB is able to constrain length of window used to do LZ77 compression.
      However, small window can slow-down LZ77 compression algorithm. Small
-     windows are mostly used to enable inflation of output in memory-constrained environments,
-     for example when compressed data from untrusted sources must be processed.
-     environment.
+     windows are mostly used to enable inflation of output in memory-constrained
+     environments, for example when compressed data from untrusted sources must
+     be processed. environment.
 
       {b Level.}
 
       Current implementation of ZLIB does not handle any compression level.
-     However, the client must give a level between 0 and 9. *)
+     However, the client must give a level between 0 and 3. Otherwise, we raise
+     an [Invalid_argument]. *)
 
   val src_rem : encoder -> int
   (** [src_rem e] is how many bytes it remains in given input buffer. *)
