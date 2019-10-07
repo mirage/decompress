@@ -20,7 +20,7 @@ depends: [
   "ocaml"      {>= "4.03.0"}
   "dune"       {build}
   "base-bytes"
-  "base-bigarray"
+  "bigarray-compat"
   "mmap"
   "optint"
   "checkseum"

@@ -1,6 +1,6 @@
 let invalid_arg fmt = Format.ksprintf (fun s -> invalid_arg s) fmt
 
-open Bigarray
+open Bigarray_compat
 
 type t = (char, int8_unsigned_elt, c_layout) Array1.t
 

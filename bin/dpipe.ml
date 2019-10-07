@@ -1,6 +1,7 @@
 let () = Printexc.record_backtrace true
 
 module Buffer = Decompress.Buffer
+module Bigarray = Bigarray_compat
 
 external bs_read :
   Unix.file_descr -> Buffer.Bigstring.t -> int -> int -> int
