@@ -1,3 +1,7 @@
+### v0.9.1 2019-10-08 Palmarin (Sénégal)
+
+* Compatibility layer with `bigarray-compat`
+
 ### v0.9.0 2019-07-10 Paris (France)
 
 * Add support of 4.07 and 4.08 in Travis (@XVilka, @dinosaure, #70, #71)
