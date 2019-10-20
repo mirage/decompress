@@ -8,5 +8,6 @@ env:
   matrix:
   - PACKAGE="decompress" OCAML_VERSION=4.07 TESTS=true
   - PACKAGE="decompress" OCAML_VERSION=4.08 TESTS=true
+  - PACKAGE="decompress" OCAML_VERSION=4.09 TESTS=true
   global:
     secure: FJKlRhKHrethvekm0IrxH7n6vefh6i0DtVb8Ke6TXgGje59M7qbMIDqP+a6z8sWPm1T3GgEHrR20ykVP+utRzrs2SuAn92xGnRHMpq3kh0z5E6yJUGNiLQF08174bRVNWpV8iUE7bc7q/RCreK5sgDxZ8UQxZRsaIE4SLzAPIOE=
