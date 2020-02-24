@@ -15,3 +15,9 @@
  (public_name decompress.zl)
  (modules zl)
  (libraries de))
+
+(library
+ (name gz)
+ (public_name decompress.gz)
+ (modules gz)
+ (libraries de))

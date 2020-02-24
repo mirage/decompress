@@ -1105,6 +1105,19 @@ let higher_zlib1 () = higher_zlib "bbbb"
 let higher_zlib2 () = higher_zlib "abcd"
 let higher_zlib3 () = higher_zlib "Le diable me remet dans le mal"
 
+let test_empty_gzip () =
+  Alcotest.test_case "empty GZip" `Quick @@ fun () ->
+  let input =
+    [ "\x1f\x8b\x08\x00\x82\xe5\x53\x5e\x00\x03\x03\x00\x00\x00\x00\x00"
+    ; "\x00\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
+  match Gz.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty GZip" (Gz.Inf.dst_rem decoder - bigstring_length o) 0
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
 let () =
   Alcotest.run "z"
     [ "invalids", [ invalid_complement_of_length ()
@@ -1188,6 +1201,7 @@ let () =
               ; test_corpus_with_zlib "progl"
               ; test_corpus_with_zlib "progp"
               ; test_corpus_with_zlib "trans" ]
+    ; "gzip", [ test_empty_gzip () ]
     ; "hang", [ hang0 () ]
     ; "git", [ git_object () ]
     ; "higher", [ higher_zlib0 ()
