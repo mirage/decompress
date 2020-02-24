@@ -1105,6 +1105,29 @@ let higher_zlib1 () = higher_zlib "bbbb"
 let higher_zlib2 () = higher_zlib "abcd"
 let higher_zlib3 () = higher_zlib "Le diable me remet dans le mal"
 
+let test_multiple_flush_zlib () =
+  Alcotest.test_case "multiple flush zlib" `Quick @@ fun () ->
+  let refill = emitter_from_string "foo" in
+  let flush, contents = producer_to_string () in
+  Zl.Higher.compress ~level:0 ~w ~q ~i ~o ~refill ~flush ;
+  let input = contents () in
+  let decoder = Zl.Inf.decoder (`String input) ~o ~allocate:(fun bits -> De.make_window ~bits) in
+  let decoder = match Zl.Inf.decode decoder with
+    | `Flush decoder -> decoder
+    | _ -> Alcotest.failf "Invalid first call to Zl.Inf.decode" in
+  let decoder = match Zl.Inf.decode decoder with
+    | `Flush decoder -> decoder
+    | _ -> Alcotest.failf "Invalid second call to Zl.Inf.decode" in
+  let decoder = match Zl.Inf.decode decoder with
+    | `Flush decoder ->
+      let foo = Bigstringaf.substring o ~off:0 ~len:(Bigstringaf.length o - Zl.Inf.dst_rem decoder) in
+      Alcotest.(check string) "contents" foo "foo" ;
+      Zl.Inf.flush decoder
+    | _ -> Alcotest.failf "Invalid third call to Zl.Inf.decode" in
+  match Zl.Inf.decode decoder with
+  | `End _ -> Alcotest.(check pass) "inflated" () ()
+  | _ -> Alcotest.failf "Invalid last call to Zl.Inf.decode"
+
 let test_empty_gzip () =
   Alcotest.test_case "empty GZip" `Quick @@ fun () ->
   let input =
@@ -1132,6 +1155,50 @@ let test_empty_gzip_with_name () =
     Alcotest.(check (option string)) "name" (Gz.Inf.filename decoder) (Some "test")
   | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
+let test_foo_gzip () =
+  Alcotest.test_case "foo GZip" `Quick @@ fun () ->
+  let input =
+    [ "\x1f\x8b\x08\x08\x2d\xf1\x53\x5e\x00\x03\x66\x6f\x6f\x00\x4b\xcb"
+    ; "\xcf\x07\x00\x21\x65\x73\x8c\x03\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
+  let decoder = match Gz.Inf.decode decoder with
+      | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+      | `End _ -> Alcotest.failf "Unexpected `End signal"
+      | `Flush decoder ->
+        let foo = Bigstringaf.substring o ~off:0 ~len:(Bigstringaf.length o - Gz.Inf.dst_rem decoder) in
+        Alcotest.(check string) "contents" "foo" foo ;
+        Gz.Inf.flush decoder
+      | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err in
+  match Gz.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check (option string)) "name" (Gz.Inf.filename decoder) (Some "foo")
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+let test_multiple_flush_gzip () =
+  Alcotest.test_case "multiple flush GZip" `Quick @@ fun () ->
+  let input =
+    [ "\x1f\x8b\x08\x08\x2d\xf1\x53\x5e\x00\x03\x66\x6f\x6f\x00\x4b\xcb"
+    ; "\xcf\x07\x00\x21\x65\x73\x8c\x03\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Flush decoder -> decoder
+    | _ -> Alcotest.failf "Invalid first call to Gz.Inf.decode" in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Flush decoder -> decoder
+    | _ -> Alcotest.failf "Invalid second call to Gz.Inf.decode" in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Flush decoder ->
+      let foo = Bigstringaf.substring o ~off:0 ~len:(Bigstringaf.length o - Gz.Inf.dst_rem decoder) in
+      Alcotest.(check (option string)) "name" (Gz.Inf.filename decoder) (Some "foo") ;
+      Alcotest.(check string) "contents" foo "foo" ;
+      Gz.Inf.flush decoder
+    | _ -> Alcotest.failf "Invalid third call to Gz.Inf.decode" in
+  match Gz.Inf.decode decoder with
+  | `End _ -> Alcotest.(check pass) "inflated" () ()
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+  | _ -> Alcotest.failf "Invalid last call to Gz.Inf.decode"
 
 let () =
   Alcotest.run "z"
@@ -1215,9 +1282,12 @@ let () =
               ; test_corpus_with_zlib "progc"
               ; test_corpus_with_zlib "progl"
               ; test_corpus_with_zlib "progp"
-              ; test_corpus_with_zlib "trans" ]
+              ; test_corpus_with_zlib "trans"
+              ; test_multiple_flush_zlib () ]
     ; "gzip", [ test_empty_gzip ()
-              ; test_empty_gzip_with_name () ]
+              ; test_empty_gzip_with_name ()
+              ; test_foo_gzip ()
+              ; test_multiple_flush_gzip () ]
     ; "hang", [ hang0 () ]
     ; "git", [ git_object () ]
     ; "higher", [ higher_zlib0 ()

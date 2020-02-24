@@ -84,6 +84,11 @@ let unsafe_get_uint32_be =
   then fun buf off -> unsafe_get_uint32 buf off
   else fun buf off -> swap32 (unsafe_get_uint32 buf off)
 
+let unsafe_get_uint32_le =
+  if Sys.big_endian
+  then fun buf off -> swap32 (unsafe_get_uint32 buf off)
+  else fun buf off -> unsafe_get_uint32 buf off
+
 let bytes_unsafe_set_uint32_be =
   if Sys.big_endian
   then fun buf off v -> bytes_unsafe_set_uint32 buf off v
@@ -110,6 +115,7 @@ module Inf = struct
     ; fextra : string option
     ; fname : string option
     ; fcomment : string option
+    ; f : bool
     ; t : bigstring
     ; t_need : int
     ; t_len : int
@@ -193,8 +199,8 @@ module Inf = struct
   let checksum d =
     let k d = match d.dd with
       | Dd { state; _ } ->
-        let crc = unsafe_get_uint32_be d.t 0 in
-        let isize = unsafe_get_uint32_be d.t 4 in
+        let crc = unsafe_get_uint32_le d.t 0 in
+        let isize = unsafe_get_uint32_le d.t 4 in
 
         if Optint.to_int32 d.crc = crc && Optint.to_int32 d.wr = isize
         then `End d
@@ -207,7 +213,6 @@ module Inf = struct
 
   let rec zero_terminated k d =
     let buf = Buffer.create 16 in
-    Fmt.epr ">>> ZERO TERMINATED.\n%!" ;
 
     let rec go d =
       if i_rem d >= 0
@@ -319,8 +324,6 @@ module Inf = struct
           let xfl = unsafe_get_uint8 d.i (d.i_pos + 8) in
           let os = unsafe_get_uint8 d.i (d.i_pos + 9) in
 
-          Fmt.epr "flg:%02x\n%!" flg ;
-
           if flg land 4 != 0
           then fextra (fpayload (fhcrc kfinal))
               { d with cm; flg; mtime; xfl; os; i_pos= d.i_pos + 10 }
@@ -338,21 +341,31 @@ module Inf = struct
     | Dd { state; o; _ } ->
       match De.Inf.decode state with
       | `Flush ->
-        let len = bigstring_length o - De.Inf.dst_rem state in
-        let crc = Checkseum.Crc32.digest_bigstring o 0 len d.crc in
-        `Flush { d with wr= Optint.add d.wr (Optint.of_int len); crc; }
+        if d.f
+        then flush decode d
+        else
+          let len = bigstring_length o - De.Inf.dst_rem state in
+          let crc = Checkseum.Crc32.digest_bigstring o 0 len d.crc in
+          flush decode { d with wr= Optint.add d.wr (Optint.of_int len)
+                              ; crc
+                              ; f= true }
       | `Await ->
         let len = i_rem d - De.Inf.src_rem state in
         refill decode { d with i_pos= d.i_pos + len }
       | `End ->
-        let len = bigstring_length o - De.Inf.dst_rem state in
-        let crc = Checkseum.Crc32.digest_bigstring o 0 len d.crc in
-        if len > 0
-        then flush checksum { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
-                                   ; wr= Optint.add d.wr (Optint.of_int len)
-                                   ; crc }
-        else checksum { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
-                             ; crc }
+        if d.f
+        then flush decode d (* Do nothing! *)
+        else
+          let len = bigstring_length o - De.Inf.dst_rem state in
+          let crc = Checkseum.Crc32.digest_bigstring o 0 len d.crc in
+          if len > 0
+          then `Flush
+              { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
+                     ; wr= Optint.add d.wr (Optint.of_int len)
+                     ; crc
+                     ; f= true }
+          else checksum { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
+                               ; crc }
       | `Malformed err -> `Malformed err
 
   let src d s j l =
@@ -371,9 +384,9 @@ module Inf = struct
     | Hd _ -> d
 
   let flush d = match d.dd with
-    | Hd _ -> d
+    | Hd _ -> { d with f= false; }
     | Dd { state; _ } ->
-      De.Inf.flush state ; d
+      De.Inf.flush state ; { d with f= false; }
 
   let dst_rem d = match d.dd with
     | Hd _ -> invalid_arg "Invalid state to know bytes remaining"
@@ -391,6 +404,7 @@ module Inf = struct
       | `Channel _ -> bigstring_create io_buffer_size, 1, 0 in
     { i; i_pos; i_len
     ; src
+    ; f= false
     ; wr= Optint.zero
     ; crc= Checkseum.Crc32.default
     ; dd= Hd { o; }
@@ -412,6 +426,7 @@ module Inf = struct
       | Hd { o; } -> o
       | Dd { o; _ } -> o in
     { i; i_pos; i_len
+    ; f= false
     ; src= d.src
     ; wr= Optint.zero
     ; crc= Checkseum.Crc32.default
