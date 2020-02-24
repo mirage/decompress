@@ -1118,6 +1118,21 @@ let test_empty_gzip () =
     Alcotest.(check int) "empty GZip" (Gz.Inf.dst_rem decoder - bigstring_length o) 0
   | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
+let test_empty_gzip_with_name () =
+  Alcotest.test_case "empty GZip with name" `Quick @@ fun () ->
+  let input =
+    [ "\x1f\x8b\x08\x08\xa6\xec\x53\x5e\x00\x03\x74\x65\x73\x74\x00\x03"
+    ; "\x00\x00\x00\x00\x00\x00\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
+  match Gz.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty GZip" (Gz.Inf.dst_rem decoder - bigstring_length o) 0 ;
+    Alcotest.(check (option string)) "name" (Gz.Inf.filename decoder) (Some "test")
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+
 let () =
   Alcotest.run "z"
     [ "invalids", [ invalid_complement_of_length ()
@@ -1201,7 +1216,8 @@ let () =
               ; test_corpus_with_zlib "progl"
               ; test_corpus_with_zlib "progp"
               ; test_corpus_with_zlib "trans" ]
-    ; "gzip", [ test_empty_gzip () ]
+    ; "gzip", [ test_empty_gzip ()
+              ; test_empty_gzip_with_name () ]
     ; "hang", [ hang0 () ]
     ; "git", [ git_object () ]
     ; "higher", [ higher_zlib0 ()

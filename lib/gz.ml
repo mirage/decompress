@@ -207,17 +207,21 @@ module Inf = struct
 
   let rec zero_terminated k d =
     let buf = Buffer.create 16 in
+    Fmt.epr ">>> ZERO TERMINATED.\n%!" ;
 
     let rec go d =
       if i_rem d >= 0
       then
         let i_pos = ref d.i_pos in
         let chr = ref '\000' in
-        while d.i_len - !i_pos + 1 > 0 && ( chr := unsafe_get_char d.i !i_pos ; !chr != '\000' )
+        while d.i_len - !i_pos + 1 > 0
+              && ( chr := unsafe_get_char d.i !i_pos
+                 ; !chr != '\000' )
         do Buffer.add_char buf !chr ; incr i_pos done ;
         if i_rem d > 0 && !chr != '\000'
         then refill go { d with i_pos= !i_pos }
-        else k (Some (Buffer.contents buf)) { d with i_pos= !i_pos }
+        else k (Some (Buffer.contents buf))
+            { d with i_pos= !i_pos + 1 (* + '\000' *) }
       else err_unexpected_end_of_input d in
     go d
 
@@ -315,9 +319,13 @@ module Inf = struct
           let xfl = unsafe_get_uint8 d.i (d.i_pos + 8) in
           let os = unsafe_get_uint8 d.i (d.i_pos + 9) in
 
+          Fmt.epr "flg:%02x\n%!" flg ;
+
           if flg land 4 != 0
-          then fextra (fpayload (fhcrc kfinal)) { d with cm; flg; mtime; xfl; os; i_pos= d.i_pos + 10 }
-          else fpayload (fhcrc kfinal) { d with cm; flg; mtime; xfl; os; i_pos= d.i_pos + 10 }
+          then fextra (fpayload (fhcrc kfinal))
+              { d with cm; flg; mtime; xfl; os; i_pos= d.i_pos + 10 }
+          else fpayload (fhcrc kfinal)
+              { d with cm; flg; mtime; xfl; os; i_pos= d.i_pos + 10 }
       | _ -> assert false in
     if i_rem d >= 10
     then k d
@@ -416,4 +424,6 @@ module Inf = struct
     ; t_need= 0
     ; t_len= 0
     ; k= decode }
+
+  let filename { fname; _ } = fname
 end

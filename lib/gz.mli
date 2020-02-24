@@ -20,4 +20,6 @@ module Inf : sig
   val src_rem : decoder -> int
   val write : decoder -> int
   val flush : decoder -> decoder
+
+  val filename : decoder -> string option
 end
