@@ -1247,6 +1247,45 @@ let test_multiple_flush_gzip () =
   | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
   | _ -> Alcotest.failf "Invalid last call to Gz.Inf.decode"
 
+let test_generate_empty_gzip () =
+  Alcotest.test_case "generate empty GZip" `Quick @@ fun () ->
+  Queue.reset q ;
+  let buf = Buffer.create 16 in
+  let encoder = Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l 0 ~q ~w ~level:3 in
+  let rec go encoder = match Gz.Def.encode encoder with
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let gz = go encoder in
+  Fmt.epr ">>> @[<hov>%a@].\n%!" (Hxd_string.pp Hxd.O.default) gz ;
+  let decoder = Gz.Inf.decoder (`String gz) ~o in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty GZip" (bigstring_length o - Gz.Inf.dst_rem decoder) 0
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+let test_generate_empty_gzip_with_name () =
+  Alcotest.test_case "generate empty GZip with name" `Quick @@ fun () ->
+  Queue.reset q ;
+  let buf = Buffer.create 16 in
+  let encoder = Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l 0 ~q ~w ~level:0 in
+  let rec go encoder = match Gz.Def.encode encoder with
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let gz = go encoder in
+  Fmt.epr ">>> @[<hov>%a@].\n%!" (Hxd_string.pp Hxd.O.default) gz ;
+  let decoder = Gz.Inf.decoder (`String gz) ~o in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check int) "emtpy GZip" (bigstring_length o - Gz.Inf.dst_rem decoder) 0 ;
+    Alcotest.(check (option string)) "foo" (Gz.Inf.filename decoder) (Some "foo")
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
 let () =
   Alcotest.run "z"
     [ "invalids", [ invalid_complement_of_length ()
@@ -1336,7 +1375,9 @@ let () =
     ; "gzip", [ test_empty_gzip ()
               ; test_empty_gzip_with_name ()
               ; test_foo_gzip ()
-              ; test_multiple_flush_gzip () ]
+              ; test_multiple_flush_gzip ()
+              ; test_generate_empty_gzip ()
+              ; test_generate_empty_gzip_with_name () ]
     ; "hang", [ hang0 () ]
     ; "git", [ git_object () ]
     ; "higher", [ higher_zlib0 ()
