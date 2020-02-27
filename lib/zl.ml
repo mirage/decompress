@@ -377,6 +377,7 @@ module Def = struct
   let i_rem s = s.i_len - s.i_pos + 1
 
   let eoi e =
+    De.Lz77.src e.s bigstring_empty 0 0 ;
     { e with i= bigstring_empty
            ; i_pos= 0
            ; i_len= min_int }
@@ -405,11 +406,12 @@ module Def = struct
 
   let flush k e = match e.dst with
     | `Buffer b ->
-      for i = 0 to bigstring_length e.o - De.Def.dst_rem e.e
+      let len = bigstring_length e.o - o_rem e in
+      for i = 0 to len - 1
       do Buffer.add_char b e.o.{i} done ;
       k (dst e e.o 0 (bigstring_length e.o))
     | `Channel oc ->
-      output_bigstring oc e.o 0 (bigstring_length e.o - De.Def.dst_rem e.e) ;
+      output_bigstring oc e.o 0 (bigstring_length e.o - o_rem e) ;
       k (dst e e.o 0 (bigstring_length e.o))
     | `Manual -> `Flush { e with k }
 
@@ -419,8 +421,8 @@ module Def = struct
     let k e =
       let checksum = Optint.to_int32 (De.Lz77.checksum e.s) in
       unsafe_set_uint32_be e.o e.o_pos checksum ;
-      `End { e with k= identity; o_pos= e.o_pos + 4 } in
-    if o_rem e >= 4 then k e else refill checksum e
+      flush identity { e with o_pos= e.o_pos + 4 } in
+    if o_rem e >= 4 then k e else flush checksum e
 
   let make_block ?(last= false) e =
     if last = false

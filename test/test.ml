@@ -1128,6 +1128,51 @@ let test_multiple_flush_zlib () =
   | `End _ -> Alcotest.(check pass) "inflated" () ()
   | _ -> Alcotest.failf "Invalid last call to Zl.Inf.decode"
 
+let test_empty_with_zlib () =
+  Alcotest.test_case "empty zlib" `Quick @@ fun () ->
+  Queue.reset q ;
+  let buf = Buffer.create 16 in
+  let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w ~level:3 in
+  let go encoder = match Zl.Def.encode encoder with
+    | `Flush _ | `Await _ -> Alcotest.failf "Unexpected `Flush or `Await signal"
+    | `End _ -> Buffer.contents buf in
+  let zl = go encoder in
+  Fmt.epr ">>> @[<hov>%a@]\n%!" (Hxd_string.pp Hxd.O.default) zl ;
+  let decoder = Zl.Inf.decoder (`String zl) ~o ~allocate:(fun bits -> De.make_window ~bits) in
+  match Zl.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty" (bigstring_length o - Zl.Inf.dst_rem decoder) 0
+  | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err
+
+let test_empty_with_zlib_and_small_output () =
+  Alcotest.test_case "empty zlib & small output" `Quick @@ fun () ->
+  Queue.reset q ;
+  let o = bigstring_create 4 in
+  let buf = Buffer.create 16 in
+  let encoder = Zl.Def.encoder (`String "") `Manual ~q ~w ~level:3 in
+  let encoder = Zl.Def.dst encoder o 0 4 in
+  let rec go encoder = match Zl.Def.encode encoder with
+    | `Flush encoder ->
+      let len = bigstring_length o - Zl.Def.dst_rem encoder in
+      let raw = Bigstringaf.substring o ~off:0 ~len in
+      Buffer.add_string buf raw ;
+      go (Zl.Def.dst encoder o 0 4)
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `End _ ->
+      Alcotest.(check int) "empty trailer" (bigstring_length o - Zl.Def.dst_rem encoder) 0 ;
+      Buffer.contents buf in
+  let zl = go encoder in
+  Fmt.epr ">>> @[<hov>%a@].\n%!" (Hxd_string.pp Hxd.O.default) zl ;
+  let decoder = Zl.Inf.decoder (`String zl) ~o ~allocate:(fun bits -> De.make_window ~bits) in
+  match Zl.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty" (bigstring_length o - Zl.Inf.dst_rem decoder) 0
+  | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err
+
 let test_empty_gzip () =
   Alcotest.test_case "empty GZip" `Quick @@ fun () ->
   let input =
@@ -1269,7 +1314,9 @@ let () =
                  ; test_corpus "progl"
                  ; test_corpus "progp"
                  ; test_corpus "trans" ]
-    ; "zlib", [ test_corpus_with_zlib "bib"
+    ; "zlib", [ test_empty_with_zlib ()
+              ; test_empty_with_zlib_and_small_output ()
+              ; test_corpus_with_zlib "bib"
               ; test_corpus_with_zlib "book1"
               ; test_corpus_with_zlib "book2"
               ; test_corpus_with_zlib "geo"
