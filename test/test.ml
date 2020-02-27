@@ -1091,6 +1091,7 @@ let producer_to_string () =
 
 let higher_zlib input =
   Alcotest.test_case "higher" `Quick @@ fun () ->
+  Queue.reset q ;
   let refill = emitter_from_string input in
   let flush, contents = producer_to_string () in
   Zl.Higher.compress ~level:0 ~w ~q ~i ~o ~refill ~flush ;
@@ -1107,6 +1108,7 @@ let higher_zlib3 () = higher_zlib "Le diable me remet dans le mal"
 
 let test_multiple_flush_zlib () =
   Alcotest.test_case "multiple flush zlib" `Quick @@ fun () ->
+  Queue.reset q ;
   let refill = emitter_from_string "foo" in
   let flush, contents = producer_to_string () in
   Zl.Higher.compress ~level:0 ~w ~q ~i ~o ~refill ~flush ;
