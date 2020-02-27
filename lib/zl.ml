@@ -131,6 +131,7 @@ module Inf = struct
     ; i : bigstring
     ; i_pos : int
     ; i_len : int
+    ; f : bool
     ; wr : int
     ; hd : int
     ; dd : dd
@@ -254,18 +255,26 @@ module Inf = struct
     | Dd { state; o; _ } ->
       match De.Inf.decode state with
       | `Flush ->
-        let len = bigstring_length o - De.Inf.dst_rem state in
-        (* XXX(dinosaure): protect counter to a recall? TODO *)
-        `Flush { d with wr= d.wr + len }
+        if d.f
+        then flush decode d
+        else
+          let len = bigstring_length o - De.Inf.dst_rem state in
+          flush decode { d with wr= d.wr + len; f= true; }
       | `Await ->
         let len = i_rem d - De.Inf.src_rem state in
         refill decode { d with i_pos= d.i_pos + len }
       | `End ->
-        let len = bigstring_length o - De.Inf.dst_rem state in
-        if len > 0
-        then flush checksum { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
-                                   ; wr= d.wr + len }
-        else checksum { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state) }
+        if d.f
+        then flush decode d
+        else
+          let len = bigstring_length o - De.Inf.dst_rem state in
+          if len > 0
+          then `Flush
+              { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
+                     ; wr= d.wr + len
+                     ; f= true }
+          else checksum
+              { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state) }
       | `Malformed err -> `Malformed err
 
   let src d s j l =
@@ -284,9 +293,9 @@ module Inf = struct
     | Hd _ -> d
 
   let flush d = match d.dd with
-    | Hd _ -> d (* FIXME *)
+    | Hd _ -> { d with f= false }
     | Dd { state; _ } ->
-      De.Inf.flush state ; d
+      De.Inf.flush state ; { d with f= false }
 
   let dst_rem d = match d.dd with
     | Hd _ -> Fmt.invalid_arg "Invalid state to know bytes remaining"
@@ -303,6 +312,7 @@ module Inf = struct
       | `Channel _ -> bigstring_create io_buffer_size, 1, 0 in
     { i; i_pos; i_len
     ; src
+    ; f= false
     ; wr= 0
     ; hd= 0
     ; dd= Hd { o; }
@@ -325,6 +335,7 @@ module Inf = struct
       | Dd { o; _ } -> o in
     { i; i_pos; i_len
     ; src= d.src
+    ; f= false
     ; wr= 0
     ; hd= 0
     ; dd= Hd { o; }
