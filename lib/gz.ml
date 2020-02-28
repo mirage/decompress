@@ -229,7 +229,7 @@ module Inf = struct
     malformedf "Invalid input size (expect:%ld, inflated:%ld)" expect (Optint.to_int32 d.wr)
 
   let err_invalid_header _ =
-    malformedf "Invalid header"
+    malformedf "Invalid GZip header"
 
   (* remaining bytes to read [d.i]. *)
   let i_rem d = d.i_len - d.i_pos + 1
