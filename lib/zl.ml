@@ -3,7 +3,8 @@ let kstrf k fmt = Format.kasprintf k fmt
 let invalid_arg fmt = Format.kasprintf invalid_arg fmt
 
 module Bigarray = Bigarray_compat
-type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+type bigstring =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 type window = De.window
 
 let bigstring_create l = Bigarray.Array1.create Bigarray.char Bigarray.c_layout l
