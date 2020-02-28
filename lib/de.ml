@@ -2089,42 +2089,24 @@ module Def = struct
     | (`Flush | `Await) as v -> encode e v (* TODO: not really clear. *)
 
   and flush_bits ~bits ~hold k e =
-    let bits = ref bits in
-    let hold = ref hold in
-    let rem = o_rem e in
+    if e.bits >= 16 && o_rem e > 1
+    then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
+         ; e.hold <- e.hold lsr 16
+         ; e.bits <- e.bits - 16
+         ; e.o_pos <- e.o_pos + 2 ) ;
+    if e.bits >= 8 && o_rem e > 0
+    then ( unsafe_set_uint8 e.o e.o_pos (e.hold land 0xff)
+         ; e.hold <- e.hold lsr 8
+         ; e.bits <- e.bits - 8
+         ; e.o_pos <- e.o_pos + 1 ) ;
 
-    if rem > 2
-    then
-      ( if e.bits >= 16
-        then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
-             ; e.hold <- e.hold lsr 16
-             ; e.bits <- e.bits - 16
-             ; e.o_pos <- e.o_pos + 2 ) ;
-
-        e.hold <- ((!hold land 0xffff) lsl e.bits) lor e.hold ;
-        e.bits <- e.bits + (min 16 !bits) ;
-        hold := !hold lsr (min 16 !bits) ;
-        bits := !bits - (min 16 !bits) ;
-
-        if e.bits >= 16
-        then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
-             ; e.hold <- e.hold lsr 16
-             ; e.bits <- e.bits - 16
-             ; e.o_pos <- e.o_pos + 2 ) ;
-
-        e.hold <- ((!hold land 0xffff) lsl e.bits) lor e.hold ;
-        e.bits <- e.bits + (min 16 !bits) ;
-        hold := !hold lsr (min 16 !bits) ;
-        bits := !bits - (min 16 !bits) ;
-
-        if e.bits >= 16
-        then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
-             ; e.hold <- e.hold lsr 16
-             ; e.bits <- e.bits - 16
-             ; e.o_pos <- e.o_pos + 2 ) ;
-
-        k e )
-      else Fmt.failwith "Dd.flush_bits"
+    if bits + e.bits > 31
+    then flush (flush_bits ~bits ~hold k) e
+    else if bits > 0
+    then ( e.hold <- ((hold land 0xffff) lsl e.bits) lor e.hold
+         ; e.bits <- e.bits + (min bits 16)
+         ; flush_bits ~bits:(min 0 (bits - 16)) ~hold: (hold lsr 16) k e )
+    else k e
 
   and write e =
     let o_pos = ref e.o_pos in
@@ -2136,7 +2118,23 @@ module Def = struct
 
     let k_ok e = e.k <- encode ; `Ok in
     let k_nw e = e.k <- block ; `Block in
-    let k_flush_bits ~bits ~hold e = flush (flush_bits ~bits ~hold k_ok) e in
+    let k_continue e = write e in
+    (* XXX(dinosaure): [k_continue] is used by [flush_bits]. When [flush_bits]
+       is done, it's only to prevent an integer overflow of [hold] and it does
+       not mean that we finish to encode the queue. [flush_bits] still continue
+       to recall [write] then and we ensure that we have enough space to flush
+       [hold] by [flush] and when the assumption of the given output has, at
+       least, 2 free bytes.
+
+       A bug appears when we compress with GZip layer [paper2] and when we reach
+       [flush_bits] but we don't have enough spaces. User give to us a new
+       output but:
+
+       1) in the old implementation of [flush_bits], we wrote nothing (at least
+       we want to write 16 bits)
+       2) [flush_bits] finish with [`Ok] which tells to the user that we encoded
+       all the queue *)
+    let k_flush_bits ~bits ~hold e = flush (flush_bits ~bits ~hold k_continue) e in
 
     let rec emit e =
       if !bits >= 16
