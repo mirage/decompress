@@ -600,7 +600,6 @@ module Def = struct
 
   let zero_terminated str kfinal e =
     let pos = ref 0 in
-    Fmt.epr ">>> Do zero-terminated string.\n%!" ;
     let rec k e =
       let len = min (String.length str - !pos) (o_rem e) in
       for i = 0 to len - 1
@@ -674,38 +673,27 @@ module Def = struct
       and compress e =
         match De.Lz77.compress e.s with
         | `Await ->
-          Fmt.epr ">>> [compress] `Await.\n%!" ;
           refill compress { e with i_pos= e.i_pos + (i_rem e - De.Lz77.src_rem e.s) }
         | `Flush ->
-          Fmt.epr ">>> [compress] `Flush.\n%!" ;
           encode_deflate e (De.Def.encode e.e `Flush)
         | `End ->
-          Fmt.epr ">>> [compress] `End.\n%!" ;
           De.Queue.push_exn e.q De.Queue.eob ;
           let block = make_block ~last:true e in
           trailing e (De.Def.encode e.e (`Block block))
       and encode_deflate e = function
         | `Partial ->
-          Fmt.epr ">>> [encode-deflate] `Partial.\n%!" ;
           let len = o_rem e - De.Def.dst_rem e.e in
           flush (partial encode_deflate) { e with o_pos= e.o_pos + len }
         | `Ok ->
-          Fmt.epr ">>> [encode-deflate] `Ok.\n%!" ;
           compress e
         | `Block ->
-          Fmt.epr ">>> [encode-deflate] `Block.\n%!" ;
           let block = make_block e in
           encode_deflate e (De.Def.encode e.e (`Block block))
       and trailing e = function
         | `Partial ->
           let len = o_rem e - De.Def.dst_rem e.e in
-          Fmt.epr ">>> [trailing] `Partial.\n%!" ;
-          Fmt.epr ">>> [trailing `Partial] DE wrote %d byte(s).\n%!" len ;
-          Fmt.epr ">>> DE dst-rem: %d.\n%!" (De.Def.dst_rem e.e) ;
-          Fmt.epr ">>> o-rem: %d.\n%!" (o_rem e) ;
           flush (partial trailing) { e with o_pos= e.o_pos + len }
         | `Ok ->
-          Fmt.epr ">>> [trailing] `Ok.\n%!" ;
           let len = o_rem e - De.Def.dst_rem e.e in
           checksum { e with o_pos= e.o_pos + len }
         | `Block -> assert false in
