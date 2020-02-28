@@ -417,7 +417,8 @@ module Inf = struct
           let len = bigstring_length o - De.Inf.dst_rem state in
           let crc = Checkseum.Crc32.digest_bigstring o 0 len d.crc in
           if len > 0
-          then `Flush
+          then
+            flush decode
               { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
                      ; wr= Optint.add d.wr (Optint.of_int len)
                      ; crc
