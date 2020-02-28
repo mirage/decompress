@@ -392,7 +392,7 @@ module Inf = struct
     then k d
     else ( if i_rem d < 0
            then err_unexpected_end_of_input d
-           else refill header d )
+           else refill decode d )
 
   and decode d = match d.dd with
     | Hd _ -> header d
