@@ -268,7 +268,8 @@ module Inf = struct
         else
           let len = bigstring_length o - De.Inf.dst_rem state in
           if len > 0
-          then `Flush
+          then
+            flush decode
               { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
                      ; wr= d.wr + len
                      ; f= true }
