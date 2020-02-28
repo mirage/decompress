@@ -247,7 +247,10 @@ module Inf = struct
                         ; fdict= fdict == 1; flevel; cinfo
                         ; i_pos= d.i_pos + 2 } ) in
     if i_rem d >= 2
-    then k d else ( if i_rem d < 0 then err_unexpected_end_of_input d else refill header d )
+    then k d
+    else ( if i_rem d < 0
+           then err_unexpected_end_of_input d
+           else refill decode (* XXX(dinosaure): it should be safe to replace it by [header] *) d )
 
   and decode d = match d.dd with
     | Hd _ -> header d
@@ -428,12 +431,12 @@ module Def = struct
 
   let make_block ?(last= false) e =
     if last = false
-       then
-         let literals = De.Lz77.literals e.s in
-         let distances = De.Lz77.distances e.s in
-         let dynamic = De.Def.dynamic_of_frequencies ~literals ~distances in
-         { De.Def.kind= De.Def.Dynamic dynamic; last; }
-       else { De.Def.kind= De.Def.Fixed; last; }
+    then
+      let literals = De.Lz77.literals e.s in
+      let distances = De.Lz77.distances e.s in
+      let dynamic = De.Def.dynamic_of_frequencies ~literals ~distances in
+      { De.Def.kind= De.Def.Dynamic dynamic; last; }
+    else { De.Def.kind= De.Def.Fixed; last; }
 
   let rec encode e = match e.state with
     | Hd ->
@@ -492,7 +495,8 @@ module Def = struct
       | `Manual -> bigstring_empty, 1, 0
       | `Buffer _
       | `Channel _ -> bigstring_create io_buffer_size, 0, io_buffer_size - 1 in
-    if level < 0 || level > 3 then Fmt.invalid_arg "Invalid compression level %d (must be in the range 0...3)" level ;
+    if level < 0 || level > 3
+    then invalid_arg "Invalid compression level %d (must be in the range 0...3)" level ;
     { src
     ; dst
     ; i; i_pos; i_len
