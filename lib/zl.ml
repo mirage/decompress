@@ -347,6 +347,8 @@ module Inf = struct
     ; t_need= 0
     ; t_len= 0
     ; k= decode }
+
+  let decode d = d.k d
 end
 
 module Def = struct
