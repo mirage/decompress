@@ -151,6 +151,37 @@ let bytes_unsafe_set_uint32_be =
 
 let invalid_bounds off len = invalid_arg "Out of bounds (off: %d, len: %d)" off len
 
+type os =
+  | FAT | Amiga | VMS | Unix | VM | Atari | HPFS | Macintosh
+  | Z | CPM | TOPS20 | NTFS | QDOS | Acorn | Unknown
+
+let pp_os ppf = function
+  | FAT -> Fmt.string ppf "FAT filesystem (MS-DOS, OS/2, NT/Win32)"
+  | Amiga -> Fmt.string ppf "Amiga"
+  | VMS -> Fmt.string ppf "VMS"
+  | Unix -> Fmt.string ppf "Unix"
+  | VM -> Fmt.string ppf "VM/CMS"
+  | Atari -> Fmt.string ppf "Atari TOS"
+  | HPFS -> Fmt.string ppf "HPFS filesystem (OS/2, NT)"
+  | Macintosh -> Fmt.string ppf "Macintosh"
+  | Z -> Fmt.string ppf "Z-System"
+  | CPM -> Fmt.string ppf "CP/M"
+  | TOPS20 -> Fmt.string ppf "TOPS-20"
+  | NTFS -> Fmt.string ppf "NTFS filesysttem (NT)"
+  | QDOS -> Fmt.string ppf "QDOS"
+  | Acorn -> Fmt.string ppf "Acorn RISCOS"
+  | Unknown -> Fmt.string ppf "Unknown"
+
+let os_to_int = function
+  | FAT -> 0 | Amiga -> 1 | VMS -> 2 | Unix -> 3 | VM -> 4 | Atari -> 5 | HPFS -> 6
+  | Macintosh -> 7 | Z -> 8 | CPM -> 9 | TOPS20 -> 10 | NTFS -> 11 | QDOS -> 12 | Acorn -> 13
+  | Unknown -> 255
+
+let os_of_int = function
+  | 0 -> FAT | 1 -> Amiga | 2 -> VMS | 3 -> Unix | 4 -> VM | 5 -> Atari | 6 -> HPFS
+  | 7 -> Macintosh | 8 -> Z | 9 -> CPM | 10 -> TOPS20 | 11 -> NTFS | 12 -> QDOS | 13 -> Acorn
+  | _ -> Unknown
+
 module Inf = struct
   type src = [ `Channel of in_channel | `String of string | `Manual ]
 
@@ -503,6 +534,7 @@ module Inf = struct
   let decode d = d.k d
   let filename { fname; _ } = fname
   let comment { fcomment; _ } = fcomment
+  let os { os; _ } = os_of_int os
 end
 
 module Def = struct
@@ -717,8 +749,6 @@ module Def = struct
     let flg = flg lor (if is_some filename then 0b1000 else 0b0) in
     let flg = flg lor (if is_some comment then 0b10000 else 0b0) in
     flg
-
-  let os_to_int : int -> int = fun _ -> 0
 
   let encoder src dst ?(ascii= false) ?(hcrc= false) ?filename ?comment ~mtime os ~q ~w ~level =
     let i, i_pos, i_len = match src with
