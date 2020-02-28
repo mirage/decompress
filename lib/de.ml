@@ -4,6 +4,9 @@ type bigstring =
 
 (* XXX(dinosaure): prelude. *)
 
+let invalid_arg fmt = Format.kasprintf invalid_arg fmt
+let kstrf k fmt = Format.kasprintf k fmt
+
 let bigstring_empty = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0
 let bigstring_create l = Bigarray.Array1.create Bigarray.char Bigarray.c_layout l
 let bigstring_length x = Bigarray.Array1.dim x [@@inline]
@@ -120,7 +123,7 @@ let input_bigstring ic buf off len =
     unsafe_set_uint8 buf (off + i) v
   done ; res
 
-let invalid_bounds off len = Fmt.invalid_arg "Out of bounds (off: %d, len: %d)" off len
+let invalid_bounds off len = invalid_arg "Out of bounds (off: %d, len: %d)" off len
 
 let unsafe_blit src src_off dst dst_off len =
   for i = 0 to len - 1
@@ -288,10 +291,10 @@ type window = bigstring
 
 let make_window ~bits =
   if bits >= 8 && bits <= 15 then bigstring_create (1 lsl 15)
-  else Fmt.invalid_arg "bits MUST be between 8 and 15 (%d)" bits
+  else invalid_arg "bits MUST be between 8 and 15 (%d)" bits
 
 let ffs n =
-  if n = 0 then Fmt.invalid_arg "ffs on 0"
+  if n = 0 then invalid_arg "ffs on 0"
   else
     ( let t = ref 1 in
       let r = ref 0 in
@@ -422,7 +425,7 @@ module WInf = struct
   type t =
     { raw : bigstring
     ; mutable w : int
-    ; mutable c : Optint.t }
+    ; mutable c : optint }
 
   let max = 1 lsl 15
   let mask = (1 lsl 15) - 1
@@ -609,7 +612,7 @@ module Inf = struct
   and jump = Length | Extra_length | Distance | Extra_distance | Write
   and ret = Await | Flush | End | K | Malformed of string
 
-  let malformedf fmt = Fmt.kstrf (fun s -> Malformed s) fmt
+  let malformedf fmt = kstrf (fun s -> Malformed s) fmt
 
   (* End of input [eoi] is signalled by [d.i_pos = 0] and [d.i_len = min_int]
      which implies [i_rem d < 0] is [true]. *)
@@ -1320,7 +1323,7 @@ module Inf = struct
     | Malformed err -> `Malformed err
     | K -> decode d
 
-  let dst_rem d = bigstring_length d.o - d.o_pos
+  let dst_rem d = bigstring_length d.o - d.o_pos (* TODO: why [+1] disappears? *)
   let src_rem d = i_rem d
   let flush d = d.o_pos <- 0
 
@@ -1901,7 +1904,7 @@ module Def = struct
     ; dtree
     ; symbols= bl_symbols }
 
-  let invalid_encode () = Fmt.invalid_arg "expected `Await encode"
+  let invalid_encode () = invalid_arg "expected `Await encode"
 
   type kind = Flat of int | Fixed | Dynamic of dynamic
   type block = { kind: kind; last: bool; }
@@ -1910,7 +1913,7 @@ module Def = struct
 
   let exists v block = match v, block.kind with
     | (`Copy _ | `End), Flat _ ->
-      Fmt.invalid_arg "copy code in flat block can not exist"
+      invalid_arg "copy code in flat block can not exist"
     | `Literal chr, Dynamic dynamic ->
       dynamic.ltree.T.tree.Lookup.t.(Char.code chr) lsr _max_bits > 0
     | `Copy (off, len), Dynamic dynamic ->
@@ -2368,7 +2371,7 @@ module Def = struct
       let cmd = Queue.pop_exn e.b in
 
       if not (cmd land 0x2000000 == 0) || cmd == 256
-      then Fmt.invalid_arg "Impossible to emit a copy code or a EOB in a Flat block" ;
+      then invalid_arg "Impossible to emit a copy code or a EOB in a Flat block" ;
 
       unsafe_set_uint8 e.o !o_pos (cmd land 0xff) ;
       incr o_pos ; incr flat ;
@@ -2422,7 +2425,7 @@ module Def = struct
 
   let bits_rem t = match t.bits_rem with
     | `Rem rem -> rem
-    | `Pending -> Fmt.invalid_arg "Encoder does not reach EOB of last block"
+    | `Pending -> invalid_arg "Encoder does not reach EOB of last block"
 
   let encoder dst ~q =
     let o, o_pos, o_max = match dst with
@@ -2449,7 +2452,7 @@ module WDef = struct
     { raw : bigstring
     ; mutable r : int
     ; mutable w : int
-    ; mutable c : Optint.t }
+    ; mutable c : optint }
 
   let max = 1 lsl 15
   let mask = max - 1

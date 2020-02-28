@@ -118,7 +118,7 @@ let unsafe_set_uint16_be =
   then fun buf off v -> unsafe_set_uint16 buf off v
   else fun buf off v -> unsafe_set_uint16 buf off (swap16 v)
 
-let invalid_bounds off len = Fmt.invalid_arg "Out of bounds (off: %d, len: %d)" off len
+let invalid_bounds off len = invalid_arg "Out of bounds (off: %d, len: %d)" off len
 
 let _deflated = 8 (* Compression method *)
 
@@ -154,7 +154,7 @@ module Inf = struct
     | `End of decoder
     | `Malformed of string ]
 
-  let malformedf fmt = Fmt.kstrf (fun s -> `Malformed s) fmt
+  let malformedf fmt = kstrf (fun s -> `Malformed s) fmt
 
   let err_unexpected_end_of_input _ =
     malformedf "Unexpected end of input"
@@ -163,9 +163,14 @@ module Inf = struct
     malformedf "Invalid checksum (expect:%04lx, has:%04lx)" expect (Optint.to_int32 has)
 
   let err_invalid_header _ =
-    malformedf "Invalid header"
+    malformedf "Invalid Zlib header"
 
+  (* remaining bytes to read [d.i] *)
   let i_rem d = d.i_len - d.i_pos + 1
+  [@@inline]
+
+  (* End of input [eoi] is signalled by [d.i_pos = 0] and [d.i_len = min_int]
+     which implies [i_rem d < 0] is [true]. *)
 
   let eoi d =
     { d with i= bigstring_empty
@@ -301,7 +306,7 @@ module Inf = struct
       De.Inf.flush state ; { d with f= false }
 
   let dst_rem d = match d.dd with
-    | Hd _ -> Fmt.invalid_arg "Invalid state to know bytes remaining"
+    | Hd _ -> invalid_arg "Invalid state to know bytes remaining"
     | Dd { state; _ } -> De.Inf.dst_rem state
 
   let src_rem d = i_rem d
