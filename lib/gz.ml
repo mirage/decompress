@@ -424,6 +424,7 @@ module Inf = struct
                      ; crc
                      ; f= true }
           else checksum { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
+                               ; k= checksum
                                ; crc }
       | `Malformed err -> `Malformed err
 
@@ -499,6 +500,7 @@ module Inf = struct
     ; t_len= 0
     ; k= decode }
 
+  let decode d = d.k d
   let filename { fname; _ } = fname
   let comment { fcomment; _ } = fcomment
 end
