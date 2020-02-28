@@ -1001,7 +1001,7 @@ let gzip_compress_and_uncompress ~filename ic =
   De.Queue.reset q ;
   let os = bigstring_create io_buffer_size in
   let bf = Buffer.create 4096 in
-  let encoder = Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l 0 ~q ~w ~level:0 in
+  let encoder = Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l Gz.Unix ~q ~w ~level:0 in
   let decoder = Gz.Inf.decoder `Manual ~o in
 
   let rec go_encode decoder encoder = match Gz.Def.encode encoder with
@@ -1306,7 +1306,7 @@ let test_generate_empty_gzip () =
   Alcotest.test_case "generate empty GZip" `Quick @@ fun () ->
   Queue.reset q ;
   let buf = Buffer.create 16 in
-  let encoder = Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l 0 ~q ~w ~level:3 in
+  let encoder = Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l Gz.Unix ~q ~w ~level:3 in
   let rec go encoder = match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
     | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
@@ -1325,7 +1325,7 @@ let test_generate_empty_gzip_with_name () =
   Alcotest.test_case "generate empty GZip with name" `Quick @@ fun () ->
   Queue.reset q ;
   let buf = Buffer.create 16 in
-  let encoder = Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l 0 ~q ~w ~level:0 in
+  let encoder = Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l Gz.Unix ~q ~w ~level:0 in
   let rec go encoder = match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
     | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
@@ -1345,7 +1345,7 @@ let test_generate_foo_gzip () =
   Alcotest.test_case "generate foo GZip" `Quick @@ fun () ->
   Queue.reset q ;
   let buf = Buffer.create 16 in
-  let encoder = Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l 0 ~q ~w ~level:0 in
+  let encoder = Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l Gz.Unix ~q ~w ~level:0 in
   let rec go encoder = match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
     | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"

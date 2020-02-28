@@ -5,6 +5,10 @@ type window = De.window
 
 val io_buffer_size : int
 
+type os =
+  | FAT | Amiga | VMS | Unix | VM | Atari | HPFS | Macintosh
+  | Z | CPM | TOPS20 | NTFS | QDOS | Acorn | Unknown
+
 module Inf : sig
   type decoder
 
@@ -24,6 +28,7 @@ module Inf : sig
 
   val filename : decoder -> string option
   val comment : decoder -> string option
+  val os : decoder -> os
 end
 
 module Def : sig
@@ -42,7 +47,7 @@ module Def : sig
     -> ?filename:string
     -> ?comment:string
     -> mtime:int32
-    -> int
+    -> os
     -> q:De.Queue.t
     -> w:window
     -> level:int
