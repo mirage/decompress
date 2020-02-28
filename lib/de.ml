@@ -1938,6 +1938,7 @@ module Def = struct
 
   (* remaining bytes to write in [e.o]. *)
   let o_rem e = e.o_max - e.o_pos + 1
+  [@@inline]
 
   (* set [e.o] with [s]. *)
   let dst e s j l =
@@ -2421,7 +2422,7 @@ module Def = struct
       | Flat len ->
         encode_flat_header e.blk.last len (fun e -> e.k <- encode ; encode e v) e
 
-  let dst_rem = o_rem
+  let dst_rem d = o_rem d
 
   let bits_rem t = match t.bits_rem with
     | `Rem rem -> rem
