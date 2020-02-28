@@ -363,31 +363,31 @@ module Inf = struct
     go d
 
   let rec header d =
-    let k d = match d.dd with
-      | Hd { o; } ->
-        let kfinal d =
-          let window = De.make_window ~bits:15 in
-          let state = De.Inf.decoder `Manual ~o ~w:window in
-          let dd = Dd { state; window; o; } in
-          De.Inf.src state d.i d.i_pos (i_rem d) ;
-          decode { d with dd } in
+    let k d =
+      let[@warning "-8"] Hd { o; } = d.dd in
 
-        let id = unsafe_get_uint16_be d.i d.i_pos in
-        if id != 0x1f8b
-        then err_invalid_header d
-        else
-          let cm = unsafe_get_uint8 d.i (d.i_pos + 2) in
-          let flg = unsafe_get_uint8 d.i (d.i_pos + 3) in
-          let mtime = unsafe_get_uint32_be d.i (d.i_pos + 4) in
-          let xfl = unsafe_get_uint8 d.i (d.i_pos + 8) in
-          let os = unsafe_get_uint8 d.i (d.i_pos + 9) in
+      let kfinal d =
+        let window = De.make_window ~bits:15 in
+        let state = De.Inf.decoder `Manual ~o ~w:window in
+        let dd = Dd { state; window; o; } in
+        De.Inf.src state d.i d.i_pos (i_rem d) ;
+        decode { d with k= decode; dd } in
 
-          if flg land 4 != 0
-          then fextra (fpayload (fhcrc kfinal))
-              { d with cm; flg; mtime; xfl; os; i_pos= d.i_pos + 10 }
-          else fpayload (fhcrc kfinal)
-              { d with cm; flg; mtime; xfl; os; i_pos= d.i_pos + 10 }
-      | _ -> assert false in
+      let id = unsafe_get_uint16_be d.i d.i_pos in
+      if id != 0x1f8b
+      then err_invalid_header d
+      else
+        let cm = unsafe_get_uint8 d.i (d.i_pos + 2) in
+        let flg = unsafe_get_uint8 d.i (d.i_pos + 3) in
+        let mtime = unsafe_get_uint32_be d.i (d.i_pos + 4) in
+        let xfl = unsafe_get_uint8 d.i (d.i_pos + 8) in
+        let os = unsafe_get_uint8 d.i (d.i_pos + 9) in
+
+        if flg land 4 != 0
+        then fextra (fpayload (fhcrc kfinal))
+            { d with cm; flg; mtime; xfl; os; i_pos= d.i_pos + 10 }
+        else fpayload (fhcrc kfinal)
+            { d with cm; flg; mtime; xfl; os; i_pos= d.i_pos + 10 } in
     if i_rem d >= 10
     then k d
     else ( if i_rem d < 0
