@@ -997,6 +997,56 @@ let test_corpus filename =
   let ic = open_in Filename.(concat "corpus" filename) in
   compress_and_uncompress ic ; close_in ic
 
+let gzip_compress_and_uncompress ~filename ic =
+  De.Queue.reset q ;
+  let os = bigstring_create io_buffer_size in
+  let bf = Buffer.create 4096 in
+  let encoder = Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l 0 ~q ~w ~level:0 in
+  let decoder = Gz.Inf.decoder `Manual ~o in
+
+  let rec go_encode decoder encoder = match Gz.Def.encode encoder with
+    | `Await _ -> assert false
+    | `Flush encoder ->
+      let len = io_buffer_size - Gz.Def.dst_rem encoder in
+      Fmt.epr "[!] [`Flush] >>> (dst-rem: %d) %d byte(s).\n%!" (Gz.Def.dst_rem encoder) len ;
+      go_decode (Gz.Inf.src decoder os 0 len) encoder
+    | `End encoder ->
+      let len = io_buffer_size - Gz.Def.dst_rem encoder in
+      Fmt.epr "[!] [`End] >>> %d byte(s).\n%!" len ;
+      go_decode (Gz.Inf.src decoder os 0 len) encoder
+  and go_decode decoder encoder = match Gz.Inf.decode decoder with
+    | `Await decoder ->
+      Fmt.epr "[!] [decode] `Await.\n%!" ;
+      go_encode decoder (Gz.Def.dst encoder os 0 io_buffer_size)
+    | `Flush decoder ->
+      Fmt.epr "[!] [decode] `Flush.\n%!" ;
+      let len = io_buffer_size - Gz.Inf.dst_rem decoder in
+      for i = 0 to pred len do Buffer.add_char bf o.{i} done ;
+      go_decode (Gz.Inf.flush decoder) encoder
+    | `End decoder ->
+      Fmt.epr "[!] [decode] `End.\n%!" ;
+      let len = io_buffer_size - Gz.Inf.dst_rem decoder in
+      for i = 0 to pred len do Buffer.add_char bf o.{i} done ;
+      Alcotest.(check (option string)) "filename" (Gz.Inf.filename decoder) (Some filename) ;
+      Buffer.contents bf
+    | `Malformed err -> failwith err in
+
+  let contents = go_decode decoder encoder in
+  seek_in ic 0 ;
+
+  let rec slow_compare pos =
+    match input_char ic with
+    | chr ->
+      if pos >= String.length contents
+      then Fmt.invalid_arg "Reach end of contents" ;
+      if contents.[pos] <> chr
+      then Fmt.invalid_arg "Contents differ at %08x\n%!" pos ; slow_compare (succ pos)
+    | exception End_of_file ->
+      if pos <> String.length contents
+      then Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)" (String.length contents) pos in
+
+  slow_compare 0
+
 let zlib_compress_and_uncompress ic =
   De.Queue.reset q ;
   let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w ~level:0 in
@@ -1045,6 +1095,11 @@ let test_corpus_with_zlib filename =
   Alcotest.test_case filename `Slow @@ fun () ->
   let ic = open_in Filename.(concat "corpus" filename) in
   zlib_compress_and_uncompress ic ; close_in ic
+
+let test_corpus_with_gzip filename =
+  Alcotest.test_case filename `Slow @@ fun () ->
+  let ic = open_in Filename.(concat "corpus" filename) in
+  gzip_compress_and_uncompress ~filename ic ; close_in ic
 
 let git_object () =
   (* XXX(dinosaure): Flat DEFLATE block where inputs.(0) must not do a [Window.update]. *)
@@ -1286,6 +1341,33 @@ let test_generate_empty_gzip_with_name () =
     Alcotest.(check (option string)) "foo" (Gz.Inf.filename decoder) (Some "foo")
   | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
+let test_generate_foo_gzip () =
+  Alcotest.test_case "generate foo GZip" `Quick @@ fun () ->
+  Queue.reset q ;
+  let buf = Buffer.create 16 in
+  let encoder = Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l 0 ~q ~w ~level:0 in
+  let rec go encoder = match Gz.Def.encode encoder with
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let gz = go encoder in
+  Fmt.epr ">>> @[<hov>%a@].\n%!" (Hxd_string.pp Hxd.O.default) gz ;
+  let decoder = Gz.Inf.decoder (`String gz) ~o in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Await _ | `End _ -> Alcotest.failf "Unexpected `Await or `End signal"
+    | `Flush decoder ->
+      let len = bigstring_length o - Gz.Inf.dst_rem decoder in
+      let raw = Bigstringaf.substring o ~off:0 ~len in
+      Alcotest.(check string) "contents" raw "foo" ;
+      Gz.Inf.flush decoder
+    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check pass) "GZip terminate" () ()
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
 let () =
   Alcotest.run "z"
     [ "invalids", [ invalid_complement_of_length ()
@@ -1377,7 +1459,22 @@ let () =
               ; test_foo_gzip ()
               ; test_multiple_flush_gzip ()
               ; test_generate_empty_gzip ()
-              ; test_generate_empty_gzip_with_name () ]
+              ; test_generate_empty_gzip_with_name ()
+              ; test_generate_foo_gzip ()
+              ; test_corpus_with_gzip "bib"
+              ; test_corpus_with_gzip "book1"
+              ; test_corpus_with_gzip "book2"
+              ; test_corpus_with_gzip "geo"
+              ; test_corpus_with_gzip "news"
+              ; test_corpus_with_gzip "obj1"
+              ; test_corpus_with_gzip "obj2"
+              ; test_corpus_with_gzip "paper1"
+              ; test_corpus_with_gzip "paper2"
+              ; test_corpus_with_gzip "pic"
+              ; test_corpus_with_gzip "progc"
+              ; test_corpus_with_gzip "progl"
+              ; test_corpus_with_gzip "progp"
+              ; test_corpus_with_gzip "trans" ]
     ; "hang", [ hang0 () ]
     ; "git", [ git_object () ]
     ; "higher", [ higher_zlib0 ()
