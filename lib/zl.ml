@@ -225,28 +225,27 @@ module Inf = struct
     t_fill k (t_need 4 d)
 
   let rec header d =
-    let k d = match d.dd with
-      | Hd { o; } ->
-        let cmf = unsafe_get_uint16 d.i d.i_pos in
-        let cm = cmf land 0b1111 in
-        let cinfo = (cmf lsr 4) land 0b1111 in
-        let flg = cmf lsr 8 in
-        let fdict = (flg lsr 5) land 0b1 in
-        let flevel = (flg lsr 6) land 0b11 in
-        let window = d.allocate (cinfo + 8) in
-        let state = De.Inf.decoder `Manual ~o ~w:window in
-        let dd = Dd { state; window; o; } in
-        if ((cmf land 0xff) lsl 8 + (cmf lsr 8)) mod 31 != 0
-           || cm != _deflated
-        then err_invalid_header d
-        else
-          ( De.Inf.src state d.i (d.i_pos + 2) (i_rem { d with i_pos= d.i_pos + 2 })
-          ; decode { d with hd= unsafe_get_uint16 d.i d.i_pos
-                          ; dd
-                          ; fdict= fdict == 1; flevel; cinfo
-                          ; i_pos= d.i_pos + 2 } )
-      | Dd _ ->
-        assert false (* XXX(dinosaure): should never occur! *) in
+    let k d =
+      let[@warning "-8"] Hd { o; } = d.dd in
+      let cmf = unsafe_get_uint16 d.i d.i_pos in
+      let cm = cmf land 0b1111 in
+      let cinfo = (cmf lsr 4) land 0b1111 in
+      let flg = cmf lsr 8 in
+      let fdict = (flg lsr 5) land 0b1 in
+      let flevel = (flg lsr 6) land 0b11 in
+      let window = d.allocate (cinfo + 8) in
+      let state = De.Inf.decoder `Manual ~o ~w:window in
+      let dd = Dd { state; window; o; } in
+      if ((cmf land 0xff) lsl 8 + (cmf lsr 8)) mod 31 != 0
+      || cm != _deflated
+      then err_invalid_header d
+      else
+        ( De.Inf.src state d.i (d.i_pos + 2) (i_rem { d with i_pos= d.i_pos + 2 })
+        ; decode { d with hd= unsafe_get_uint16 d.i d.i_pos
+                        ; k= decode
+                        ; dd
+                        ; fdict= fdict == 1; flevel; cinfo
+                        ; i_pos= d.i_pos + 2 } ) in
     if i_rem d >= 2
     then k d else ( if i_rem d < 0 then err_unexpected_end_of_input d else refill header d )
 
