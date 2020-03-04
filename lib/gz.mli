@@ -32,6 +32,7 @@ module Inf : sig
   val filename : decoder -> string option
   val comment : decoder -> string option
   val os : decoder -> os
+  val extra : key:string -> decoder -> string option
 end
 
 module Def : sig

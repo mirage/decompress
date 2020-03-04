@@ -39,6 +39,7 @@ let string_unsafe_get_uint8 : string -> int -> int =
   fun buf off -> Char.code (String.get buf off)
 
 external string_unsafe_get_uint32 : string -> int -> int32 = "%caml_string_get32"
+external string_unsafe_get_uint16 : string -> int -> int = "%caml_string_get16"
 
 let input_bigstring ic buf off len =
   let tmp = Bytes.create len in
@@ -148,6 +149,11 @@ let bytes_unsafe_set_uint32_be =
   if Sys.big_endian
   then fun buf off v -> bytes_unsafe_set_uint32 buf off v
   else fun buf off v -> bytes_unsafe_set_uint32 buf off (swap32 v)
+
+let string_unsafe_get_uint16_be =
+  if Sys.big_endian
+  then fun buf off -> string_unsafe_get_uint16 buf off
+  else fun buf off -> swap16 (string_unsafe_get_uint16 buf off)
 
 let invalid_bounds off len = invalid_arg "Out of bounds (off: %d, len: %d)" off len
 
@@ -399,8 +405,8 @@ module Inf = struct
     let rec go d =
       if i_rem d > 0
       then
-        let len = unsafe_get_uint8 d.i d.i_pos in
-        take_while len (fun v d -> k { d with fextra= Some v }) d
+        let len = unsafe_get_uint16_be d.i d.i_pos in
+        take_while len (fun v d -> k { d with fextra= Some v }) { d with i_pos= d.i_pos + 2 }
       else if i_rem d = 0
       then refill go d
       else err_unexpected_end_of_input d in
@@ -548,6 +554,26 @@ module Inf = struct
   let filename { fname; _ } = fname
   let comment { fcomment; _ } = fcomment
   let os { os; _ } = os_of_int os
+
+  let extra ~key { fextra; _ } =
+    if String.length key <> 2 then invalid_arg "Subfield ID must be 2 characters." ;
+    match fextra with
+    | None -> None
+    | Some payload ->
+      let rec go acc idx =
+        if idx + 2 > String.length payload
+        then List.rev acc
+        else
+          try
+            let key = String.sub payload idx 2 in
+            let len = string_unsafe_get_uint16_be payload (idx + 2) in
+            let res = String.sub payload (idx + 4) len in
+            go ((key, res) :: acc) (idx + 4 + len)
+          with _ -> List.rev acc in
+      let extra = go [] 0 in
+      match List.assoc key extra with
+      | v -> Some v
+      | exception _ -> None
 end
 
 module Def = struct
