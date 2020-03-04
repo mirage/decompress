@@ -240,6 +240,9 @@ module Inf = struct
   let err_invalid_header _ =
     malformedf "Invalid GZip header"
 
+  let err_invalid_header_crc d =
+    malformedf "Invalid GZip header checksum"
+
   (* remaining bytes to read [d.i]. *)
   let i_rem d = d.i_len - d.i_pos + 1
   [@@inline]
@@ -370,12 +373,13 @@ module Inf = struct
     let rec go d =
       if i_rem d >= 2
       then
-        let _crc16 = unsafe_get_uint16_be d.i d.i_pos in
         let hdr = string_of_hdr d in
         let crc32 = Checkseum.Crc32.default in
         let crc32 = Checkseum.Crc32.digest_string hdr 0 (String.length hdr) crc32 in
-        let _crc16 = Int32.(to_int (shift_right_logical (logand (Optint.to_int32 crc32) 0xFFFF0000l) 16)) in
-        k { d with i_pos= d.i_pos + 2 }
+        let crc16_0 = Int32.(to_int (shift_right_logical (logand (Optint.to_int32 crc32) 0xFFFF0000l) 16)) in
+        let crc16_1 = unsafe_get_uint16_be d.i d.i_pos in
+        if crc16_0 != crc16_1 then err_invalid_header_crc d
+        else k { d with i_pos= d.i_pos + 2 }
       else if i_rem d = 0
       then refill go d
       else err_unexpected_end_of_input d in
