@@ -1,7 +1,7 @@
 (executable
  (name test)
  (modules test)
- (libraries hxd.string bigstringaf checkseum.c de zl gz alcotest))
+ (libraries base64 camlzip hxd.string bigstringaf checkseum.c de zl gz alcotest))
 
 (alias
  (name runtest)
