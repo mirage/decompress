@@ -155,22 +155,24 @@ type os =
   | FAT | Amiga | VMS | Unix | VM | Atari | HPFS | Macintosh
   | Z | CPM | TOPS20 | NTFS | QDOS | Acorn | Unknown
 
+let pp_string = Format.pp_print_string
+
 let pp_os ppf = function
-  | FAT -> Fmt.string ppf "FAT filesystem (MS-DOS, OS/2, NT/Win32)"
-  | Amiga -> Fmt.string ppf "Amiga"
-  | VMS -> Fmt.string ppf "VMS"
-  | Unix -> Fmt.string ppf "Unix"
-  | VM -> Fmt.string ppf "VM/CMS"
-  | Atari -> Fmt.string ppf "Atari TOS"
-  | HPFS -> Fmt.string ppf "HPFS filesystem (OS/2, NT)"
-  | Macintosh -> Fmt.string ppf "Macintosh"
-  | Z -> Fmt.string ppf "Z-System"
-  | CPM -> Fmt.string ppf "CP/M"
-  | TOPS20 -> Fmt.string ppf "TOPS-20"
-  | NTFS -> Fmt.string ppf "NTFS filesysttem (NT)"
-  | QDOS -> Fmt.string ppf "QDOS"
-  | Acorn -> Fmt.string ppf "Acorn RISCOS"
-  | Unknown -> Fmt.string ppf "Unknown"
+  | FAT -> pp_string ppf "FAT filesystem (MS-DOS, OS/2, NT/Win32)"
+  | Amiga -> pp_string ppf "Amiga"
+  | VMS -> pp_string ppf "VMS"
+  | Unix -> pp_string ppf "Unix"
+  | VM -> pp_string ppf "VM/CMS"
+  | Atari -> pp_string ppf "Atari TOS"
+  | HPFS -> pp_string ppf "HPFS filesystem (OS/2, NT)"
+  | Macintosh -> pp_string ppf "Macintosh"
+  | Z -> pp_string ppf "Z-System"
+  | CPM -> pp_string ppf "CP/M"
+  | TOPS20 -> pp_string ppf "TOPS-20"
+  | NTFS -> pp_string ppf "NTFS filesysttem (NT)"
+  | QDOS -> pp_string ppf "QDOS"
+  | Acorn -> pp_string ppf "Acorn RISCOS"
+  | Unknown -> pp_string ppf "Unknown"
 
 let os_to_int = function
   | FAT -> 0 | Amiga -> 1 | VMS -> 2 | Unix -> 3 | VM -> 4 | Atari -> 5 | HPFS -> 6
