@@ -1,3 +1,16 @@
+let seed = "kle6/0eMVRsY+AlbHjLTMQ=="
+
+let () =
+  let raw = Base64.decode_exn seed in
+  let res = Array.make 8 0 in
+  for i = 0 to 7 do res.(i) <- (Char.code raw.[i] lsl 8) lor (Char.code raw.[i + 1]) done ;
+  Random.full_init res
+
+let random len =
+  let res = Bytes.create len in
+  for i = 0 to len - 1 do Bytes.set res i (Char.chr (Random.int 256)) done ;
+  Bytes.unsafe_to_string res
+
 open De (* au detail *)
 
 let w = make_window ~bits:15
