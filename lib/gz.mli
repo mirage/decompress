@@ -9,6 +9,9 @@ type os =
   | FAT | Amiga | VMS | Unix | VM | Atari | HPFS | Macintosh
   | Z | CPM | TOPS20 | NTFS | QDOS | Acorn | Unknown
 
+val pp_os : Format.formatter -> os -> unit
+val equal_os : os -> os -> bool
+
 module Inf : sig
   type decoder
 

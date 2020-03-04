@@ -174,6 +174,13 @@ let pp_os ppf = function
   | Acorn -> pp_string ppf "Acorn RISCOS"
   | Unknown -> pp_string ppf "Unknown"
 
+let equal_os a b = match a, b with
+  | FAT, FAT | Amiga, Amiga | VMS, VMS | Unix, Unix | VM, VM
+  | Atari, Atari | HPFS, HPFS | Macintosh, Macintosh | Z, Z
+  | CPM, CPM | TOPS20, TOPS20 | NTFS, NTFS | QDOS, QDOS
+  | Acorn, Acorn | Unknown, Unknown -> true
+  | _, _ -> false
+
 let os_to_int = function
   | FAT -> 0 | Amiga -> 1 | VMS -> 2 | Unix -> 3 | VM -> 4 | Atari -> 5 | HPFS -> 6
   | Macintosh -> 7 | Z -> 8 | CPM -> 9 | TOPS20 -> 10 | NTFS -> 11 | QDOS -> 12 | Acorn -> 13
