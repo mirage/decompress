@@ -521,7 +521,7 @@ module Def = struct
 end
 
 module Higher = struct
-  let compress ?(level= 4) ~w ~q ~i ~o ~refill ~flush =
+  let compress ?(level= 0) ~w ~q ~i ~o ~refill ~flush =
     let encoder = Def.encoder `Manual `Manual ~q ~w ~level in
     let rec go encoder = match Def.encode encoder with
       | `Await encoder ->
