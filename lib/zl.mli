@@ -1,9 +1,9 @@
 (** {1 ZLIB layer.}
 
-    ZLIB is a standard on top of RFC1951. It uses the {!Dd} implementation with the LZ77
-   compression algorithm. Module provides non-blocking streaming codec to
-   {{:#decode}decode} and {{:#encode}encode} ZLIB encoding. It can efficiently
-   work payload by payload without blocking IO. *)
+    ZLIB is a standard on top of RFC1951. It uses the {!De} implementation with
+   the LZ77 compression algorithm. Module provides non-blocking streaming codec
+   to {{:#decode}decode} and {{:#encode}encode} ZLIB encoding. It can
+   efficiently work payload by payload without blocking IO. *)
 
 module Bigarray = Bigarray_compat
 (** MirageOS compatibility. *)
@@ -18,9 +18,9 @@ val io_buffer_size : int
 
 (** {2:decode ZLIB Decoder.}
 
-    Unlike [de], [zl] provides a referentially transparent {!Inf.decoder}. The client
-   must use a {!Inf.decoder} given {b by} {!Inf.decode} instead of a [decoder] given {b to}
-   {!Inf.decode}. A common use of [zl] is:
+    Unlike [de], [zl] provides a referentially transparent {!Inf.decoder}. The
+   client must use a {!Inf.decoder} given {b by} {!Inf.decode} instead of a
+   [decoder] given {b to} {!Inf.decode}. A common use of [zl] is:
 
      {[
 let rec go d0 = match Inf.decode d0 with
@@ -67,7 +67,7 @@ module Inf : sig
       {- [`Await d1] if [d0] has a [`Manual] input source and awaits for more
      input. The client must use a {!src} with [d1] to provide it.}
       {- [`Flush d1] if given output buffer [o] (see {!decoder}) needs to be
-     drained before work ca be resumed. The client must use {!flush} with [d1]
+     drained before work can be resumed. The client must use {!flush} with [d1]
      to {b completely} flush [o]. Usually [o] will be full and consist fully of
      bytes that need to be copied from the buffer, but sometimes only the first
      part of the buffer is used. In those cases {!dst_rem} will give you the
@@ -81,7 +81,8 @@ module Inf : sig
      (it can be check with {!dst_rem}).}} *)
 
   val reset : decoder -> decoder
-  (** [reset d] is a [d] in its original state, as it was initialized by {!decoder}. *)
+  (** [reset d] is a [d] in its original state, as it was initialized by
+     {!decoder}. *)
 
   val src : decoder -> bigstring -> int -> int -> decoder
   (** [src d s j l] provides [d] with [l] bytes to read, starting at [j] in [s].
@@ -95,7 +96,8 @@ module Inf : sig
   (** [dst_rem d] is how many unused bytes remain in the output buffer of [d]. *)
 
   val src_rem : decoder -> int
-  (** [src_rem d] is how many unprocessed bytes remain in the input buffer of [d]. *)
+  (** [src_rem d] is how many unprocessed bytes remain in the input buffer of
+     [d]. *)
 
   val write : decoder -> int
   (** [write d] is how many bytes [d] emitted since it was created. *)
@@ -107,13 +109,13 @@ end
 
 (** {2:encode ZLIB Encoder.}
 
-    ZLIB encoder is glue between the LZ77 algorithm and the DEFLATE encoder, prefixed with a
-   ZLIB header. Any deal with compression algorithm is not possible on this
-   layer (see {!Dd} for more details). As {!M}, and unlike {!Dd}, {!Zz} provides a
-   referentially transparent encoder.
+    ZLIB encoder is glue between the LZ77 algorithm and the DEFLATE encoder,
+   prefixed with a ZLIB header. Any deal with compression algorithm is not
+   possible on this layer (see {!De} for more details). As {!Inf}, and unlike
+   {!De}, {!Zl} provides a referentially transparent encoder.
 
-    The client must use the {!Def.encoder} given {b by} {!Def.encode} instead a [encoder]
-   given {b to} {!Def.encode}. *)
+    The client must use the {!Def.encoder} given {b by} {!Def.encode} instead a
+   [encoder] given {b to} {!Def.encode}. *)
 
 module Def : sig
   type src = [ `Channel of in_channel | `String of string | `Manual ]
@@ -173,7 +175,7 @@ module Def : sig
 
   val dst : encoder -> bigstring -> int -> int -> encoder
   (** [dst e s j l] provides [e] with [l] bytes available to write, starting at
-     [j] in [s]. This byte range is read by calls to {!encode} with [e] until
+     [j] in [s]. This byte range is fill by calls to {!encode} with [e] until
      [`Flush] is returned.
 
      @raise Invalid_argument when [j] and [l] do not correspond to a valid
@@ -185,7 +187,7 @@ module Def : sig
       {ul
       {- [`Await e1] if [e0] has a [`Manual] input source and awaits for more
      input. The client must use {!src} with [e1] to provide it.}
-      {- [`Flush e1] if [e1] has a [`Manual] destination and needs more output
+      {- [`Flush e1] if [e0] has a [`Manual] destination and needs more output
      storage. The client must drain the buffer before resuming operation.}
       {- [`End e1] if [e1] encoded all input. Output buffer is possibly not
      empty (it can be check with {!dst_rem}).}} *)
