@@ -65,3 +65,35 @@ module Def : sig
 
   val encode : encoder -> ret
 end
+
+module Higher : sig
+  type 't configuration
+
+  val configuration : ?ascii:bool -> ?hcrc:bool -> os -> ('t -> int32) -> 't configuration
+
+  val compress
+    :  ?level:int
+    -> ?filename:string
+    -> ?comment:string
+    -> w:window
+    -> q:De.Queue.t
+    -> i:bigstring
+    -> o:bigstring
+    -> refill:(bigstring -> int)
+    -> flush:(bigstring -> int -> unit)
+    -> 't -> 't configuration
+    -> unit
+
+  type metadata =
+    { filename : string option
+    ; comment : string option
+    ; os : os
+    ; extra : key:string -> string option }
+
+  val uncompress
+    :  i:bigstring
+    -> o:bigstring
+    -> refill:(bigstring -> int)
+    -> flush:(bigstring -> int -> unit)
+    -> metadata
+end

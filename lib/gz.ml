@@ -831,3 +831,57 @@ module Def = struct
 
   let encode e = e.k e
 end
+
+module Higher = struct
+  type 't configuration =
+    { ascii : bool
+    ; hcrc : bool
+    ; os : os
+    ; mtime : 't -> int32 }
+
+  let configuration ?(ascii= false) ?(hcrc= false) os mtime =
+    { ascii; hcrc; os; mtime; }
+
+  let compress ?(level= 0) ?filename ?comment ~w ~q ~i ~o ~refill ~flush time configuration =
+    let encoder = Def.encoder `Manual `Manual ~q ~w ~level
+        ~ascii:configuration.ascii
+        ~hcrc:configuration.hcrc
+        ~mtime:(configuration.mtime time)
+        configuration.os in
+    let rec go encoder = match Def.encode encoder with
+      | `Await encoder ->
+        let len = refill i in
+        go (Def.src encoder i 0 len)
+      | `Flush encoder ->
+        let len = bigstring_length o - Def.dst_rem encoder in
+        flush o len ; go (Def.dst encoder o 0 (bigstring_length o))
+      | `End encoder ->
+        let len = bigstring_length o - Def.dst_rem encoder in
+        if len > 0 then flush o len in
+    go (Def.dst encoder o 0 (bigstring_length o))
+
+  type metadata =
+    { filename : string option
+    ; comment : string option
+    ; os : os
+    ; extra : key:string -> string option }
+
+  let uncompress ~i ~o ~refill ~flush =
+    let decoder = Inf.decoder `Manual ~o in
+    let rec go decoder = match Inf.decode decoder with
+      | `Await decoder ->
+        let len = refill i in
+        go (Inf.src decoder i 0 len)
+      | `Flush decoder ->
+        let len = bigstring_length o - Inf.dst_rem decoder in
+        flush o len ; go (Inf.flush decoder)
+      | `End decoder ->
+        let len = bigstring_length o - Inf.dst_rem decoder in
+        if len > 0 then flush o len ;
+        { filename= Inf.filename decoder
+        ; comment= Inf.comment decoder
+        ; os= Inf.os decoder
+        ; extra= Inf.extra decoder }
+      | `Malformed err -> failwith err in
+    go decoder
+end
