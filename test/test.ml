@@ -1,3 +1,16 @@
+let seed = "kle6/0eMVRsY+AlbHjLTMQ=="
+
+let () =
+  let raw = Base64.decode_exn seed in
+  let res = Array.make 8 0 in
+  for i = 0 to 7 do res.(i) <- (Char.code raw.[i] lsl 8) lor (Char.code raw.[i + 1]) done ;
+  Random.full_init res
+
+let random len =
+  let res = Bytes.create len in
+  for i = 0 to len - 1 do Bytes.set res i (Char.chr (Random.int 256)) done ;
+  Bytes.unsafe_to_string res
+
 open De (* au detail *)
 
 let w = make_window ~bits:15
@@ -997,6 +1010,56 @@ let test_corpus filename =
   let ic = open_in Filename.(concat "corpus" filename) in
   compress_and_uncompress ic ; close_in ic
 
+let gzip_compress_and_uncompress ~filename ic =
+  De.Queue.reset q ;
+  let os = bigstring_create io_buffer_size in
+  let bf = Buffer.create 4096 in
+  let encoder = Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l Gz.Unix ~q ~w ~level:0 in
+  let decoder = Gz.Inf.decoder `Manual ~o in
+
+  let rec go_encode decoder encoder = match Gz.Def.encode encoder with
+    | `Await _ -> assert false
+    | `Flush encoder ->
+      let len = io_buffer_size - Gz.Def.dst_rem encoder in
+      Fmt.epr "[!] [`Flush] >>> (dst-rem: %d) %d byte(s).\n%!" (Gz.Def.dst_rem encoder) len ;
+      go_decode (Gz.Inf.src decoder os 0 len) encoder
+    | `End encoder ->
+      let len = io_buffer_size - Gz.Def.dst_rem encoder in
+      Fmt.epr "[!] [`End] >>> %d byte(s).\n%!" len ;
+      go_decode (Gz.Inf.src decoder os 0 len) encoder
+  and go_decode decoder encoder = match Gz.Inf.decode decoder with
+    | `Await decoder ->
+      Fmt.epr "[!] [decode] `Await.\n%!" ;
+      go_encode decoder (Gz.Def.dst encoder os 0 io_buffer_size)
+    | `Flush decoder ->
+      Fmt.epr "[!] [decode] `Flush.\n%!" ;
+      let len = io_buffer_size - Gz.Inf.dst_rem decoder in
+      for i = 0 to pred len do Buffer.add_char bf o.{i} done ;
+      go_decode (Gz.Inf.flush decoder) encoder
+    | `End decoder ->
+      Fmt.epr "[!] [decode] `End.\n%!" ;
+      let len = io_buffer_size - Gz.Inf.dst_rem decoder in
+      for i = 0 to pred len do Buffer.add_char bf o.{i} done ;
+      Alcotest.(check (option string)) "filename" (Gz.Inf.filename decoder) (Some filename) ;
+      Buffer.contents bf
+    | `Malformed err -> failwith err in
+
+  let contents = go_decode decoder encoder in
+  seek_in ic 0 ;
+
+  let rec slow_compare pos =
+    match input_char ic with
+    | chr ->
+      if pos >= String.length contents
+      then Fmt.invalid_arg "Reach end of contents" ;
+      if contents.[pos] <> chr
+      then Fmt.invalid_arg "Contents differ at %08x\n%!" pos ; slow_compare (succ pos)
+    | exception End_of_file ->
+      if pos <> String.length contents
+      then Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)" (String.length contents) pos in
+
+  slow_compare 0
+
 let zlib_compress_and_uncompress ic =
   De.Queue.reset q ;
   let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w ~level:0 in
@@ -1046,6 +1109,11 @@ let test_corpus_with_zlib filename =
   let ic = open_in Filename.(concat "corpus" filename) in
   zlib_compress_and_uncompress ic ; close_in ic
 
+let test_corpus_with_gzip filename =
+  Alcotest.test_case filename `Slow @@ fun () ->
+  let ic = open_in Filename.(concat "corpus" filename) in
+  gzip_compress_and_uncompress ~filename ic ; close_in ic
+
 let git_object () =
   (* XXX(dinosaure): Flat DEFLATE block where inputs.(0) must not do a [Window.update]. *)
   Alcotest.test_case "git object" `Quick @@ fun () ->
@@ -1091,6 +1159,7 @@ let producer_to_string () =
 
 let higher_zlib input =
   Alcotest.test_case "higher" `Quick @@ fun () ->
+  Queue.reset q ;
   let refill = emitter_from_string input in
   let flush, contents = producer_to_string () in
   Zl.Higher.compress ~level:0 ~w ~q ~i ~o ~refill ~flush ;
@@ -1104,6 +1173,330 @@ let higher_zlib0 () = higher_zlib "aaaa"
 let higher_zlib1 () = higher_zlib "bbbb"
 let higher_zlib2 () = higher_zlib "abcd"
 let higher_zlib3 () = higher_zlib "Le diable me remet dans le mal"
+
+let test_multiple_flush_zlib () =
+  Alcotest.test_case "multiple flush zlib" `Quick @@ fun () ->
+  Queue.reset q ;
+  let refill = emitter_from_string "foo" in
+  let flush, contents = producer_to_string () in
+  Zl.Higher.compress ~level:0 ~w ~q ~i ~o ~refill ~flush ;
+  let input = contents () in
+  let decoder = Zl.Inf.decoder (`String input) ~o ~allocate:(fun bits -> De.make_window ~bits) in
+  let decoder = match Zl.Inf.decode decoder with
+    | `Flush decoder -> decoder
+    | _ -> Alcotest.failf "Invalid first call to Zl.Inf.decode" in
+  let decoder = match Zl.Inf.decode decoder with
+    | `Flush decoder -> decoder
+    | _ -> Alcotest.failf "Invalid second call to Zl.Inf.decode" in
+  let decoder = match Zl.Inf.decode decoder with
+    | `Flush decoder ->
+      let foo = Bigstringaf.substring o ~off:0 ~len:(Bigstringaf.length o - Zl.Inf.dst_rem decoder) in
+      Alcotest.(check string) "contents" foo "foo" ;
+      Zl.Inf.flush decoder
+    | _ -> Alcotest.failf "Invalid third call to Zl.Inf.decode" in
+  match Zl.Inf.decode decoder with
+  | `End _ -> Alcotest.(check pass) "inflated" () ()
+  | _ -> Alcotest.failf "Invalid last call to Zl.Inf.decode"
+
+let test_empty_with_zlib () =
+  Alcotest.test_case "empty zlib" `Quick @@ fun () ->
+  Queue.reset q ;
+  let buf = Buffer.create 16 in
+  let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w ~level:3 in
+  let go encoder = match Zl.Def.encode encoder with
+    | `Flush _ | `Await _ -> Alcotest.failf "Unexpected `Flush or `Await signal"
+    | `End _ -> Buffer.contents buf in
+  let zl = go encoder in
+  Fmt.epr ">>> @[<hov>%a@]\n%!" (Hxd_string.pp Hxd.O.default) zl ;
+  let decoder = Zl.Inf.decoder (`String zl) ~o ~allocate:(fun bits -> De.make_window ~bits) in
+  match Zl.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty" (bigstring_length o - Zl.Inf.dst_rem decoder) 0
+  | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err
+
+let test_empty_with_zlib_and_small_output () =
+  Alcotest.test_case "empty zlib & small output" `Quick @@ fun () ->
+  Queue.reset q ;
+  let o = bigstring_create 4 in
+  let buf = Buffer.create 16 in
+  let encoder = Zl.Def.encoder (`String "") `Manual ~q ~w ~level:3 in
+  let encoder = Zl.Def.dst encoder o 0 4 in
+  let rec go encoder = match Zl.Def.encode encoder with
+    | `Flush encoder ->
+      let len = bigstring_length o - Zl.Def.dst_rem encoder in
+      let raw = Bigstringaf.substring o ~off:0 ~len in
+      Buffer.add_string buf raw ;
+      go (Zl.Def.dst encoder o 0 4)
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `End _ ->
+      Alcotest.(check int) "empty trailer" (bigstring_length o - Zl.Def.dst_rem encoder) 0 ;
+      Buffer.contents buf in
+  let zl = go encoder in
+  Fmt.epr ">>> @[<hov>%a@].\n%!" (Hxd_string.pp Hxd.O.default) zl ;
+  let decoder = Zl.Inf.decoder (`String zl) ~o ~allocate:(fun bits -> De.make_window ~bits) in
+  match Zl.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty" (bigstring_length o - Zl.Inf.dst_rem decoder) 0
+  | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err
+
+let test_empty_gzip () =
+  Alcotest.test_case "empty GZip" `Quick @@ fun () ->
+  let input =
+    [ "\x1f\x8b\x08\x00\x82\xe5\x53\x5e\x00\x03\x03\x00\x00\x00\x00\x00"
+    ; "\x00\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
+  match Gz.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty GZip" (Gz.Inf.dst_rem decoder - bigstring_length o) 0
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+let test_empty_gzip_with_name () =
+  Alcotest.test_case "empty GZip with name" `Quick @@ fun () ->
+  let input =
+    [ "\x1f\x8b\x08\x08\xa6\xec\x53\x5e\x00\x03\x74\x65\x73\x74\x00\x03"
+    ; "\x00\x00\x00\x00\x00\x00\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
+  match Gz.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty GZip" (Gz.Inf.dst_rem decoder - bigstring_length o) 0 ;
+    Alcotest.(check (option string)) "name" (Gz.Inf.filename decoder) (Some "test")
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+let test_foo_gzip () =
+  Alcotest.test_case "foo GZip" `Quick @@ fun () ->
+  let input =
+    [ "\x1f\x8b\x08\x08\x2d\xf1\x53\x5e\x00\x03\x66\x6f\x6f\x00\x4b\xcb"
+    ; "\xcf\x07\x00\x21\x65\x73\x8c\x03\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
+  let decoder = match Gz.Inf.decode decoder with
+      | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+      | `End _ -> Alcotest.failf "Unexpected `End signal"
+      | `Flush decoder ->
+        let foo = Bigstringaf.substring o ~off:0 ~len:(Bigstringaf.length o - Gz.Inf.dst_rem decoder) in
+        Alcotest.(check string) "contents" "foo" foo ;
+        Gz.Inf.flush decoder
+      | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err in
+  match Gz.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check (option string)) "name" (Gz.Inf.filename decoder) (Some "foo")
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+let test_multiple_flush_gzip () =
+  Alcotest.test_case "multiple flush GZip" `Quick @@ fun () ->
+  let input =
+    [ "\x1f\x8b\x08\x08\x2d\xf1\x53\x5e\x00\x03\x66\x6f\x6f\x00\x4b\xcb"
+    ; "\xcf\x07\x00\x21\x65\x73\x8c\x03\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Flush decoder -> decoder
+    | _ -> Alcotest.failf "Invalid first call to Gz.Inf.decode" in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Flush decoder -> decoder
+    | _ -> Alcotest.failf "Invalid second call to Gz.Inf.decode" in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Flush decoder ->
+      let foo = Bigstringaf.substring o ~off:0 ~len:(Bigstringaf.length o - Gz.Inf.dst_rem decoder) in
+      Alcotest.(check (option string)) "name" (Gz.Inf.filename decoder) (Some "foo") ;
+      Alcotest.(check string) "contents" foo "foo" ;
+      Gz.Inf.flush decoder
+    | _ -> Alcotest.failf "Invalid third call to Gz.Inf.decode" in
+  match Gz.Inf.decode decoder with
+  | `End _ -> Alcotest.(check pass) "inflated" () ()
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+  | _ -> Alcotest.failf "Invalid last call to Gz.Inf.decode"
+
+let test_generate_empty_gzip () =
+  Alcotest.test_case "generate empty GZip" `Quick @@ fun () ->
+  Queue.reset q ;
+  let buf = Buffer.create 16 in
+  let encoder = Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l Gz.Unix ~q ~w ~level:3 in
+  let rec go encoder = match Gz.Def.encode encoder with
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let gz = go encoder in
+  Fmt.epr ">>> @[<hov>%a@].\n%!" (Hxd_string.pp Hxd.O.default) gz ;
+  let decoder = Gz.Inf.decoder (`String gz) ~o in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty GZip" (bigstring_length o - Gz.Inf.dst_rem decoder) 0
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+let test_generate_empty_gzip_with_name () =
+  Alcotest.test_case "generate empty GZip with name" `Quick @@ fun () ->
+  Queue.reset q ;
+  let buf = Buffer.create 16 in
+  let encoder = Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l Gz.Unix ~q ~w ~level:0 in
+  let rec go encoder = match Gz.Def.encode encoder with
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let gz = go encoder in
+  Fmt.epr ">>> @[<hov>%a@].\n%!" (Hxd_string.pp Hxd.O.default) gz ;
+  let decoder = Gz.Inf.decoder (`String gz) ~o in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check int) "emtpy GZip" (bigstring_length o - Gz.Inf.dst_rem decoder) 0 ;
+    Alcotest.(check (option string)) "foo" (Gz.Inf.filename decoder) (Some "foo")
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+let test_generate_foo_gzip () =
+  Alcotest.test_case "generate foo GZip" `Quick @@ fun () ->
+  Queue.reset q ;
+  let buf = Buffer.create 16 in
+  let encoder = Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l Gz.Unix ~q ~w ~level:0 in
+  let rec go encoder = match Gz.Def.encode encoder with
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let gz = go encoder in
+  Fmt.epr ">>> @[<hov>%a@].\n%!" (Hxd_string.pp Hxd.O.default) gz ;
+  let decoder = Gz.Inf.decoder (`String gz) ~o in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Await _ | `End _ -> Alcotest.failf "Unexpected `Await or `End signal"
+    | `Flush decoder ->
+      let len = bigstring_length o - Gz.Inf.dst_rem decoder in
+      let raw = Bigstringaf.substring o ~off:0 ~len in
+      Alcotest.(check string) "contents" raw "foo" ;
+      Gz.Inf.flush decoder
+    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check pass) "GZip terminate" () ()
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+let test_with_camlzip () =
+  Alcotest.test_case "compare with camlzip" `Quick @@ fun () ->
+  let oc = open_out "foo.gz" in
+  let encoder = Gz.Def.encoder (`String "foo") (`Channel oc) ~filename:"foo.gz" ~mtime:0l Gz.Unix ~q ~w ~level:0 in
+  let rec go encoder = match Gz.Def.encode encoder with
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> close_out oc in
+  go encoder ;
+  let ic = Gzip.open_in "foo.gz" in
+  let rs = Bytes.create 0x1000 in
+  let ln = Gzip.input ic rs 0 0x1000 in
+  Alcotest.(check string) "contents" (Bytes.sub_string rs 0 ln) "foo" ;
+  Gzip.close_in ic
+;;
+
+let test_gzip_hcrc () =
+  Alcotest.test_case "test header crc" `Quick @@ fun () ->
+  let oc = open_out "foo.gz" in
+  let encoder = Gz.Def.encoder (`String "foo & bar") (`Channel oc) ~filename:"foo.gz" ~mtime:0l Gz.Unix ~hcrc:true ~q ~w ~level:0 in
+  let rec go encoder = match Gz.Def.encode encoder with
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> close_out oc in
+  go encoder ;
+  let ic = open_in "foo.gz" in
+  let decoder = Gz.Inf.decoder (`Channel ic) ~o in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Await _ | `End _ -> Alcotest.failf "Unexpected `Await or `End signal"
+    | `Flush decoder ->
+      let len = bigstring_length o - Gz.Inf.dst_rem decoder in
+      let raw = Bigstringaf.substring o ~off:0 ~len in
+      Alcotest.(check string) "contents" raw "foo & bar" ;
+      Gz.Inf.flush decoder
+    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err in
+  let () = match Gz.Inf.decode decoder with
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `End decoder ->
+      Alcotest.(check pass) "GZip terminate" () () ;
+      Alcotest.(check (option string)) "filename" (Gz.Inf.filename decoder) (Some "foo.gz")
+    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err in
+  let ic = Gzip.open_in "foo.gz" in
+  let rs = Bytes.create 0x1000 in
+  let ln = Gzip.input ic rs 0 0x1000 in
+  Alcotest.(check string) "contents" (Bytes.sub_string rs 0 ln) "foo & bar" ;
+  Gzip.close_in ic
+;;
+
+let test_invalid_hcrc () =
+  Alcotest.test_case "invalid header crc" `Quick @@ fun () ->
+  let inputs =
+    [ "\x1f\x8b\x08\x0a\x00\x00\x00\x00\x02\x03\x66\x6f\x6f\x2e\x67\x7a"
+    ; "\x00"; "\x4b\xcb\x71\xde"; (* HCRC *) "\xcf\x57\x50\x53\x48\x4a\x2c\x02\x00\x8f\x47"
+    ; "\xe4\xdd\x09\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" inputs)) ~o in
+  match Gz.Inf.decode decoder with
+  | `Malformed "Invalid GZip header checksum" ->
+    Alcotest.(check pass) "invalid header checksum" () ()
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+  | `Flush _ | `Await _ | `End _ ->
+    Alcotest.failf "Invalid signal (`Await | `Flush | `End)"
+
+let os = Alcotest.testable Gz.pp_os Gz.equal_os
+
+let test_gzip_os v_os =
+  Alcotest.test_case (Fmt.strf "GZip with OS (%a)" Gz.pp_os v_os) `Quick @@ fun () ->
+  let input = random 256 in
+  let buf = Buffer.create 16 in
+  let encoder = Gz.Def.encoder (`String input) (`Buffer buf) ~mtime:0l v_os ~hcrc:true ~q ~w ~level:0 in
+  let rec go encoder = match Gz.Def.encode encoder with
+    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let contents = go encoder in
+  let decoder = Gz.Inf.decoder (`String contents) ~o in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Await _ | `End _ -> Alcotest.failf "Unexpected `Await or `End signal"
+    | `Flush decoder ->
+      let len = bigstring_length o - Gz.Inf.dst_rem decoder in
+      let raw = Bigstringaf.substring o ~off:0 ~len in
+      Alcotest.(check string) "contents" raw input ;
+      Gz.Inf.flush decoder
+    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check pass) "GZip terminate" () () ;
+    Alcotest.(check os) "os" v_os (Gz.Inf.os decoder)
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+
+let test_gzip_extra () =
+  Alcotest.test_case "GZip with extra" `Quick @@ fun () ->
+  let inputs =
+    [ "\x1f\x8b\x08\x0c\x63\xcb\x5f\x5e\x00\x03"
+    ; "\x00\x0a"
+    ; "lx\x00\x06ubuntu"
+    ; "\x66\x6f\x6f\x2e\x74\x78"
+    ; "\x74\x00\x4b\xcb\xcf\xe7\x02\x00\xa8\x65\x32\x7e\x04\x00\x00\x00" ] in
+  let decoder = Gz.Inf.decoder (`String (String.concat "" inputs)) ~o in
+  let decoder = match Gz.Inf.decode decoder with
+    | `Flush decoder ->
+      let len = bigstring_length o - Gz.Inf.dst_rem decoder in
+      let raw = Bigstringaf.substring o ~off:0 ~len in
+      Alcotest.(check string) "contents" raw "foo\n" ;
+      Gz.Inf.flush decoder
+    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+    | `Await _ | `End _ -> Alcotest.failf "Unexpected `Await or `End signal" in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check pass) "GZip terminate" () () ;
+    Alcotest.(check (option string)) "extra" (Gz.Inf.extra ~key:"lx" decoder) (Some "ubuntu")
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
 let () =
   Alcotest.run "z"
@@ -1174,7 +1567,9 @@ let () =
                  ; test_corpus "progl"
                  ; test_corpus "progp"
                  ; test_corpus "trans" ]
-    ; "zlib", [ test_corpus_with_zlib "bib"
+    ; "zlib", [ test_empty_with_zlib ()
+              ; test_empty_with_zlib_and_small_output ()
+              ; test_corpus_with_zlib "bib"
               ; test_corpus_with_zlib "book1"
               ; test_corpus_with_zlib "book2"
               ; test_corpus_with_zlib "geo"
@@ -1187,7 +1582,48 @@ let () =
               ; test_corpus_with_zlib "progc"
               ; test_corpus_with_zlib "progl"
               ; test_corpus_with_zlib "progp"
-              ; test_corpus_with_zlib "trans" ]
+              ; test_corpus_with_zlib "trans"
+              ; test_multiple_flush_zlib () ]
+    ; "gzip", [ test_empty_gzip ()
+              ; test_empty_gzip_with_name ()
+              ; test_foo_gzip ()
+              ; test_multiple_flush_gzip ()
+              ; test_generate_empty_gzip ()
+              ; test_generate_empty_gzip_with_name ()
+              ; test_generate_foo_gzip ()
+              ; test_corpus_with_gzip "bib"
+              ; test_corpus_with_gzip "book1"
+              ; test_corpus_with_gzip "book2"
+              ; test_corpus_with_gzip "geo"
+              ; test_corpus_with_gzip "news"
+              ; test_corpus_with_gzip "obj1"
+              ; test_corpus_with_gzip "obj2"
+              ; test_corpus_with_gzip "paper1"
+              ; test_corpus_with_gzip "paper2"
+              ; test_corpus_with_gzip "pic"
+              ; test_corpus_with_gzip "progc"
+              ; test_corpus_with_gzip "progl"
+              ; test_corpus_with_gzip "progp"
+              ; test_corpus_with_gzip "trans"
+              ; test_with_camlzip ()
+              ; test_gzip_hcrc ()
+              ; test_invalid_hcrc ()
+              ; test_gzip_extra () ]
+    ; "gzip with os", [ test_gzip_os Gz.FAT
+                      ; test_gzip_os Gz.Amiga
+                      ; test_gzip_os Gz.VMS
+                      ; test_gzip_os Gz.Unix
+                      ; test_gzip_os Gz.VM
+                      ; test_gzip_os Gz.Atari
+                      ; test_gzip_os Gz.HPFS
+                      ; test_gzip_os Gz.Macintosh
+                      ; test_gzip_os Gz.Z
+                      ; test_gzip_os Gz.CPM
+                      ; test_gzip_os Gz.TOPS20
+                      ; test_gzip_os Gz.NTFS
+                      ; test_gzip_os Gz.QDOS
+                      ; test_gzip_os Gz.Acorn
+                      ; test_gzip_os Gz.Unknown ]
     ; "hang", [ hang0 () ]
     ; "git", [ git_object () ]
     ; "higher", [ higher_zlib0 ()

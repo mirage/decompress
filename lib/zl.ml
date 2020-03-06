@@ -1,7 +1,10 @@
 let io_buffer_size = 65536
+let kstrf k fmt = Format.kasprintf k fmt
+let invalid_arg fmt = Format.kasprintf invalid_arg fmt
 
 module Bigarray = Bigarray_compat
-type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+type bigstring =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 type window = De.window
 
 let bigstring_create l = Bigarray.Array1.create Bigarray.char Bigarray.c_layout l
@@ -118,7 +121,7 @@ let unsafe_set_uint16_be =
   then fun buf off v -> unsafe_set_uint16 buf off v
   else fun buf off v -> unsafe_set_uint16 buf off (swap16 v)
 
-let invalid_bounds off len = Fmt.invalid_arg "Out of bounds (off: %d, len: %d)" off len
+let invalid_bounds off len = invalid_arg "Out of bounds (off: %d, len: %d)" off len
 
 let _deflated = 8 (* Compression method *)
 
@@ -131,6 +134,7 @@ module Inf = struct
     ; i : bigstring
     ; i_pos : int
     ; i_len : int
+    ; f : bool
     ; wr : int
     ; hd : int
     ; dd : dd
@@ -153,7 +157,7 @@ module Inf = struct
     | `End of decoder
     | `Malformed of string ]
 
-  let malformedf fmt = Fmt.kstrf (fun s -> `Malformed s) fmt
+  let malformedf fmt = kstrf (fun s -> `Malformed s) fmt
 
   let err_unexpected_end_of_input _ =
     malformedf "Unexpected end of input"
@@ -162,9 +166,14 @@ module Inf = struct
     malformedf "Invalid checksum (expect:%04lx, has:%04lx)" expect (Optint.to_int32 has)
 
   let err_invalid_header _ =
-    malformedf "Invalid header"
+    malformedf "Invalid Zlib header"
 
+  (* remaining bytes to read [d.i] *)
   let i_rem d = d.i_len - d.i_pos + 1
+  [@@inline]
+
+  (* End of input [eoi] is signalled by [d.i_pos = 0] and [d.i_len = min_int]
+     which implies [i_rem d < 0] is [true]. *)
 
   let eoi d =
     { d with i= bigstring_empty
@@ -224,48 +233,59 @@ module Inf = struct
     t_fill k (t_need 4 d)
 
   let rec header d =
-    let k d = match d.dd with
-      | Hd { o; } ->
-        let cmf = unsafe_get_uint16 d.i d.i_pos in
-        let cm = cmf land 0b1111 in
-        let cinfo = (cmf lsr 4) land 0b1111 in
-        let flg = cmf lsr 8 in
-        let fdict = (flg lsr 5) land 0b1 in
-        let flevel = (flg lsr 6) land 0b11 in
-        let window = d.allocate (cinfo + 8) in
-        let state = De.Inf.decoder `Manual ~o ~w:window in
-        let dd = Dd { state; window; o; } in
-        if ((cmf land 0xff) lsl 8 + (cmf lsr 8)) mod 31 != 0
-           || cm != _deflated
-        then err_invalid_header d
-        else
-          ( De.Inf.src state d.i (d.i_pos + 2) (i_rem { d with i_pos= d.i_pos + 2 })
-          ; decode { d with hd= unsafe_get_uint16 d.i d.i_pos
-                          ; dd
-                          ; fdict= fdict == 1; flevel; cinfo
-                          ; i_pos= d.i_pos + 2 } )
-      | Dd _ ->
-        assert false (* XXX(dinosaure): should never occur! *) in
+    let k d =
+      let[@warning "-8"] Hd { o; } = d.dd in
+      let cmf = unsafe_get_uint16 d.i d.i_pos in
+      let cm = cmf land 0b1111 in
+      let cinfo = (cmf lsr 4) land 0b1111 in
+      let flg = cmf lsr 8 in
+      let fdict = (flg lsr 5) land 0b1 in
+      let flevel = (flg lsr 6) land 0b11 in
+      let window = d.allocate (cinfo + 8) in
+      let state = De.Inf.decoder `Manual ~o ~w:window in
+      let dd = Dd { state; window; o; } in
+      if ((cmf land 0xff) lsl 8 + (cmf lsr 8)) mod 31 != 0
+      || cm != _deflated
+      then err_invalid_header d
+      else
+        ( De.Inf.src state d.i (d.i_pos + 2) (i_rem { d with i_pos= d.i_pos + 2 })
+        ; decode { d with hd= unsafe_get_uint16 d.i d.i_pos
+                        ; k= decode
+                        ; dd
+                        ; fdict= fdict == 1; flevel; cinfo
+                        ; i_pos= d.i_pos + 2 } ) in
     if i_rem d >= 2
-    then k d else ( if i_rem d < 0 then err_unexpected_end_of_input d else refill header d )
+    then k d
+    else ( if i_rem d < 0
+           then err_unexpected_end_of_input d
+           else refill decode (* XXX(dinosaure): it should be safe to replace it by [header] *) d )
 
   and decode d = match d.dd with
     | Hd _ -> header d
     | Dd { state; o; _ } ->
       match De.Inf.decode state with
       | `Flush ->
-        let len = bigstring_length o - De.Inf.dst_rem state in
-        (* XXX(dinosaure): protect counter to a recall? TODO *)
-        `Flush { d with wr= d.wr + len }
+        if d.f
+        then flush decode d
+        else
+          let len = bigstring_length o - De.Inf.dst_rem state in
+          flush decode { d with wr= d.wr + len; f= true; }
       | `Await ->
         let len = i_rem d - De.Inf.src_rem state in
         refill decode { d with i_pos= d.i_pos + len }
       | `End ->
-        let len = bigstring_length o - De.Inf.dst_rem state in
-        if len > 0
-        then flush checksum { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
-                                   ; wr= d.wr + len }
-        else checksum { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state) }
+        if d.f
+        then flush decode d
+        else
+          let len = bigstring_length o - De.Inf.dst_rem state in
+          if len > 0
+          then
+            flush decode
+              { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state)
+                     ; wr= d.wr + len
+                     ; f= true }
+          else checksum
+              { d with i_pos= d.i_pos + (i_rem d - De.Inf.src_rem state) }
       | `Malformed err -> `Malformed err
 
   let src d s j l =
@@ -284,12 +304,12 @@ module Inf = struct
     | Hd _ -> d
 
   let flush d = match d.dd with
-    | Hd _ -> d (* FIXME *)
+    | Hd _ -> { d with f= false }
     | Dd { state; _ } ->
-      De.Inf.flush state ; d
+      De.Inf.flush state ; { d with f= false }
 
   let dst_rem d = match d.dd with
-    | Hd _ -> Fmt.invalid_arg "Invalid state to know bytes remaining"
+    | Hd _ -> invalid_arg "Invalid state to know bytes remaining"
     | Dd { state; _ } -> De.Inf.dst_rem state
 
   let src_rem d = i_rem d
@@ -303,6 +323,7 @@ module Inf = struct
       | `Channel _ -> bigstring_create io_buffer_size, 1, 0 in
     { i; i_pos; i_len
     ; src
+    ; f= false
     ; wr= 0
     ; hd= 0
     ; dd= Hd { o; }
@@ -325,6 +346,7 @@ module Inf = struct
       | Dd { o; _ } -> o in
     { i; i_pos; i_len
     ; src= d.src
+    ; f= false
     ; wr= 0
     ; hd= 0
     ; dd= Hd { o; }
@@ -336,6 +358,8 @@ module Inf = struct
     ; t_need= 0
     ; t_len= 0
     ; k= decode }
+
+  let decode d = d.k d
 end
 
 module Def = struct
@@ -366,6 +390,7 @@ module Def = struct
   let i_rem s = s.i_len - s.i_pos + 1
 
   let eoi e =
+    De.Lz77.src e.s bigstring_empty 0 0 ;
     { e with i= bigstring_empty
            ; i_pos= 0
            ; i_len= min_int }
@@ -394,11 +419,12 @@ module Def = struct
 
   let flush k e = match e.dst with
     | `Buffer b ->
-      for i = 0 to bigstring_length e.o - De.Def.dst_rem e.e
+      let len = bigstring_length e.o - o_rem e in
+      for i = 0 to len - 1
       do Buffer.add_char b e.o.{i} done ;
       k (dst e e.o 0 (bigstring_length e.o))
     | `Channel oc ->
-      output_bigstring oc e.o 0 (bigstring_length e.o - De.Def.dst_rem e.e) ;
+      output_bigstring oc e.o 0 (bigstring_length e.o - o_rem e) ;
       k (dst e e.o 0 (bigstring_length e.o))
     | `Manual -> `Flush { e with k }
 
@@ -408,17 +434,17 @@ module Def = struct
     let k e =
       let checksum = Optint.to_int32 (De.Lz77.checksum e.s) in
       unsafe_set_uint32_be e.o e.o_pos checksum ;
-      `End { e with k= identity; o_pos= e.o_pos + 4 } in
-    if o_rem e >= 4 then k e else refill checksum e
+      flush identity { e with o_pos= e.o_pos + 4 } in
+    if o_rem e >= 4 then k e else flush checksum e
 
   let make_block ?(last= false) e =
     if last = false
-       then
-         let literals = De.Lz77.literals e.s in
-         let distances = De.Lz77.distances e.s in
-         let dynamic = De.Def.dynamic_of_frequencies ~literals ~distances in
-         { De.Def.kind= De.Def.Dynamic dynamic; last; }
-       else { De.Def.kind= De.Def.Fixed; last; }
+    then
+      let literals = De.Lz77.literals e.s in
+      let distances = De.Lz77.distances e.s in
+      let dynamic = De.Def.dynamic_of_frequencies ~literals ~distances in
+      { De.Def.kind= De.Def.Dynamic dynamic; last; }
+    else { De.Def.kind= De.Def.Fixed; last; }
 
   let rec encode e = match e.state with
     | Hd ->
@@ -477,7 +503,8 @@ module Def = struct
       | `Manual -> bigstring_empty, 1, 0
       | `Buffer _
       | `Channel _ -> bigstring_create io_buffer_size, 0, io_buffer_size - 1 in
-    if level < 0 || level > 3 then Fmt.invalid_arg "Invalid compression level %d (must be in the range 0...3)" level ;
+    if level < 0 || level > 3
+    then invalid_arg "Invalid compression level %d (must be in the range 0...3)" level ;
     { src
     ; dst
     ; i; i_pos; i_len
@@ -494,7 +521,7 @@ module Def = struct
 end
 
 module Higher = struct
-  let compress ?(level= 4) ~w ~q ~i ~o ~refill ~flush =
+  let compress ?(level= 0) ~w ~q ~i ~o ~refill ~flush =
     let encoder = Def.encoder `Manual `Manual ~q ~w ~level in
     let rec go encoder = match Def.encode encoder with
       | `Await encoder ->

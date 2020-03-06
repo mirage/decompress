@@ -1,7 +1,11 @@
 module Bigarray = Bigarray_compat (* XXX(dinosaure): MirageOS compatibility. *)
-type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+type bigstring =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
 (* XXX(dinosaure): prelude. *)
+
+let invalid_arg fmt = Format.kasprintf invalid_arg fmt
+let kstrf k fmt = Format.kasprintf k fmt
 
 let bigstring_empty = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0
 let bigstring_create l = Bigarray.Array1.create Bigarray.char Bigarray.c_layout l
@@ -119,7 +123,7 @@ let input_bigstring ic buf off len =
     unsafe_set_uint8 buf (off + i) v
   done ; res
 
-let invalid_bounds off len = Fmt.invalid_arg "Out of bounds (off: %d, len: %d)" off len
+let invalid_bounds off len = invalid_arg "Out of bounds (off: %d, len: %d)" off len
 
 let unsafe_blit src src_off dst dst_off len =
   for i = 0 to len - 1
@@ -287,10 +291,10 @@ type window = bigstring
 
 let make_window ~bits =
   if bits >= 8 && bits <= 15 then bigstring_create (1 lsl 15)
-  else Fmt.invalid_arg "bits MUST be between 8 and 15 (%d)" bits
+  else invalid_arg "bits MUST be between 8 and 15 (%d)" bits
 
 let ffs n =
-  if n = 0 then Fmt.invalid_arg "ffs on 0"
+  if n = 0 then invalid_arg "ffs on 0"
   else
     ( let t = ref 1 in
       let r = ref 0 in
@@ -421,7 +425,7 @@ module WInf = struct
   type t =
     { raw : bigstring
     ; mutable w : int
-    ; mutable c : Optint.t }
+    ; mutable c : optint }
 
   let max = 1 lsl 15
   let mask = (1 lsl 15) - 1
@@ -608,7 +612,7 @@ module Inf = struct
   and jump = Length | Extra_length | Distance | Extra_distance | Write
   and ret = Await | Flush | End | K | Malformed of string
 
-  let malformedf fmt = Fmt.kstrf (fun s -> Malformed s) fmt
+  let malformedf fmt = kstrf (fun s -> Malformed s) fmt
 
   (* End of input [eoi] is signalled by [d.i_pos = 0] and [d.i_len = min_int]
      which implies [i_rem d < 0] is [true]. *)
@@ -749,7 +753,8 @@ module Inf = struct
       else 8 in
     let tbl_dist =
       let res = Array.make (1 lsl 5) 0 in
-      Array.iteri (fun i _ -> res.(i) <- (5 lsl 15) lor reverse_bits (i lsl 3)) res ; res in
+      Array.iteri (fun i _ -> res.(i) <- (5 lsl 15) lor reverse_bits (i lsl 3)) res ;
+      res in
     let tbl_lit, max_lit = huffman LENS tbl_lit 0 288 in
     Lookup.make tbl_lit max_lit, Lookup.make tbl_dist 5
 
@@ -1015,14 +1020,18 @@ module Inf = struct
           jump := Distance
         | Distance ->
           if !bits < dist.Lookup.l
-          then ( hold := Nativeint.logor !hold Nativeint.(shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
+          then ( hold := Nativeint.logor !hold
+                     Nativeint.(shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
                ; bits := !bits + 8
                ; incr i_pos
-               ; hold := Nativeint.logor !hold Nativeint.(shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
+               ; hold := Nativeint.logor !hold
+                     Nativeint.(shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
                ; bits := !bits + 8
               ; incr i_pos ) ;
-          let value = dist.Lookup.t.(Nativeint.(to_int (logand !hold dist_mask))) land Lookup.mask in
-          let len = dist.Lookup.t.(Nativeint.(to_int (logand !hold dist_mask))) lsr 15 in
+          let value = dist.Lookup.t.(Nativeint.(to_int (logand !hold dist_mask)))
+                      land Lookup.mask in
+          let len = dist.Lookup.t.(Nativeint.(to_int (logand !hold dist_mask)))
+                    lsr 15 in
 
           hold := Nativeint.shift_right_logical !hold len ;
           bits := !bits - len ;
@@ -1031,10 +1040,12 @@ module Inf = struct
         | Extra_distance ->
           let len = _extra_dbits.(d.d) in
           if !bits < len
-          then ( hold := Nativeint.logor !hold Nativeint.(shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
+          then ( hold := Nativeint.logor !hold
+                     Nativeint.(shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
                ; bits := !bits + 8
                ; incr i_pos
-               ; hold := Nativeint.logor !hold Nativeint.(shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
+               ; hold := Nativeint.logor !hold
+                     Nativeint.(shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
                ; bits := !bits + 8
                ; incr i_pos ) ;
           let extra = Nativeint.(to_int (logand !hold (sub (shift_left 1n len) 1n))) in
@@ -1078,18 +1089,21 @@ module Inf = struct
       d.k <- slow_inflate lit dist !jump ; (* allocation *)
       d.s <- Slow ;
 
-      if i_rem d > 0 then ( if d.o_pos == bigstring_length d.o then Flush else K ) else ( match d.src with
-          | `String _ -> eoi d ; K
-          (* XXX(dinosaure): [K] is required here mostly because the semantic of
-             the hot-loop. If we reach end of input, we may have some trailing
-             bits in [d.hold] and we need to process them.
+      if i_rem d > 0
+      then ( if d.o_pos == bigstring_length d.o then Flush else K )
+      else ( match d.src with
+             | `String _ -> eoi d ; K
+             (* XXX(dinosaure): [K] is required here mostly because the semantic
+                of the hot-loop. If we reach end of input, we may have some
+                trailing bits in [d.hold] and we need to process them.
 
-             [slow_inflate] is more precise (but... slow) and will consume them
-             to reach [End_of_inflate] then correctly. *)
-          | `Channel ic ->
-            let len = input_bigstring ic d.i 0 (bigstring_length d.i) in
-            src d d.i 0 len ; K (* XXX(dinosaure): should work fine! But it needs check. *)
-          | `Manual -> K )
+                [slow_inflate] is more precise (but... slow) and will consume
+                them to reach [End_of_inflate] then correctly. *)
+             | `Channel ic ->
+               let len = input_bigstring ic d.i 0 (bigstring_length d.i) in
+               src d d.i 0 len ; K (* XXX(dinosaure): should work fine! But it
+                                      needs check. *)
+             | `Manual -> K )
     with End ->
       d.hold <- Nativeint.to_int !hold ;
       d.bits <- !bits ;
@@ -1136,7 +1150,8 @@ module Inf = struct
       err_invalid_dictionary d
 
   let inflate_table d =
-    let[@warning "-8"] Inflate_table { t; l= max_bits; r= res; h= (hlit, hdist, _) } = d.s in
+    let[@warning "-8"]
+      Inflate_table { t; l= max_bits; r= res; h= (hlit, hdist, _) } = d.s in
     let max_res = hlit + hdist in
     let mask = (1 lsl max_bits) - 1 in
     let get k d =
@@ -1161,7 +1176,9 @@ module Inf = struct
     let rec record i copy len d =
       if i + copy > max_res then ( err_invalid_dictionary d )
       else ( for x = 0 to copy - 1 do res.(i + x) <- len done
-           ; if i + copy < max_res then get (fun d -> go (i + copy) d) d else ret res d )
+           ; if i + copy < max_res
+             then get (fun d -> go (i + copy) d) d
+             else ret res d )
     and go i v d =
       if v < 16
       then ( res.(i) <- v
@@ -1294,7 +1311,9 @@ module Inf = struct
       WInf.tail d.w ;
 
       if d.bits >= 8
-      then ( d.i_pos <- d.i_pos - 1 ; d.bits <- d.bits - 8 ; d.hold <- 0 (* XXX(dinosaure): keep? *) ) ;
+      then ( d.i_pos <- d.i_pos - 1
+           ; d.bits <- d.bits - 8
+           ; d.hold <- 0 (* XXX(dinosaure): keep? *) ) ;
       End
 
   let rec decode d = match decode_k d with
@@ -1304,7 +1323,7 @@ module Inf = struct
     | Malformed err -> `Malformed err
     | K -> decode d
 
-  let dst_rem d = bigstring_length d.o - d.o_pos
+  let dst_rem d = bigstring_length d.o - d.o_pos (* TODO: why [+1] disappears? *)
   let src_rem d = i_rem d
   let flush d = d.o_pos <- 0
 
@@ -1506,7 +1525,8 @@ module T = struct
       then ( bl_count.(bits) <- bl_count.(bits) + 1 )
     done ;
 
-    if !overflow != 0 (* This happends for example on obj2 and pic of the Calgary corpus. *)
+    if !overflow != 0 (* This happends for example on obj2 and pic of the
+                         Calgary corpus. *)
     then
       ( let rec go () =
           let bits = ref (max_length - 1) in
@@ -1662,10 +1682,16 @@ module T = struct
         if !count < !max_count && !curlen == !nextlen
         then raise_notrace Continue
         else if !count < !min_count
-        then while bl_symbols.(!i) <- code !curlen bltree.tree ; incr i ; decr count ; !count != 0 do () done
+        then while bl_symbols.(!i) <- code !curlen bltree.tree
+                 ; incr i
+                 ; decr count
+                 ; !count != 0 do () done
         else if !curlen != 0
         then
-          ( if !curlen != !prevlen then ( bl_symbols.(!i) <- code !curlen bltree.tree ; incr i ; decr count )
+          ( if !curlen != !prevlen
+            then ( bl_symbols.(!i) <- code !curlen bltree.tree
+                 ; incr i
+                 ; decr count )
           ; bl_symbols.(!i) <- code _rep_3_6 bltree.tree ; incr i
           ; bl_symbols.(!i) <- bits (!count - 3) 2 ; incr i )
         else if !count <= 10
@@ -1732,7 +1758,8 @@ module Queue = struct
   let unsafe_junk t = t.r <- t.r + 1
 
   let junk_exn t n =
-    if (size [@inlined]) t < n then Fmt.invalid_arg "You want to junk more than what we have" ;
+    if (size [@inlined]) t < n
+    then invalid_arg "You want to junk more than what we have" ;
     t.r <- t.r + n
 
   let copy ~off ~len : cmd =
@@ -1753,7 +1780,8 @@ module Queue = struct
       if cmd == 256 then `End else `Literal (Char.chr (cmd land 0xff))
     | true ->
       let off = (cmd land 0xffff) + 1 in
-      let len = ((cmd lsr 16) land 0x1ff) + 3 in (* XXX(dinosaure): ((1 lsl 9) - 1) - 0xff *)
+      let len = ((cmd lsr 16) land 0x1ff) + 3 in
+      (* XXX(dinosaure): ((1 lsl 9) - 1) - 0xff *)
       `Copy (off, len)
 
   let blit t buf off len =
@@ -1762,13 +1790,18 @@ module Queue = struct
     let pre = t.c - msk in
     let rst = len - pre in
     if rst > 0
-    then ( for i = 0 to pre - 1 do unsafe_set t.buf (msk + i) (unsafe_get_uint8 buf (off + i)) done ;
-           for i = 0 to rst - 1 do unsafe_set t.buf i (unsafe_get_uint8 buf (off + pre + i)) done )
-    else for i = 0 to len - 1 do unsafe_set t.buf (msk + i) (unsafe_get_uint8 buf (off + i)) done ;
+    then ( for i = 0 to pre - 1 do
+             unsafe_set t.buf (msk + i) (unsafe_get_uint8 buf (off + i)) done ;
+           for i = 0 to rst - 1 do
+             unsafe_set t.buf i (unsafe_get_uint8 buf (off + pre + i)) done )
+    else
+      for i = 0 to len - 1 do
+        unsafe_set t.buf (msk + i) (unsafe_get_uint8 buf (off + i)) done ;
     t.w <- t.w + len
 
   let create length =
-    if not (is_power_of_two length) then invalid_arg "Length of queue MUST be a power of two" ;
+    if not (is_power_of_two length)
+    then invalid_arg "Length of queue MUST be a power of two" ;
 
     { buf= Bigarray.Array1.create Bigarray.int Bigarray.c_layout length
     ; w= 0
@@ -1810,7 +1843,8 @@ let succ_literal literals chr =
   literals.(Char.code chr) <- literals.(Char.code chr) + 1
 let succ_length literals length =
   assert (length >= 3 && length <= 255 + 3) ;
-  literals.(256 + 1 + _length.(length - 3)) <- literals.(256 + 1 + _length.(length - 3)) + 1
+  literals.(256 + 1 + _length.(length - 3)) <-
+    literals.(256 + 1 + _length.(length - 3)) + 1
 
 let make_distances () = Array.make (2 * _d_codes + 1) 0
 
@@ -1836,7 +1870,8 @@ module Def = struct
     T.scan dtree.T.lengths dtree.T.max_code ~bl_freqs ;
 
     let bltree = T.make ~length:_bl_codes ~max_length:7 bl_freqs ~bl_count in
-    (* XXX(dinosaure): [T.make] needs [max_length] to avoid generation of a bad bltree (limited to 7 bits with extra). *)
+    (* XXX(dinosaure): [T.make] needs [max_length] to avoid generation of a bad
+       bltree (limited to 7 bits with extra). *)
     let max_blindex = ref (_bl_codes - 1) in
     let exception Break in
 
@@ -1869,7 +1904,7 @@ module Def = struct
     ; dtree
     ; symbols= bl_symbols }
 
-  let invalid_encode () = Fmt.invalid_arg "expected `Await encode"
+  let invalid_encode () = invalid_arg "expected `Await encode"
 
   type kind = Flat of int | Fixed | Dynamic of dynamic
   type block = { kind: kind; last: bool; }
@@ -1878,7 +1913,7 @@ module Def = struct
 
   let exists v block = match v, block.kind with
     | (`Copy _ | `End), Flat _ ->
-      Fmt.invalid_arg "copy code in flat block can not exist"
+      invalid_arg "copy code in flat block can not exist"
     | `Literal chr, Dynamic dynamic ->
       dynamic.ltree.T.tree.Lookup.t.(Char.code chr) lsr _max_bits > 0
     | `Copy (off, len), Dynamic dynamic ->
@@ -1903,6 +1938,7 @@ module Def = struct
 
   (* remaining bytes to write in [e.o]. *)
   let o_rem e = e.o_max - e.o_pos + 1
+  [@@inline]
 
   (* set [e.o] with [s]. *)
   let dst e s j l =
@@ -2084,47 +2120,30 @@ module Def = struct
           encode_dynamic_header block.last dynamic (fun e -> e.k <- encode ; write e) e
         | Fixed ->
           encode_fixed_header block.last (fun e -> e.k <- encode ; write e) e
-        | Flat len -> encode_flat_header block.last len (fun e -> e.k <- encode ; write_flat e) e in
+        | Flat len ->
+          encode_flat_header block.last len (fun e -> e.k <- encode ; write_flat e) e in
       e.blk <- block ; k e
     | (`Flush | `Await) as v -> encode e v (* TODO: not really clear. *)
 
   and flush_bits ~bits ~hold k e =
-    let bits = ref bits in
-    let hold = ref hold in
-    let rem = o_rem e in
+    if e.bits >= 16 && o_rem e > 1
+    then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
+         ; e.hold <- e.hold lsr 16
+         ; e.bits <- e.bits - 16
+         ; e.o_pos <- e.o_pos + 2 ) ;
+    if e.bits >= 8 && o_rem e > 0
+    then ( unsafe_set_uint8 e.o e.o_pos (e.hold land 0xff)
+         ; e.hold <- e.hold lsr 8
+         ; e.bits <- e.bits - 8
+         ; e.o_pos <- e.o_pos + 1 ) ;
 
-    if rem > 2
-    then
-      ( if e.bits >= 16
-        then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
-             ; e.hold <- e.hold lsr 16
-             ; e.bits <- e.bits - 16
-             ; e.o_pos <- e.o_pos + 2 ) ;
-
-        e.hold <- ((!hold land 0xffff) lsl e.bits) lor e.hold ;
-        e.bits <- e.bits + (min 16 !bits) ;
-        hold := !hold lsr (min 16 !bits) ;
-        bits := !bits - (min 16 !bits) ;
-
-        if e.bits >= 16
-        then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
-             ; e.hold <- e.hold lsr 16
-             ; e.bits <- e.bits - 16
-             ; e.o_pos <- e.o_pos + 2 ) ;
-
-        e.hold <- ((!hold land 0xffff) lsl e.bits) lor e.hold ;
-        e.bits <- e.bits + (min 16 !bits) ;
-        hold := !hold lsr (min 16 !bits) ;
-        bits := !bits - (min 16 !bits) ;
-
-        if e.bits >= 16
-        then ( unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
-             ; e.hold <- e.hold lsr 16
-             ; e.bits <- e.bits - 16
-             ; e.o_pos <- e.o_pos + 2 ) ;
-
-        k e )
-      else Fmt.failwith "Dd.flush_bits"
+    if bits + e.bits > 31
+    then flush (flush_bits ~bits ~hold k) e
+    else if bits > 0
+    then ( e.hold <- ((hold land 0xffff) lsl e.bits) lor e.hold
+         ; e.bits <- e.bits + (min bits 16)
+         ; flush_bits ~bits:(min 0 (bits - 16)) ~hold: (hold lsr 16) k e )
+    else k e
 
   and write e =
     let o_pos = ref e.o_pos in
@@ -2136,7 +2155,23 @@ module Def = struct
 
     let k_ok e = e.k <- encode ; `Ok in
     let k_nw e = e.k <- block ; `Block in
-    let k_flush_bits ~bits ~hold e = flush (flush_bits ~bits ~hold k_ok) e in
+    let k_continue e = write e in
+    (* XXX(dinosaure): [k_continue] is used by [flush_bits]. When [flush_bits]
+       is done, it's only to prevent an integer overflow of [hold] and it does
+       not mean that we finish to encode the queue. [flush_bits] still continue
+       to recall [write] then and we ensure that we have enough space to flush
+       [hold] by [flush] and when the assumption of the given output has, at
+       least, 2 free bytes.
+
+       A bug appears when we compress with GZip layer [paper2] and when we reach
+       [flush_bits] but we don't have enough spaces. User give to us a new
+       output but:
+
+       1) in the old implementation of [flush_bits], we wrote nothing (at least
+       we want to write 16 bits)
+       2) [flush_bits] finish with [`Ok] which tells to the user that we encoded
+       all the queue *)
+    let k_flush_bits ~bits ~hold e = flush (flush_bits ~bits ~hold k_continue) e in
 
     let rec emit e =
       if !bits >= 16
@@ -2176,20 +2211,21 @@ module Def = struct
         | false ->
           (* XXX(dinosaure): explanation is needed here.
 
-             At the beginning, encode was made on a 64-bit processor. [int] is 63-bit
-             in this architecture. By this way, in ANY context, any _op-code_ can fit
-             into [hold] (bigger _op-code_ is 48 bits).
+             At the beginning, encode was made on a 64-bit processor. [int] is
+             63-bit in this architecture. By this way, in ANY context, any
+             _op-code_ can fit into [hold] (bigger _op-code_ is 48 bits).
 
-             However, in 32-bit processor, this assertion is false. We reach sometimes
-             the limit (31 bits) and must emit [short] to avoid overflow. However, in
-             some cases, we can not:
+             However, in 32-bit processor, this assertion is false. We reach
+             sometimes the limit (31 bits) and must emit [short] to avoid
+             overflow. However, in some cases, we can not:
              - store more bits into [hold]
              - emit [short] into output
 
-             In this REAL bad case, we raise [Flush_bits] with delayed bits. Then, we ask
-             the client to flush output and store current [hold] and delayed bits into new output.
-             An final assertion is to have an output bigger than 2 bytes in any case
-             which is fair enough, I think ...
+             In this REAL bad case, we raise [Flush_bits] with delayed bits.
+             Then, we ask the client to flush output and store current [hold]
+             and delayed bits into new output. An final assertion is to have an
+             output bigger than 2 bytes in any case which is fair enough, I
+             think ...
 
              [flush_bits] can be reached with [news] Calgary file. *)
           let off, len = cmd land 0xffff, (cmd lsr 16) land 0x1ff in
@@ -2214,7 +2250,8 @@ module Def = struct
           bits := !bits + len1 ;
           if e.o_max - !o_pos + 1 > 1
           then emit e
-          else raise_notrace (Flush_bits { bits= len2 + len3; hold= (v3 lsl len2) lor v2 } ) ;
+          else raise_notrace
+              (Flush_bits { bits= len2 + len3; hold= (v3 lsl len2) lor v2 } ) ;
 
           (* len2_max: 15, 15 + 15 = 30 *)
 
@@ -2335,7 +2372,7 @@ module Def = struct
       let cmd = Queue.pop_exn e.b in
 
       if not (cmd land 0x2000000 == 0) || cmd == 256
-      then Fmt.invalid_arg "Impossible to emit a copy code or a EOB in a Flat block" ;
+      then invalid_arg "Impossible to emit a copy code or a EOB in a Flat block" ;
 
       unsafe_set_uint8 e.o !o_pos (cmd land 0xff) ;
       incr o_pos ; incr flat ;
@@ -2356,12 +2393,15 @@ module Def = struct
         | Dynamic _ | Fixed -> write e )
     | `Block blk ->
       if e.blk.last
-      then Fmt.invalid_arg "Impossible to make a new block when the current block is the last one" ;
+      then invalid_arg
+          "Impossible to make a new block when the current block is the last one" ;
 
       ( match e.blk.kind with
         | Flat max ->
           if e.flat < max
-          then Fmt.invalid_arg "Impossible to make a new block when the current Flat block is not fully filled" ;
+          then
+            invalid_arg "Impossible to make a new block when the current Flat block \
+                         is not fully filled" ;
 
           block e (`Block blk)
         | Dynamic _ | Fixed ->
@@ -2382,11 +2422,11 @@ module Def = struct
       | Flat len ->
         encode_flat_header e.blk.last len (fun e -> e.k <- encode ; encode e v) e
 
-  let dst_rem = o_rem
+  let dst_rem d = o_rem d
 
   let bits_rem t = match t.bits_rem with
     | `Rem rem -> rem
-    | `Pending -> Fmt.invalid_arg "Encoder does not reach EOB of last block"
+    | `Pending -> invalid_arg "Encoder does not reach EOB of last block"
 
   let encoder dst ~q =
     let o, o_pos, o_max = match dst with
@@ -2413,7 +2453,7 @@ module WDef = struct
     { raw : bigstring
     ; mutable r : int
     ; mutable w : int
-    ; mutable c : Optint.t }
+    ; mutable c : optint }
 
   let max = 1 lsl 15
   let mask = max - 1
@@ -2628,13 +2668,17 @@ module Lz77 = struct
         let source = s.h.(hash land s.h_msk) in
         s.h.(hash land s.h_msk) <- !i ;
 
-        dst := !i - source ; (* XXX(dinosaure): should be safe where [!i] is the newest indice in [w]. *)
+        dst := !i - source ;
+        (* XXX(dinosaure): should be safe where [!i] is the newest indice in [w]. *)
 
-        if !dst == 0 || !dst >= WDef.max (* XXX(dinosaure): deliver only valid distance *)
-          || source + 3 - min_int >= !i - min_int (* XXX(dinosaure): [source] ∈ no emitted characters *)
-          || source - min_int < s.w.r - min_int (* XXX(dinosaure): too old! *)
-          || WDef.unsafe_get_uint16 s.w !i <> WDef.unsafe_get_uint16 s.w source
-          || WDef.unsafe_get_uint16 s.w (!i + 1) <> WDef.unsafe_get_uint16 s.w (source + 1)
+        if !dst == 0 || !dst >= WDef.max
+           (* XXX(dinosaure): deliver only valid distance *)
+           || source + 3 - min_int >= !i - min_int
+           (* XXX(dinosaure): [source] ∈ no emitted characters *)
+           || source - min_int < s.w.r - min_int (* XXX(dinosaure): too old! *)
+           || WDef.unsafe_get_uint16 s.w !i <> WDef.unsafe_get_uint16 s.w source
+           || WDef.unsafe_get_uint16 s.w (!i + 1) <>
+              WDef.unsafe_get_uint16 s.w (source + 1)
         then ( raise_notrace Literal ) ;
 
         len := 3 ;
@@ -2652,7 +2696,8 @@ module Lz77 = struct
             let v = WDef.unsafe_get_uint8 s.w !i in
 
             while !len + 2 <= _max_match
-                  && s.w.w - (!i + !len + 2) > 0 (* XXX(dinosaure): stay under write cursor. *)
+                  && s.w.w - (!i + !len + 2) > 0
+                  (* XXX(dinosaure): stay under write cursor. *)
                   && WDef.unsafe_get_uint16 s.w (!i + !len) == vv
             do len := !len + 2 done ;
 
@@ -2669,15 +2714,19 @@ module Lz77 = struct
             (* XXX(dinosaure): try to go furthermore. *)
 
             while !len + 2 <= _max_match
-                  && source + !len + 2 - min_int < !i + !len + 2 - min_int (* XXX(dinosaure): stay outside non-emitted characters. *)
-                  && s.w.w - (!i + !len + 2) > 0 (* XXX(dinosaure): stay under write cursor. *)
-                  && WDef.unsafe_get_uint16 s.w (!i + !len) == WDef.unsafe_get_uint16 s.w (source + !len)
+                  && source + !len + 2 - min_int < !i + !len + 2 - min_int
+                  (* XXX(dinosaure): stay outside non-emitted characters. *)
+                  && s.w.w - (!i + !len + 2) > 0
+                  (* XXX(dinosaure): stay under write cursor. *)
+                  && WDef.unsafe_get_uint16 s.w (!i + !len) ==
+                     WDef.unsafe_get_uint16 s.w (source + !len)
             do len := !len + 2 done ;
 
             if !len + 1 <= _max_match
             && source + !len + 1 - min_int < !i - !len + 1 - min_int
             && s.w.w - (!i + !len + 1) > 0
-            && WDef.unsafe_get_uint8 s.w (!i + !len) == WDef.unsafe_get_uint8 s.w (source + !len)
+            && WDef.unsafe_get_uint8 s.w (!i + !len) ==
+               WDef.unsafe_get_uint8 s.w (source + !len)
             then incr len ;
 
             Queue.push_exn s.b (Queue.cmd (`Copy (!dst, !len))) ; i := !i + !len ;
@@ -2727,11 +2776,13 @@ module Higher = struct
         kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances) ;
         encode (Def.encode encoder (`Block { Def.kind= !kind; last= false; }))
       | `End ->
-        Queue.push_exn q Queue.eob ; pending (Def.encode encoder (`Block { Def.kind= Def.Fixed; last= true; }))
+        Queue.push_exn q Queue.eob
+      ; pending (Def.encode encoder (`Block { Def.kind= Def.Fixed; last= true; }))
     and encode = function
       | `Partial ->
         let len = (bigstring_length o) - Def.dst_rem encoder in
-        flush o len ; Def.dst encoder o 0 (bigstring_length o) ; encode (Def.encode encoder `Await)
+        flush o len
+      ; Def.dst encoder o 0 (bigstring_length o) ; encode (Def.encode encoder `Await)
       | `Ok -> compress ()
       | `Block ->
         let literals = Lz77.literals state in
@@ -2742,7 +2793,9 @@ module Higher = struct
       | `Block -> assert false (* XXX(dinosaure): should never appear. *)
       | `Partial ->
         let len = (bigstring_length o) - Def.dst_rem encoder in
-        flush o len ; Def.dst encoder o 0 (bigstring_length o) ; pending (Def.encode encoder `Await)
+        flush o len ;
+        Def.dst encoder o 0 (bigstring_length o) ;
+        pending (Def.encode encoder `Await)
       | `Ok -> () in
 
     Queue.reset q ; Def.dst encoder o 0 (bigstring_length o) ; compress ()
@@ -2792,7 +2845,8 @@ module Higher = struct
         kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances) ;
         encode (Def.encode encoder (`Block { Def.kind= !kind; last= false; }))
       | `End ->
-        Queue.push_exn q Queue.eob ; pending (Def.encode encoder (`Block { Def.kind= Def.Fixed; last= true; }))
+        Queue.push_exn q Queue.eob
+      ; pending (Def.encode encoder (`Block { Def.kind= Def.Fixed; last= true; }))
     and encode = function
       | `Partial -> assert false
       | `Ok -> compress ()

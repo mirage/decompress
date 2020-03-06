@@ -1,33 +1,45 @@
-(** {1 ZLIB layer.}
+(** {1 GZIP layer.}
 
-    ZLIB is a standard on top of RFC1951. It uses the {!De} implementation with
-   the LZ77 compression algorithm. Module provides non-blocking streaming codec
-   to {{:#decode}decode} and {{:#encode}encode} ZLIB encoding. It can
-   efficiently work payload by payload without blocking IO. *)
+    GZIP is a standard on top of RFC1951 according RFC1952. It uses the {!De}
+   implementation with the LZ77 compression algorithm. Module provides
+   non-blocking streaming codec to {{:#decode}decode} and {{:#encode}encode}
+   GZIP encoding. It can efficiently work payload by payload without blocking IO. *)
 
 module Bigarray = Bigarray_compat
 (** MirageOS compatibility. *)
 
 type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
-(** The type for [bigstring]. *)
+(** Type type for [bigstring]. *)
 
 type window = De.window
-(** The type for sliding windows. *)
+(** The type for sliding window. *)
 
 val io_buffer_size : int
 
-(** {2:decode ZLIB Decoder.}
+(** The type for Operating-System. *)
+type os =
+  | FAT | Amiga | VMS | Unix | VM | Atari | HPFS | Macintosh
+  | Z | CPM | TOPS20 | NTFS | QDOS | Acorn | Unknown
 
-    Unlike [de], [zl] provides a referentially transparent {!Inf.decoder}. The
+val pp_os : Format.formatter -> os -> unit
+(** Pretty-printer of {!os}. *)
+
+val equal_os : os -> os -> bool
+(** [equal_os a b] returns [true] if [a] is exactly the same {!os} than [b].
+   Otherwise, it returns [false]. *)
+
+(** {2:decode GZIP Decoder.}
+
+    Unlike [de], [gz] provides a referentially transparent {!Inf.decoder}. The
    client must use a {!Inf.decoder} given {b by} {!Inf.decode} instead of a
-   [decoder] given {b to} {!Inf.decode}. A common use of [zl] is:
+   decoder given {b to} {!Inf.decode}. A common use of [gz] is:
 
-     {[
+    {[
 let rec go d0 = match Inf.decode d0 with
   | `Await d1 -> ... go d1
   | `Flush d1 -> ... go d1
-  | _ -> ... in
-     ]} *)
+  | _ -> .... in
+    ]} *)
 
 module Inf : sig
   type decoder
@@ -38,27 +50,17 @@ module Inf : sig
      provide input with {!src}. With [`String] or [`Channel] source the client
      can safely discard [`Await] case (with [assert false]). *)
 
+
   type signal = [ `Await of decoder | `Flush of decoder | `End of decoder | `Malformed of string ]
 
-  val decoder : src -> o:bigstring -> allocate:(int -> window) -> decoder
-  (** [decoder src ~o ~allocate] is a decoder that inputs from [src].
+  val decoder : src -> o:bigstring -> decoder
+  (** [decoder src ~o] is a decoder that inputs from [src].
 
       {b Output buffer.}
 
-      [zl], as [de], uses [o] buffer as internal buffer to store output. We
+      [gz], as [de], uses [o] buffer as internal buffer to store output. We
      recommend to allocate an {!io_buffer_size} buffer as output buffer. Then,
-     {!dst_rem}[ decoder] tells you how many unused bytes remain in [o].
-
-      {b Window.}
-
-      ZLIB has a header to specify the window size needed to inflate a given
-     input. When [zl] knows that, it calls [allocate] with a number [bits] so
-     that [1 lsl bits] is the size of the window. [bits] can not be larger than 15 nor
-     lower than 8. [allocate] can be [fun bits -> De.make_window ~bits] or a
-     previously allocated window. [decoder] will take the {i ownership} on it!
-
-      Ownership in our case means that {!decode} will mutate it in-place and expect
-     it to remain unchanged between invocations. *)
+     {!dst_rem}[ decoder] tells you how many unused bytes remain in [o]. *)
 
   val decode : decoder -> signal
   (** [decode d0] is:
@@ -105,14 +107,36 @@ module Inf : sig
   val flush : decoder -> decoder
   (** [flush d] is a decoder where internal output buffer [o] is {b completely}
      free to store bytes. *)
+
+  val filename : decoder -> string option
+  (** [filename d] returns the {i filename} of the flow if it exists. This can
+     be called anytime but should be called when the [`End] case appears (and
+     ensure that the GZIP header was computed). *)
+
+  val comment : decoder -> string option
+  (** [comment d] returns the {i comment} of the flow if it exists. This can be
+     called anytime but should be called when the [`End] case appears (and
+     ensure that the GZIP header was computed). *)
+
+  val os : decoder -> os
+  (** [os d] returns the {!os} where the flow was compressed. It should be
+     called when the [`End] case appears (and ensure that the GZIP header was
+     computed). *)
+
+  val extra : key:string -> decoder -> string option
+  (** [extra ~key d] returns extra {i field} [key] if it exists. This can be
+     called anytime but should be called when the [`End] case appears (and
+     ensure that the GZIP header was computed).
+
+      @raise Invalid_argument if the length of the given [key] is not equal to 2. *)
 end
 
-(** {2:encode ZLIB Encoder.}
+(** {2:encode GZIP Encoder.}
 
-    ZLIB encoder is glue between the LZ77 algorithm and the DEFLATE encoder,
-   prefixed with a ZLIB header. Any deal with compression algorithm is not
+    GZIP encoder is glue between the LZ77 algorithm and the DEFLATE encoder,
+   prefixed with a GZIP header. Any deal with compression algorithm is not
    possible on this layer (see {!De} for more details). As {!Inf}, and unlike
-   {!De}, {!Zl} provides a referentially transparent encoder.
+   {!De}, {!Gz} provides a referentially transparent encoder.
 
     The client must use the {!Def.encoder} given {b by} {!Def.encode} instead a
    [encoder] given {b to} {!Def.encode}. *)
@@ -121,43 +145,67 @@ module Def : sig
   type src = [ `Channel of in_channel | `String of string | `Manual ]
   (** The type for input sources. With a [`Manual] source the client must
      provide input with {!src}. With [`String] or [`Channel] source the client
-     can safely discard [`Await] case (with [assert false]). *)
+     can safely discard [`Await] cae (with [assert false]). *)
 
   type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
   (** The type for output destinations. With a [`Manual] destination the client
      must provide output storage with {!dst}. With [`String] or [`Channel]
-     destination the client can safely discard [`Flush] case (with [assert false]). *)
+     destination the client can safely discard [`Flush] case (with [assert
+     false]). *)
 
   type encoder
-  (** The type for ZLIB encoders. *)
+  (** The type for GZIP encoders. *)
 
   type ret = [ `Await of encoder | `End of encoder | `Flush of encoder ]
 
-  val encoder : src -> dst -> q:De.Queue.t -> w:window -> level:int -> encoder
-  (** [encoder src dst ~q ~w ~level] is an encoder that inputs from [src] and
-     that outputs to [dst].
+  val encoder
+    :  src
+    -> dst
+    -> ?ascii:bool
+    -> ?hcrc:bool
+    -> ?filename:string
+    -> ?comment:string
+    -> mtime:int32
+    -> os
+    -> q:De.Queue.t
+    -> w:window
+    -> level:int
+    -> encoder
+  (** [encoder src dst ~mtime os ~q ~w ~level] is an encoder that inputs from
+     [src] and that outputs to [dst].
 
       {b Internal queue.}
 
       [encoder] deals internally with compression algorithm and DEFLATE encoder.
      To pass compression values to DEFLATE encoder, we need a queue [q]. Length
      of [q] has an impact on performance, and small lengths can be a bottleneck,
-     leading {!encode} to emit many [`Flush]. We recommend a queue as large as
+     leading {!encode} to emit many [`Flush]. We recommend a que as large as
      output buffer.
 
       {b Window.}
 
-      ZLIB is able to constrain length of window used to do LZ77 compression.
-     However, small window can slow-down LZ77 compression algorithm. Small
-     windows are mostly used to enable inflation of output in memory-constrained
-     environments, for example when compressed data from untrusted sources must
-     be processed.
+      GZIP needs a sliding window to operate the LZ77 compression. The window
+     must be a {i 32k} window ({!De.make_window} with [bits = 15]). The
+     allocated window can be re-used by an other inflation/deflation process -
+     but it {b can not} be re-used concurrently or cooperatively with another
+     inflation/deflation process.
 
       {b Level.}
 
-      Current implementation of ZLIB does not handle any compression level.
-     However, the client must give a level between 0 and 3, inclusively.
-     Otherwise, we raise an [Invalid_argument]. *)
+      Current implementation of GZIP does not handle any compression level.
+     However, the client must give a level between 0 and 3, inclusively,
+     Otherwise, we raise an [Invalid_argument].
+
+      {b Metadata.}
+
+      Client is able to store some {i metadata} such as:
+      {ul
+      {- [mtime] time of last modification of the input.}
+      {- [os] {!os} which did the compression.}
+      {- [filename] {i filename} of the input (no limitation about length).}
+      {- [comment] an arbitrary {i payload} (no limitation about length).}
+      {- [ascii] if encoding of contents is ASCII.}
+      {- [hcrc] if the client wants a checksum of the GZIP header.}} *)
 
   val src_rem : encoder -> int
   (** [src_rem e] is how many bytes it remains in given input buffer. *)
@@ -170,7 +218,7 @@ module Def : sig
      This byte range is read by calls to {!encode} with [e] until [`Await] is
      returned. To signal the end of input call the function with [l = 0].
 
-     @raise Invalid_argument when [j] and [l] do not correspond to a valid
+      @raise Invalid_argument when [j] and [l] do not correspond to a valid
      range. *)
 
   val dst : encoder -> bigstring -> int -> int -> encoder
@@ -178,7 +226,7 @@ module Def : sig
      [j] in [s]. This byte range is fill by calls to {!encode} with [e] until
      [`Flush] is returned.
 
-     @raise Invalid_argument when [j] and [l] do not correspond to a valid
+      @raise Invalid_argument when [j] and [l] do not correspond to a valid
      range. *)
 
   val encode : encoder -> ret
@@ -189,53 +237,42 @@ module Def : sig
      input. The client must use {!src} with [e1] to provide it.}
       {- [`Flush e1] if [e0] has a [`Manual] destination and needs more output
      storage. The client must drain the buffer before resuming operation.}
-      {- [`End e1] if [e1] encoded all input. Output buffer is possibly not
+      {- [`End e1] if [e0] encoded all input. Output buffer is possibly not
      empty (it can be check with {!dst_rem}).}} *)
 end
 
 module Higher : sig
-  val compress :
-    ?level:int ->
-    w:window ->
-    q:De.Queue.t ->
-    i:bigstring ->
-    o:bigstring ->
-    refill:(bigstring -> int) ->
-    flush:(bigstring -> int -> unit) -> unit
-  (** [compress ?level ~w ~q ~i ~o ~refill ~flush] is [Zlib.compress] (with
-     [~header:true]) provided by [camlzip] package.
+  type 't configuration
+  (** Type of the Operating-System configuration. *)
 
-      {ul
-      {- [w] is the window used by LZ77 compression algorithm.}
-      {- [q] is shared-queue between compression algorithm and DEFLATE encoder.}
-      {- [i] is input buffer.}
-      {- [o] is output buffer.}}
+  val configuration : ?ascii:bool -> ?hcrc:bool -> os -> ('t -> int32) -> 't configuration
+  (** [configuration ?ascii ?hcrc os mtime] makes an Operating-System
+     {!configuration} to be able to {!compress} any inputs. *)
 
-      When [compress] wants more input, it calls [refill] with [i]. The client
-     returns how many bytes he wrote into [i]. If he returns 0, he signals end
-     of input.
+  val compress
+    :  ?level:int
+    -> ?filename:string
+    -> ?comment:string
+    -> w:window
+    -> q:De.Queue.t
+    -> i:bigstring
+    -> o:bigstring
+    -> refill:(bigstring -> int)
+    -> flush:(bigstring -> int -> unit)
+    -> 't -> 't configuration
+    -> unit
 
-      When [compress] has written output buffer, it calls [flush] with [o] and
-     how many bytes it wrote. *)
+  type metadata =
+    { filename : string option
+    ; comment : string option
+    ; os : os
+    ; extra : key:string -> string option }
+  (** Type of {i metadata} available into a GZIP flow. *)
 
-  val uncompress :
-    allocate:(int -> window) ->
-    i:bigstring ->
-    o:bigstring ->
-    refill:(bigstring -> int) ->
-    flush:(bigstring -> int -> unit) -> unit
-  (** [uncompress ~allocate ~i ~o ~refill ~flush] is [Zlib.uncompress] (with
-     [~header:true]) provided by [camlzip] package.
-
-      {ul
-      {- [allocate] is the allocator of window used by LZ77 uncompression algorithm}
-      {- [i] is input buffer.}
-      {- [o] is output buffer.}}
-
-      When [compress] wants more input, it calls [refill] with [i]. The client
-     returns how many bytes he wrote into [i]. If he returns 0, he signals end
-     of input.
-
-      When [compress] has written output buffer, it calls [flush] with [o] and
-     how many bytes it wrote. *)
+  val uncompress
+    :  i:bigstring
+    -> o:bigstring
+    -> refill:(bigstring -> int)
+    -> flush:(bigstring -> int -> unit)
+    -> metadata
 end
