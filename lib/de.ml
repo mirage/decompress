@@ -2809,11 +2809,11 @@ module Higher = struct
         Inf.src decoder i 0 len ; decompress ()
       | `End ->
         let len = bigstring_length o - Inf.dst_rem decoder in
-        if len > 0 then flush o len
+        if len > 0 then flush o len ; Ok ()
       | `Flush ->
         let len = bigstring_length o - Inf.dst_rem decoder in
         flush o len ; Inf.flush decoder ; decompress ()
-      | `Malformed err -> failwith err in
+      | `Malformed err -> Error (`Msg err) in
     decompress ()
 
   let of_string ~o ~w input ~flush =
@@ -2822,11 +2822,11 @@ module Higher = struct
       | `Await -> assert false
       | `End ->
         let len = bigstring_length o - Inf.dst_rem decoder in
-        if len > 0 then flush o len
+        if len > 0 then flush o len ; Ok ()
       | `Flush ->
         let len = bigstring_length o - Inf.dst_rem decoder in
         flush o len ; Inf.flush decoder ; decompress ()
-      | `Malformed err -> failwith err in
+      | `Malformed err -> Error (`Msg err) in
     decompress ()
 
   let to_string ?(buffer= 4096) ~i ~w ~q ~refill =

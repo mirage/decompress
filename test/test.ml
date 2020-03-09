@@ -1157,6 +1157,10 @@ let producer_to_string () =
   (fun o len -> Buffer.add_string buf (Bigstringaf.substring o ~off:0 ~len)),
   (fun () -> Buffer.contents buf)
 
+let failwith_on_error_msg = function
+  | Ok v -> v
+  | Error (`Msg err) -> failwith err
+
 let higher_zlib input =
   Alcotest.test_case "higher" `Quick @@ fun () ->
   Queue.reset q ;
@@ -1166,7 +1170,8 @@ let higher_zlib input =
   Fmt.epr "%S\n%!" (contents ()) ;
   let refill = emitter_from_string (contents ()) in
   let flush, contents = producer_to_string () in
-  Zl.Higher.uncompress ~allocate:(fun _ -> w) ~i ~o ~refill ~flush ;
+  let res = Zl.Higher.uncompress ~allocate:(fun _ -> w) ~i ~o ~refill ~flush in
+  failwith_on_error_msg res ;
   Alcotest.(check string) "higher" input (contents ())
 
 let higher_zlib0 () = higher_zlib "aaaa"

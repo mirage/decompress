@@ -432,7 +432,7 @@ module Higher : sig
     i:bigstring ->
     o:bigstring ->
     refill:(bigstring -> int) ->
-    flush:(bigstring -> int -> unit) -> unit
+    flush:(bigstring -> int -> unit) -> (unit, [> `Msg of string ]) result
   (** [uncompress ~w ~i ~o ~refill ~flush] is [Zlib.uncompress] (with
      [~header:false]) provided by [camlzip] package.
 
@@ -448,7 +448,7 @@ module Higher : sig
       When [compress] has written output buffer, it calls [flush] with [o] and
      how many bytes it wrote. *)
 
-  val of_string : o:bigstring -> w:window -> string -> flush:(bigstring -> int -> unit) -> unit
+  val of_string : o:bigstring -> w:window -> string -> flush:(bigstring -> int -> unit) -> (unit, [> `Msg of string ]) result
   val to_string : ?buffer:int -> i:bigstring -> w:window -> q:Queue.t -> refill:(bigstring -> int) -> string
 end
 

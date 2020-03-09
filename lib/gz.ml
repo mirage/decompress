@@ -878,10 +878,10 @@ module Higher = struct
       | `End decoder ->
         let len = bigstring_length o - Inf.dst_rem decoder in
         if len > 0 then flush o len ;
-        { filename= Inf.filename decoder
-        ; comment= Inf.comment decoder
-        ; os= Inf.os decoder
-        ; extra= Inf.extra decoder }
-      | `Malformed err -> failwith err in
+        Ok { filename= Inf.filename decoder
+           ; comment= Inf.comment decoder
+           ; os= Inf.os decoder
+           ; extra= Inf.extra decoder }
+      | `Malformed err -> Error (`Msg err) in
     go decoder
 end

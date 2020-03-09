@@ -223,7 +223,7 @@ module Higher : sig
     i:bigstring ->
     o:bigstring ->
     refill:(bigstring -> int) ->
-    flush:(bigstring -> int -> unit) -> unit
+    flush:(bigstring -> int -> unit) -> (unit, [> `Msg of string ]) result
   (** [uncompress ~allocate ~i ~o ~refill ~flush] is [Zlib.uncompress] (with
      [~header:true]) provided by [camlzip] package.
 
