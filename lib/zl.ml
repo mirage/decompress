@@ -546,7 +546,7 @@ module Higher = struct
         flush o len ; go (Inf.flush decoder)
       | `End decoder ->
         let len = bigstring_length o - Inf.dst_rem decoder in
-        if len > 0 then flush o len
-      | `Malformed err -> failwith err in
+        if len > 0 then flush o len ; Ok ()
+      | `Malformed err -> Error (`Msg err) in
     go decoder
 end

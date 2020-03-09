@@ -274,5 +274,5 @@ module Higher : sig
     -> o:bigstring
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
-    -> metadata
+    -> (metadata, [> `Msg of string ]) result
 end
