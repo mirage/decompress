@@ -1,3 +1,15 @@
+### v1.1.0 2019-03-10 Paris (France)
+
+- add GZip support (@dinosaure, @copy, @hcarty, #79)
+- **breaking changes**, `Higher` returns a `result` value instead to raise an exception (@dinosaure, @copy, #80)
+- protect Zlib decoder on multiple _no-op_ calls of `decode`
+- test when we generate an empty zlib flow
+- fix a bug on the DEFLATE layer when we must flush bits to avoid integer overflow
+- really use the internal continuation of the Zlib state
+- delete `fmt` depedency
+- update fuzzer
+- fix default level on `Zl.Higher`
+
 ### v1.0.0 2019-08-30 Paris (France)
 
 ** breaking changes **

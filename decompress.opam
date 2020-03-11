@@ -7,8 +7,8 @@ bug-reports:  "https://github.com/mirage/decompress/issues"
 dev-repo:     "git+https://github.com/mirage/decompress.git"
 doc:          "https://mirage.github.io/decompress/"
 license:      "MIT"
-synopsis:     "Implementation of Zlib in OCaml"
-description: """Decompress is an implementation of Zlib in OCaml
+synopsis:     "Implementation of Zlib and GZip in OCaml"
+description: """Decompress is an implementation of Zlib and GZip in OCaml
 
 It provides a pure non-blocking interface to inflate and deflate data flow.
 """
@@ -21,8 +21,8 @@ depends: [
   "dune"
   "base-bytes"
   "bigarray-compat"
-  "optint"      {>= "0.0.3"}
-  "checkseum"   {>= "0.1.1"}
+  "optint"      {>= "0.0.4"}
+  "checkseum"   {>= "0.2.0"}
   "bigstringaf" {with-test}
   "alcotest"    {with-test}
   "hxd"         {with-test}
