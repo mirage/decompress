@@ -2,13 +2,13 @@
  (name de)
  (public_name decompress.de)
  (modules de)
- (libraries checkseum fmt bigarray-compat))
+ (libraries checkseum bigarray-compat))
 
 (library
  (name rfc1951)
  (public_name rfc1951)
  (modules de)
- (libraries checkseum fmt bigarray-compat))
+ (libraries checkseum bigarray-compat))
 
 (library
  (name zl)
