@@ -235,7 +235,7 @@ module Inf = struct
   let rec header d =
     let k d =
       let[@warning "-8"] Hd { o; } = d.dd in
-      let cmf = unsafe_get_uint16 d.i d.i_pos in
+      let cmf = unsafe_get_uint16 d.t 0 in
       let cm = cmf land 0b1111 in
       let cinfo = (cmf lsr 4) land 0b1111 in
       let flg = cmf lsr 8 in
@@ -248,17 +248,19 @@ module Inf = struct
       || cm != _deflated
       then err_invalid_header d
       else
-        ( De.Inf.src state d.i (d.i_pos + 2) (i_rem { d with i_pos= d.i_pos + 2 })
-        ; decode { d with hd= unsafe_get_uint16 d.i d.i_pos
+        ( if i_rem d > 0 then De.Inf.src state d.i d.i_pos (i_rem d)
+        ; decode { d with hd= unsafe_get_uint16 d.t 0
                         ; k= decode
                         ; dd
-                        ; fdict= fdict == 1; flevel; cinfo
-                        ; i_pos= d.i_pos + 2 } ) in
+                        ; t_need= 0; t_len= 0
+                        ; fdict= fdict == 1; flevel; cinfo } ) in
     if i_rem d >= 2
-    then k d
+    then ( unsafe_set_uint16 d.t 0 (unsafe_get_uint16 d.i d.i_pos)
+         ; k { d with i_pos= d.i_pos + 2 } )
     else ( if i_rem d < 0
            then err_unexpected_end_of_input d
-           else refill decode (* XXX(dinosaure): it should be safe to replace it by [header] *) d )
+           else if i_rem d == 0 then refill header d
+           else t_fill k (t_need 2 d) )
 
   and decode d = match d.dd with
     | Hd _ -> header d
