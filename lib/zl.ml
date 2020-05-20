@@ -252,6 +252,7 @@ module Inf = struct
         ; decode { d with hd= unsafe_get_uint16 d.i d.i_pos
                         ; k= decode
                         ; dd
+                        ; t_need= 0; t_len= 0
                         ; fdict= fdict == 1; flevel; cinfo } ) in
     if i_rem d >= 2
     then ( unsafe_set_uint16 d.t 0 (unsafe_get_uint16 d.i d.i_pos)
