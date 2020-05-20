@@ -1248,6 +1248,33 @@ let test_empty_with_zlib_and_small_output () =
     Alcotest.(check int) "empty" (bigstring_length o - Zl.Inf.dst_rem decoder) 0
   | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err
 
+let test_empty_with_zlib_byte_per_byte () =
+  Alcotest.test_case "empty zlib (byte per byte)" `Quick @@ fun () ->
+  Queue.reset q ;
+  let buf = Buffer.create 16 in
+  let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w ~level:3 in
+  let go encoder = match Zl.Def.encode encoder with
+    | `Flush _ | `Await _ -> Alcotest.failf "Unexpected `Flush or `Await signal"
+    | `End _ -> Buffer.contents buf in
+  let zl = go encoder in
+  let decoder = Zl.Inf.decoder `Manual ~o ~allocate:(fun bits -> De.make_window ~bits) in
+  let i = Bigstringaf.create 1 in
+  Bigstringaf.blit_from_string zl ~src_off:0 i ~dst_off:0 ~len:1 ;
+  let decoder = Zl.Inf.src decoder i 0 1 in
+  let rec go decoder (buf, off, len) = match Zl.Inf.decode decoder with
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `Await decoder ->
+      if len > 0 then
+      ( Bigstringaf.blit_from_string buf ~src_off:off i ~dst_off:0 ~len:1
+      ; let decoder = Zl.Inf.src decoder i 0 1 in
+        Fmt.epr ">>> REFILL (off: %d, len: %d).\n%!" off len
+      ; go decoder (buf, succ off, len - 1) )
+      else ( Fmt.epr ">>> END OF INPUT.\n%!" ; go (Zl.Inf.src decoder i 0 0 ) (buf, off, len) )
+    | `End decoder ->
+      Alcotest.(check int) "empty" (bigstring_length o - Zl.Inf.dst_rem decoder) 0
+    | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err in
+  go decoder (zl, 1, String.length zl - 1)
+
 let test_empty_gzip () =
   Alcotest.test_case "empty GZip" `Quick @@ fun () ->
   let input =
@@ -1574,6 +1601,7 @@ let () =
                  ; test_corpus "trans" ]
     ; "zlib", [ test_empty_with_zlib ()
               ; test_empty_with_zlib_and_small_output ()
+              ; test_empty_with_zlib_byte_per_byte ()
               ; test_corpus_with_zlib "bib"
               ; test_corpus_with_zlib "book1"
               ; test_corpus_with_zlib "book2"
