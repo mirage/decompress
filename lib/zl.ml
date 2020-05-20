@@ -248,8 +248,8 @@ module Inf = struct
       || cm != _deflated
       then err_invalid_header d
       else
-        ( De.Inf.src state d.i d.i_pos (i_rem d)
-        ; decode { d with hd= unsafe_get_uint16 d.i d.i_pos
+        ( if i_rem d > 0 then De.Inf.src state d.i d.i_pos (i_rem d)
+        ; decode { d with hd= unsafe_get_uint16 d.t 0
                         ; k= decode
                         ; dd
                         ; t_need= 0; t_len= 0
