@@ -311,7 +311,7 @@ module Inf = struct
       De.Inf.flush state ; { d with f= false }
 
   let dst_rem d = match d.dd with
-    | Hd _ -> invalid_arg "Invalid state to know bytes remaining"
+    | Hd _ -> 0
     | Dd { state; _ } -> De.Inf.dst_rem state
 
   let src_rem d = i_rem d
