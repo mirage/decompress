@@ -1,96 +1,148 @@
-Decompress - Pure OCaml implementation of Zlib
-==============================================
+# Decompress - Pure OCaml implementation of RFC1951/Zlib/Gzip
 
-[![Build Status](https://travis-ci.org/mirage/decompress.svg?branch=master)](https://travis-ci.org/mirage/decompress)
+`decompress` is a library which implements:
+- [RFC1951](https://tools.ietf.org/html/rfc1951)
+- [Zlib](https://zlib.net/)
+- [Gzip](https://tools.ietf.org/html/rfc1952)
 
-Decompress is a pure implementation of `zlib`. The goal is to create an
-available package for Mirage OS which implements `zlib` in OCaml (instead a C
-code).
+## The library
 
-We respect the interface of `zlib` and all flush mode is available
-(experimental):
+The library is available with:
+```
+$ opam install decompress
+```
 
-1. `sync` performs the following tasks:
- * if there is some buffered but not yet compressed data, then this data is
-   compressed into one or several blocks
- * a new type 0 block with empty contents is appended
-2. `partial` is a deprecated flush method
-3. `full` is a variant of the `sync` method flush. The difference lies in the
-  LZ77 step. The full flush is a sync flush where the dictionary is emptied:
-  after a full flush, the deflater will refrain from using copy symbols which
-  reference sequences appearing before the flush point.
+It provides three sub-packages:
+- `decompress.de` to handle RFC1951 stream
+- `decompress.zl` to handle Zlib stream
+- `decompress.gz` to handle Gzip stream
 
-The interface proposed is a non-blocking interface.
+Each sub-package provide 3 sub-modules:
+- `Inf` to inflate/decompress a stream
+- `Def` to deflate/compress a stream
+- `Higher` as a easy entry point to use the stream
 
-Home page: http://din.osau.re/
+## How to use it
 
-Contact: Romain Calascibetta `<romain.calascibet ta@gmail.com>`
+### Link issue
 
-## Installation
+`decompress` uses [`checkseum`][checkseum] to compute CRC of streams.
+`checkseum` provides 2 implementations:
+- a C implementation to be fast
+- an OCaml implementation to be usable with `js_of_ocaml` (or, at least, require
+  only the _caml runtime_)
 
-Decompress can be installed with `opam`:
+When the user wants to make an OCaml executable, it must choose which implementation
+of `checkseum` he wants. A compilation of an executable with `decompress.zl` is:
+```
+$ ocamlfind opt -linkpkg -package checkseum.c,decompress.zl main.ml
+```
 
-    opam install decompress
-    
-## Checkseum & Optint, linking with Decompress
+Otherwise, the end-user should have a linking error (see
+[#47](https://github.com/mirage/decompress/issues/47)).
 
-From benchmarks, the biggest bottleneck of `decompress` seems to be the
-computation of the ADLER-32. From this acknowledge, we decide to externalize
-this part of `decompress` to 2 sub-libraries:
-[`checkseum`](https://github.com/dinosaure/checkseum.git) and
-[`optint`](https://github.com/dinosaure/optint.git).
+#### With `dune`
 
-`checkseum` (and, by this way, `decompress`) uses a trick about linking and let
-the end-user to choose which implementation he wants. We provide 2
-implementations: `checkseum.c` and `checkseum.ocaml`. Currently, `decompress`
-**does not** choose an implementation.
+`checkseum` uses a mechanism integrated into `dune` which solves the link issue.
+It provides a way to silently choose the default implementation of `checkseum`:
+`checkseum.c`.
 
-When you want to use `decompress`, you **must** choose which implementation
-you want and link with `decompress` **and** `checkseum.{c,ocaml}`.
-
-NOTE: currently the end-user need to put `checkseum.{c,ocaml}` as the first
-dependency __before__ `decompress` in `dune` file, like:
-
+By this way (and only with `dune`), an executable with `decompress.zl` is:
 ```
 (executable
- ((name ...)
-  (libraries (checkseum.c decompress))))
+ (name main)
+ (libraries decompress.zl))
 ```
 
-Otherwise, the end-user should have a linking error (see [#47](https://github.com/mirage/decompress/issues/47)).
+Of course, the user still is able to choose which implementation he wants:
+```
+(executable
+ (name main)
+ (libraries checkseum.ocaml decompress.zl))
+```
 
-## RFC 1951
+### The API
 
-This distribution provides an implementation of `zlib` and an implementation of
-[RFC 1951](https://www.ietf.org/rfc/rfc1951.txt) - which is a subset of `zlib`.
-You can use both if you link with `decompress` - or just use the RFC 1951
-implementation by the `rfc1951` package.
+`decompress` proposes to the user a full control of:
+- the input/output loop
+- the allocation
 
-The biggest difference between `zlib` and `rfc1951` is:
-- no header
-- input/output is not aligned on byte
-- no checksum
+#### Input / Output
 
-## Sample programs
+The process of the inflation/deflation is non-blocking and it does not require
+any _syscalls_ as an usual MirageOS project. The user can decide how to get the
+input and to store the output.
 
-A good example is provided in `bin/easy.ml` with the signature:
+An usual _loop_ (which can fit into `lwt` or `async`) of `decompress.zl` is:
+```ocaml
+let rec go decoder = match Zl.Inf.decode decoder with
+  | `Await decoder ->
+    let len = input itmp 0 (Bigstringaf.length tmp) in
+    go (Zl.Inf.src decoder itmp 0 len)
+  | `Flush decoder ->
+    let len = Bigstringaf.length otmp - Zl.Inf.dst_rem decoder in
+    output stdout otmp 0 len ;
+    go (Zl.Inf.flush decoder)
+  | `Malformed err -> invalid_arg err
+  | `End decoder ->
+    let len = Bigstringaf.length otmp - Zl.Inf.dst_rem decoder in
+    output stdout otmp 0 len in
+go decoder
+```
+
+#### Allocation
+
+Then, the process does not allocate large objects but it requires at the
+initialisation these objects. Such objects can be re-used by another
+inflation/deflation process - of course, these processes can not use same
+objects at the same time.
 
 ```ocaml
-val compress   : ?level:int -> string -> string
-val uncompress : string -> string
+val decompress : window:De.window -> in_channel -> out_channel -> unit
+
+let w0 = De.make_windows ~bits:15
+
+(* Safe use of decompress *)
+let () =
+  decompress ~window:w0 stdin stdout ;
+  decompress ~window:w0 (open_in "file.z") (open_out "file")
+
+(* Unsafe use of decompress,
+   the second process must use an other pre-allocated window. *)
+let () =
+  Lwt_main.run @@
+    Lwt.join [ (decompress ~window:w0 stdin stdout |> Lwt.return)
+             ; (decompress ~window:w0 (open_in "file.z") (open_out "file") |> Lwt.return) ]
 ```
 
-And you can compile this program with:
+This ability can be used on:
+- the input buffer given to the encoder/decoder with `src`
+- the output buffer given to the encoder/decoder
+- the window given to the encoder/decoder
+- the shared-queue used by the compression algorithm and the encoder
 
-    ocamlbuild -use-ocamlfind -package checkseum.c,decompress bin/easy.native
+### Example
 
-But keep in your mind, it's an easy example and it's not optimized for a
-productive environment - so, don't copy/paste and think.
+An example exists into [bin/main.ml][main.ml] where you can see how to use
+`decompress.zl` and `decompress.de`.
+
+### Higher interface
+
+However, `decompress` provides a _higher_ interface close to what `camlzip` provides
+to help newcomers to use `decompress`:
+```ocaml
+val compress : refill:(bigstring -> int) -> flush:(bigstring -> int -> unit) -> unit
+val uncompress : refill:(bigstring -> int) -> flush:(bigstring -> int -> unit) -> unit
+```
 
 ## Build Requirements
 
- * OCaml >= 4.03.0
- * `base-bytes` meta-package
- * Bigarray module (provided by the standard library of OCaml)
+ * OCaml >= 4.07.0
  * `dune` to build the project
- * `checkseum` & `optint` to compute ADLER-32 checksum
+ * `base-bytes` meta-package
+ * `bigarray-compat`
+ * `checkseum`
+ * `optint`
+
+[checkseum]: https://github.com/mirage/checkseum
+[main.ml]: https://github.com/mirage/decompress/blob/master/bin/pipe.ml
