@@ -271,15 +271,24 @@ let _distance code =
 
 let _base_length =
   [| 0; 1; 2; 3; 4; 5; 6; 7; 8; 10; 12; 14; 16; 20; 24; 28; 32; 40; 48; 56; 64
-   ; 80; 96; 112; 128; 160; 192; 224; 255 |]
+   ; 80; 96; 112; 128; 160; 192; 224; 255; 0; 0 |]
+
+(* assert (Array.length _base_length = 32) ;
+
+   XXX(dinosaure): in [zlib], [base_length] has 29 elements - however, it uses
+   the array only when it deflates something - it uses something else about
+   the inflation. We added two last [0] to avoid an [index out of bounds] where,
+   in some context, [_base_length] is used with input bits - finally, we can
+   mask input bits with [0x1f]. *)
 
 let _extra_lbits =
   [| 0; 0; 0; 0; 0; 0; 0; 0; 1; 1; 1; 1; 2; 2; 2; 2; 3; 3; 3; 3; 4; 4; 4; 4; 5
-   ; 5; 5; 5; 0 |]
+   ; 5; 5; 5; 0; 0; 0; 0 |]
 
 let _extra_dbits =
   [| 0; 0; 0; 0; 1; 1; 2; 2; 3; 3; 4; 4; 5; 5; 6; 6; 7; 7; 8; 8; 9; 9; 10; 10
    ; 11; 11; 12; 12; 13; 13; 0; 0 |]
+(* assert (Array.length _extra_dbits = 32) ; *)
 
 let _base_dist =
   [| 0; 1; 2; 3; 4; 6; 8; 12; 16; 24; 32; 48; 64; 96; 128; 192; 256; 384; 512
@@ -910,7 +919,7 @@ module Inf = struct
         let extra = d.hold land ((1 lsl len) - 1) in
         d.hold <- d.hold lsr len ;
         d.bits <- d.bits - len ;
-        d.l <- _base_length.(d.l) + 3 + extra ;
+        d.l <- _base_length.(d.l land 0x1f) + 3 + extra ;
         d.jump <- Distance ;
         d.s <- Inflate ; (* allocation *)
         K in
@@ -928,7 +937,7 @@ module Inf = struct
         K in
       c_peek_bits dist.Lookup.l k d
     | Extra_distance ->
-      let len = _extra_dbits.(d.d) in
+      let len = _extra_dbits.(d.d land 0x1f) in
       let k d =
         let extra = d.hold land ((1 lsl len) - 1) in
         d.hold <- d.hold lsr len ;
@@ -1016,7 +1025,7 @@ module Inf = struct
 
           hold := Nativeint.shift_right_logical !hold len ;
           bits := !bits - len ;
-          d.l <- _base_length.(d.l) + 3 + extra ;
+          d.l <- _base_length.(d.l land 0x1f) + 3 + extra ;
           jump := Distance
         | Distance ->
           if !bits < dist.Lookup.l
@@ -1038,7 +1047,7 @@ module Inf = struct
           d.d <- value ;
           jump := Extra_distance
         | Extra_distance ->
-          let len = _extra_dbits.(d.d) in
+          let len = _extra_dbits.(d.d land 0x1f) in
           if !bits < len
           then ( hold := Nativeint.logor !hold
                      Nativeint.(shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
@@ -2232,11 +2241,11 @@ module Def = struct
 
           let code = _length.(len) in
           let len0, v0 = Lookup.get ltree (code + 256 + 1) in
-          let len1, v1 = _extra_lbits.(code), len - _base_length.(code)  in
+          let len1, v1 = _extra_lbits.(code), len - _base_length.(code land 0x1f)  in
 
           let code = _distance off in
           let len2, v2 = Lookup.get dtree code in
-          let len3, v3 = _extra_dbits.(code), off - _base_dist.(code) in
+          let len3, v3 = _extra_dbits.(code land 0x1f), off - _base_dist.(code) in
 
           (* len0_max: 15, 15 + 15 = 30. *)
 
