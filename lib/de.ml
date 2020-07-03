@@ -1384,6 +1384,8 @@ module Inf = struct
     WInf.reset d.w
 end
 
+let unsafe_set_cursor d c = d.Inf.w.WInf.w <- c
+
 module T = struct
   module Heap = struct
     type t = { heap : int array

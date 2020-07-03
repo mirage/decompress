@@ -1530,6 +1530,18 @@ let test_gzip_extra () =
     Alcotest.(check (option string)) "extra" (Gz.Inf.extra ~key:"lx" decoder) (Some "ubuntu")
   | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
+let invalid_access () =
+  Alcotest.test_case "Invalid array access" `Quick @@ fun () ->
+  let decoder = De.Inf.decoder (`String "\xc3\xab\xfd\xa4\xfc\xff\x72\xbf\xf2\x6f\xf9\xff\x9f\xf1\xf9\xaa\x39\x6a\xdd\x19\x80\x15\x29\x91\x89\x9b\x79\x9c\x10\x96\x2a\x0f\x03\x28\x71\xba\xc2\x7d\x9c\x02")
+    ~o ~w in
+  De.unsafe_set_cursor decoder (1 lsl 15) ;
+  (* XXX(dinosaure): imagine we already inflated a large contents. LOL! but imagine!. *)
+  match De.Inf.decode decoder with
+  | `Malformed _ -> Alcotest.(check pass) "got a proper error" () ()
+  | `Await -> assert false
+  | `Flush -> Alcotest.fail "Unexpected flush"
+  | `End   -> Alcotest.fail "Unexpected end of RFC1951 stream"
+
 let () =
   Alcotest.run "z"
     [ "invalids", [ invalid_complement_of_length ()
@@ -1541,7 +1553,8 @@ let () =
                   ; invalid_distances ()
                   ; too_many_length_or_distance_symbols ()
                   ; invalid_distance_code ()
-                  ; invalid_distance_too_far_back () ]
+                  ; invalid_distance_too_far_back ()
+                  ; invalid_access () ]
     ; "valids", [ fixed ()
                 ; stored ()
                 ; length_extra ()
