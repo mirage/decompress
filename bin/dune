@@ -1,3 +1,6 @@
 (executable
  (name pipe)
- (libraries checkseum.c bigstringaf fmt rresult decompress.dd decompress.zz cmdliner))
+ (libraries checkseum.c bigstringaf fmt rresult
+  mtime mtime.clock.os
+  decompress.de decompress.zl decompress.gz
+  cmdliner))
