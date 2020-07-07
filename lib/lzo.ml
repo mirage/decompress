@@ -392,7 +392,7 @@ let uncompress input output : (bigstring, [> error ]) result =
   | Ok () -> Ok (bigstring_sub output 0 v.o_pos)
                (* TODO(dinosaure): we can replace it by [unsafe_sub]. *)
   | Error (#error as err)-> Error err
-  | exception Out_of_bound -> Error (`Invalid_argument "input is malformed or output is not large enough")
+  | exception Out_of_bound -> Error (`Invalid_argument "Input is malformed or output is not large enough")
 
 let uncompress_with_buffer ?(chunk= 0x1000) input : (string, [> error ]) result =
   let v = { i= input
@@ -590,7 +590,8 @@ let compress in_data in_len out_data out_len wrkmem =
     let t = t + len in
     let out_pos = record_trailer ~off:(in_len - t) ~len:t in_data out_data out_pos in
     out_pos in
-  go 0 in_len 0 0
+  try go 0 in_len 0 0
+  with Out_of_bound -> invalid_arg "lzo: output is not large enough"
 
 let compress in_data out_data wrkmem =
   Wrkmem.memset wrkmem 0 ;
