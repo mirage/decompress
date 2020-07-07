@@ -1,3 +1,13 @@
+### v1.2.0 2020-07-07 Paris (France)
+
+- add LZO support (@dinosaure, @cfcs, @XVilka, #82)
+- update binaries (@dinosaure, @XVilka, #89)
+- fix an exception leak (@dinosaure, @b1gtang, #88)
+- update README.md (@dinosaure, @XVilka, #87)
+- fix a mis-use of `Zl` API (@dinosaure, #85)
+- add `dune` as a dependency of `rfc1951` (@dinosaure, @kit-ty-kate, #84)
+- real non-blocking state with `Zl` (@dinosaure, #84)
+
 ### v1.1.0 2019-03-10 Paris (France)
 
 - add GZip support (@dinosaure, @copy, @hcarty, #79)
