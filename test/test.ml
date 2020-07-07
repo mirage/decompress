@@ -17,6 +17,7 @@ let w = make_window ~bits:15
 let i = bigstring_create io_buffer_size
 let o = bigstring_create io_buffer_size
 let q = Queue.create 4096
+let wrkmem = Lzo.make_wrkmem ()
 
 let unsafe_get_uint8 b i = Char.code (Bigstringaf.get b i)
 let unsafe_get_uint32_be b i = Bigstringaf.get_int32_be b i
@@ -1267,9 +1268,8 @@ let test_empty_with_zlib_byte_per_byte () =
       if len > 0 then
       ( Bigstringaf.blit_from_string buf ~src_off:off i ~dst_off:0 ~len:1
       ; let decoder = Zl.Inf.src decoder i 0 1 in
-        Fmt.epr ">>> REFILL (off: %d, len: %d).\n%!" off len
-      ; go decoder (buf, succ off, len - 1) )
-      else ( Fmt.epr ">>> END OF INPUT.\n%!" ; go (Zl.Inf.src decoder i 0 0 ) (buf, off, len) )
+        go decoder (buf, succ off, len - 1) )
+      else ( go (Zl.Inf.src decoder i 0 0 ) (buf, off, len) )
     | `End decoder ->
       Alcotest.(check int) "empty" (bigstring_length o - Zl.Inf.dst_rem decoder) 0
     | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err in
@@ -1542,6 +1542,66 @@ let invalid_access () =
   | `Flush -> Alcotest.fail "Unexpected flush"
   | `End   -> Alcotest.fail "Unexpected end of RFC1951 stream"
 
+let test_lzo_0 () =
+  Alcotest.test_case "random" `Quick @@ fun () ->
+  let expect =
+    [ "\x4f\x07\x7e\x4e\x2f\x7d\xc2\x99\xf9\xdb\x1c\xb9\x4a\x74\x29\xd4"
+    ; "\x95\xd4\x63\xce\x2f\x00\x03\x40\x48\xd4\x7b\x26\x6c\xf2\x4f\xea"
+    ; "\xeb\x85\xf4\x7c\xd9\xbb\x90\x0b\x3f\x69\xa5\xa3\xa6\x19\x76\x39"
+    ; "\x41\x88\xd8\x87\x2f\x1d\xa7\x80\xe8\xe3\x0c\x5e\x16\x27\xe4\xd2"
+    ; "\xcd\x92\x48\x3a\xf1\x99\x16\xb2\xe1\x82\xb6\x5d\x65\xc7\xba\x15"
+    ; "\x95\xcf\xa9\xdf\x98\x09\x5f\x29\x9c\x0b\x13\x56\xaa\x3e\x7d\xc6"
+    ; "\x55\x3f\x67\x81\xe3\x0b\x2b\xab\xf4\x5c\x8e\x20\xeb\xc7\x7a\x3b"
+    ; "\x3a\x29\xf4\x79\x65\x3b\xf8\xdd\xef\x19\xae\x20\x3e\xe3\x71\x86" ] in
+  let input =
+    [ "\x91\x4f\x07\x7e\x4e\x2f\x7d\xc2\x99\xf9\xdb\x1c\xb9\x4a\x74\x29"
+    ; "\xd4\x95\xd4\x63\xce\x2f\x00\x03\x40\x48\xd4\x7b\x26\x6c\xf2\x4f"
+    ; "\xea\xeb\x85\xf4\x7c\xd9\xbb\x90\x0b\x3f\x69\xa5\xa3\xa6\x19\x76"
+    ; "\x39\x41\x88\xd8\x87\x2f\x1d\xa7\x80\xe8\xe3\x0c\x5e\x16\x27\xe4"
+    ; "\xd2\xcd\x92\x48\x3a\xf1\x99\x16\xb2\xe1\x82\xb6\x5d\x65\xc7\xba"
+    ; "\x15\x95\xcf\xa9\xdf\x98\x09\x5f\x29\x9c\x0b\x13\x56\xaa\x3e\x7d"
+    ; "\xc6\x55\x3f\x67\x81\xe3\x0b\x2b\xab\xf4\x5c\x8e\x20\xeb\xc7\x7a"
+    ; "\x3b\x3a\x29\xf4\x79\x65\x3b\xf8\xdd\xef\x19\xae\x20\x3e\xe3\x71"
+    ; "\x86\x11\x00\x00" ] in
+  let input = String.concat "" input in
+  let input = Bigstringaf.of_string ~off:0 ~len:(String.length input) input in
+  let output = Bigstringaf.create (Bigstringaf.length input) in
+  match Lzo.uncompress input output with
+  | Ok output ->
+    Alcotest.(check str) "result" (Bigstringaf.to_string output) (String.concat "" expect)
+  | Error err ->
+    Alcotest.failf "Invalid LZO input: %a" Lzo.pp_error err
+
+let test_lzo_1 () =
+  Alcotest.test_case "simple test" `Quick @@ fun () ->
+  let input = "Salut les copains!" in
+  let output = Bigstringaf.create 128 in
+  let len = Lzo.compress (Bigstringaf.of_string ~off:0 ~len:(String.length input) input)
+      output wrkmem in
+  let res = Bigstringaf.sub output ~off:0 ~len in
+  match Lzo.uncompress_with_buffer res with
+  | Ok res -> Alcotest.(check str) "result" res input
+  | Error err -> Alcotest.failf "Invalid LZO input: %a" Lzo.pp_error err
+
+let test_corpus_with_lzo filename =
+  Alcotest.test_case (Fmt.strf "lzo and %s" filename) `Quick @@ fun () ->
+  let filename = Filename.concat "corpus" filename in
+  let ic = open_in filename in
+  let len = in_channel_length ic in
+  let res = Bytes.create len in
+  really_input ic res 0 len ;
+  let res = Bytes.unsafe_to_string res in
+  let raw = Bigstringaf.of_string res ~off:0 ~len in
+  let out = Bigstringaf.create ((len + 1) * 2) in
+  Fmt.epr ">>> compress %s.\n%!" filename ;
+  let len = Lzo.compress raw out wrkmem in
+  let out = Bigstringaf.sub out ~off:0 ~len in
+  Fmt.epr ">>> uncompress %s.\n%!" filename ;
+  match Lzo.uncompress_with_buffer out with
+  | Ok res' ->
+    Alcotest.(check str) "contents" res res'
+  | Error err -> Alcotest.failf "%a" Lzo.pp_error err
+
 let () =
   Alcotest.run "z"
     [ "invalids", [ invalid_complement_of_length ()
@@ -1670,6 +1730,21 @@ let () =
                       ; test_gzip_os Gz.QDOS
                       ; test_gzip_os Gz.Acorn
                       ; test_gzip_os Gz.Unknown ]
+    ; "lzo", [ test_lzo_0 ()
+             ; test_lzo_1 ()
+             ; test_corpus_with_lzo "obj1"
+             ; test_corpus_with_lzo "obj2"
+             ; test_corpus_with_lzo "geo"
+             ; test_corpus_with_lzo "news"
+             ; test_corpus_with_lzo "pic"
+             ; test_corpus_with_lzo "progc"
+             ; test_corpus_with_lzo "progl"
+             ; test_corpus_with_lzo "progp"
+             ; test_corpus_with_lzo "trans"
+             ; test_corpus_with_lzo "paper1"
+             ; test_corpus_with_lzo "paper2"
+             ; test_corpus_with_lzo "book1"
+             ; test_corpus_with_lzo "book2" ]
     ; "hang", [ hang0 () ]
     ; "git", [ git_object () ]
     ; "higher", [ higher_zlib0 ()
