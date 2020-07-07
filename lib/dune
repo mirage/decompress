@@ -21,3 +21,9 @@
  (public_name decompress.gz)
  (modules gz)
  (libraries de))
+
+(library
+ (name lzo)
+ (public_name decompress.lzo)
+ (modules lzo)
+ (libraries bigarray-compat))
