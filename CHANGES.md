@@ -5,7 +5,7 @@
 - fix an exception leak (@dinosaure, @b1gtang, #88)
 - update README.md (@dinosaure, @XVilka, #87)
 - fix a mis-use of `Zl` API (@dinosaure, #85)
-- add `dune` as a dependency of `rfc1951` (@dinosaure, @kit-ty-kate, #84)
+- add `dune` as a dependency of `rfc1951` (@kit-ty-kate)
 - real non-blocking state with `Zl` (@dinosaure, #84)
 
 ### v1.1.0 2019-03-10 Paris (France)
