@@ -38,8 +38,8 @@ let inflate max =
     let idx, ts =
       if Int64.sub (now ()) ts >= 1_000_000_000L
       then 
-        ( let mn, _, mj = Gc.counters () in
-          metrics.((idx * 4) + 2) <- Float.to_int mn ;
+        ( let mn, pr, mj = Gc.counters () in
+          metrics.((idx * 4) + 2) <- Float.to_int (mn -. pr);
           metrics.((idx * 4) + 3) <- Float.to_int mj ;
           if succ idx >= max then raise Stop ;
           succ idx, Int64.add 1_000_000_000L ts )

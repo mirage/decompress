@@ -1,6 +1,17 @@
 (executable
  (name bench)
+ (modules bench)
  (foreign_stubs
   (language c)
   (names mclock bs))
  (libraries unix fmt decompress.zl))
+
+(executable
+ (name run)
+ (modules run)
+ (libraries rresult bos))
+
+(rule
+ (targets zpipe)
+ (deps (:zpipe zpipe.c))
+ (action (run %{cc} %{zpipe} -lz -o %{targets})))
