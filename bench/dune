@@ -1,0 +1,22 @@
+(executable
+ (name bench)
+ (modules bench)
+ (foreign_stubs
+  (language c)
+  (names mclock bs))
+ (libraries unix fmt decompress.zl))
+
+(executable
+ (name run)
+ (modules run)
+ (libraries cmdliner rresult bos))
+
+(rule
+ (targets zpipe)
+ (deps (:zpipe zpipe.c))
+ (action (run %{cc} %{zpipe} -lz -o %{targets})))
+
+(rule
+ (targets output.csv)
+ (deps (:run run.exe) (:zpipe zpipe) (:bench bench.exe))
+ (action (chdir %{workspace_root} (run %{run} -o %{targets}))))
