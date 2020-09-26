@@ -24,7 +24,7 @@ let plot metrics max =
   Fmt.pr "time,in,out,live\n%!" ;
   for i = 0 to max - 1 do
     Fmt.pr "%d," (succ i) ;
-    for j = 0 to 3 do
+    for j = 0 to 2 do
       Fmt.pr "%d" metrics.((i * 3) + j) ;
       if j < 3 then Fmt.pr "," ;
     done ; Fmt.pr "\n%!" ;
