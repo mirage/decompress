@@ -26,7 +26,7 @@ let plot metrics max =
     Fmt.pr "%d," (succ i) ;
     for j = 0 to 2 do
       Fmt.pr "%d" metrics.((i * 3) + j) ;
-      if j < 3 then Fmt.pr "," ;
+      if j < 2 then Fmt.pr "," ;
     done ; Fmt.pr "\n%!" ;
   done
 
