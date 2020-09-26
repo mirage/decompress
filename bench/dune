@@ -1,0 +1,6 @@
+(executable
+ (name bench)
+ (foreign_stubs
+  (language c)
+  (names mclock bs))
+ (libraries unix fmt decompress.zl))
