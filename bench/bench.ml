@@ -21,11 +21,11 @@ let rec fully_write fd buf off len =
 exception Stop
 
 let plot metrics max =
-  Fmt.pr "time,in,out,mn,mj\n%!" ;
+  Fmt.pr "time,in,out,live\n%!" ;
   for i = 0 to max - 1 do
     Fmt.pr "%d," (succ i) ;
     for j = 0 to 3 do
-      Fmt.pr "%d" metrics.((i * 4) + j) ;
+      Fmt.pr "%d" metrics.((i * 3) + j) ;
       if j < 3 then Fmt.pr "," ;
     done ; Fmt.pr "\n%!" ;
   done
@@ -33,32 +33,31 @@ let plot metrics max =
 let inflate max =
   let open Zl in
   let decoder = Inf.decoder `Manual ~o ~allocate in
-  let metrics = Array.make (max * 4) 0 (* in bytes, out bytes, minor words, major words *) in 
+  let metrics = Array.make (max * 3) 0 (* in bytes, out bytes, live words *) in 
   let rec go idx ts decoder =
     let idx, ts =
       if Int64.sub (now ()) ts >= 1_000_000_000L
       then 
-        ( let mn, pr, mj = Gc.counters () in
-          metrics.((idx * 4) + 2) <- Float.to_int (mn -. pr);
-          metrics.((idx * 4) + 3) <- Float.to_int mj ;
+        ( let { Gc.live_words; _ } = Gc.quick_stat () in
+          metrics.((idx * 3) + 2) <- live_words ;
           if succ idx >= max then raise Stop ;
           succ idx, Int64.add 1_000_000_000L ts )
       else idx, ts in
     match Inf.decode decoder with
     | `Await decoder ->
       let len = read Unix.stdin i 0 De.io_buffer_size in
-      metrics.((idx * 4) + 0) <- metrics.((idx * 4) + 0) + len ;
+      metrics.((idx * 3) + 0) <- metrics.((idx * 3) + 0) + len ;
       go idx ts (Inf.src decoder i 0 len)
     | `Flush decoder ->
       let len = De.io_buffer_size - Inf.dst_rem decoder in
       fully_write Unix.stderr o 0 len ;
-      metrics.((idx * 4) + 1) <- metrics.((idx * 4) + 1) + len ;
+      metrics.((idx * 3) + 1) <- metrics.((idx * 3) + 1) + len ;
       go idx ts (Inf.flush decoder)
     | `Malformed err -> invalid_arg err
     | `End _ ->
       let len = De.io_buffer_size - Inf.dst_rem decoder in
       if len > 0 then fully_write Unix.stderr o 0 len ;
-      metrics.((idx * 4) + 1) <- metrics.((idx * 4) + 1) + len in
+      metrics.((idx * 3) + 1) <- metrics.((idx * 3) + 1) + len in
   ( try go 0 (now ()) decoder with Stop -> () ) ;
   plot metrics max
 
