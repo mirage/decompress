@@ -4,6 +4,7 @@
 - [RFC1951](https://tools.ietf.org/html/rfc1951)
 - [Zlib](https://zlib.net/)
 - [Gzip](https://tools.ietf.org/html/rfc1952)
+- [LZO](https://en.wikipedia.org/wiki/Lempel%E2%80%93Ziv%E2%80%93Oberhumer)
 
 ## The library
 
@@ -16,6 +17,7 @@ It provides three sub-packages:
 - `decompress.de` to handle RFC1951 stream
 - `decompress.zl` to handle Zlib stream
 - `decompress.gz` to handle Gzip stream
+- `decompress.lzo` to handle LZO contents
 
 Each sub-package provide 3 sub-modules:
 - `Inf` to inflate/decompress a stream
@@ -70,8 +72,8 @@ Of course, the user still is able to choose which implementation he wants:
 #### Input / Output
 
 The process of the inflation/deflation is non-blocking and it does not require
-any _syscalls_ as an usual MirageOS project. The user can decide how to get the
-input and to store the output.
+any _syscalls_ (as an usual MirageOS project). The user can decide how to get the
+input and how to store the output.
 
 An usual _loop_ (which can fit into `lwt` or `async`) of `decompress.zl` is:
 ```ocaml
@@ -134,6 +136,20 @@ to help newcomers to use `decompress`:
 val compress : refill:(bigstring -> int) -> flush:(bigstring -> int -> unit) -> unit
 val uncompress : refill:(bigstring -> int) -> flush:(bigstring -> int -> unit) -> unit
 ```
+
+### Benchmark
+
+`decompress` has a benchmark about _inflation_ to see if any update has a performance
+implication. The process try to _inflate_ a stream and stop at N second(s) (default is 30),
+The benchmark requires `libzlib-dev`, `cmdliner` and `bos` to be able to compile `zpipe`
+and the executable to produce the CSV file. To run the benchmark:
+
+```sh
+$ dune build bench/output.csv
+```
+
+The output file is a CSV file which can be processed by a _plot_ software. It records
+input bytes, output bytes and memory usage at each second.
 
 ## Build Requirements
 

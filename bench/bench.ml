@@ -38,8 +38,8 @@ let inflate max =
     let idx, ts =
       if Int64.sub (now ()) ts >= 1_000_000_000L
       then 
-        ( let { Gc.live_words; _ } = Gc.quick_stat () in
-          metrics.((idx * 3) + 2) <- live_words ;
+        ( let { Gc.top_heap_words; _ } = Gc.quick_stat () in
+          metrics.((idx * 3) + 2) <- top_heap_words ;
           if succ idx >= max then raise Stop ;
           succ idx, Int64.add 1_000_000_000L ts )
       else idx, ts in
