@@ -142,10 +142,16 @@ val uncompress : refill:(bigstring -> int) -> flush:(bigstring -> int -> unit) -
 `decompress` has a benchmark about _inflation_ to see if any update has a performance
 implication. The process try to _inflate_ a stream and stop at N second(s) (default is 30),
 The benchmark requires `libzlib-dev`, `cmdliner` and `bos` to be able to compile `zpipe`
-and the executable to produce the CSV file. To run the benchmark:
+and the executable to produce the CSV file. To build the benchmark:
 
 ```sh
 $ dune build bench/output.csv
+```
+
+On linux machines, `/dev/urandom` will generate the random input for piping to zpipe. To 
+run the benchmark:
+```sh
+$ cat /dev/urandom | ./build/default/bench/zpipe | ./_build/default/bench/bench.exe
 ```
 
 The output file is a CSV file which can be processed by a _plot_ software. It records
