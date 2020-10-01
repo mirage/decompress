@@ -3,19 +3,24 @@ open Bos
 
 let ( <.> ) f g = fun x -> f (g x)
 
-let run max =
+let run max json =
+  let json = match json with true -> " -j" | false -> "" in
   let open OS.Cmd in
   (out_run_in <.> run_out) Cmd.(v "cat" % "/dev/urandom")
   >>= (out_run_in <.> run_io Cmd.(v "./bench/zpipe"))
-  >>= (R.ok <.> run_io ~err:err_null Cmd.(v "./bench/bench.exe" % string_of_int max))
+  >>= ( R.ok
+      <.> run_io ~err:err_null
+            Cmd.(v "./bench/bench.exe -m " ^ string_of_int max ^  json) )
   >>= out_string ~trim:false
-  
-let run output max =
-  let oc, close = match output with
-    | Some path -> open_out (Fpath.to_string path), true
-    | None -> stdout, false in
-  let csv, _ = run max |> R.failwith_error_msg in
-  output_string oc csv ;
+
+let run output max json =
+  let oc, close =
+    match output with
+    | Some path -> (open_out (Fpath.to_string path), true)
+    | None -> (stdout, false)
+  in
+  let output, _ = run max json |> R.failwith_error_msg in
+  output_string oc output;
   if close then close_out oc
 
 open Cmdliner
@@ -25,14 +30,8 @@ let path =
   let pp = Fpath.pp in
   Arg.conv (parser, pp)
 
-let output =
-  Arg.(value & opt (some path) None & info [ "o" ])
-
-let max =
-  Arg.(value & pos ~rev:true 0 int 30 & info [])
-
-let cmd =
-  Term.(const run $ output $ max),
-  Term.info "run"
-
+let output = Arg.(value & opt (some path) None & info [ "o" ])
+let max = Arg.(value & pos ~rev:true 0 int 30 & info [])
+let json = Arg.(value & flag & info [ "j"; "json" ])
+let cmd = (Term.(const run $ output $ max $ json), Term.info "run")
 let () = Term.(exit @@ eval cmd)
