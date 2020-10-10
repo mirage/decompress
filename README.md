@@ -1,4 +1,4 @@
-# Decompress - Pure OCaml implementation of RFC1951/Zlib/Gzip
+# Decompress - Pure OCaml implementation of decompression algorithms
 
 `decompress` is a library which implements:
 - [RFC1951](https://tools.ietf.org/html/rfc1951)
