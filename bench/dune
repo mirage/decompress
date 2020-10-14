@@ -4,7 +4,9 @@
  (foreign_stubs
   (language c)
   (names mclock bs))
- (libraries unix fmt decompress.zl))
+ (preprocess
+  (pps ppx_deriving_yojson))
+ (libraries unix fmt decompress.zl cmdliner yojson ppx_deriving_yojson))
 
 (executable
  (name run)
