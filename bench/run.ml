@@ -4,13 +4,14 @@ open Bos
 let ( <.> ) f g = fun x -> f (g x)
 
 let run max json =
-  let json = match json with true -> " -j" | false -> "" in
+  let bench_cmd = match json with
+    | true -> Cmd.(v "./bench/bench.exe" % "-m" % string_of_int max % "-j")
+    | false -> Cmd.(v "./bench/bench.exe" % "-m" % string_of_int max) in
   let open OS.Cmd in
   (out_run_in <.> run_out) Cmd.(v "cat" % "/dev/urandom")
   >>= (out_run_in <.> run_io Cmd.(v "./bench/zpipe"))
   >>= ( R.ok
-      <.> run_io ~err:err_null
-            Cmd.(v "./bench/bench.exe -m " ^ string_of_int max ^  json) )
+      <.> run_io ~err:err_null bench_cmd)
   >>= out_string ~trim:false
 
 let run output max json =
