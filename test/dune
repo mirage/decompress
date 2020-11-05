@@ -1,13 +1,23 @@
 (executable
  (name test)
  (modules test)
- (libraries base64 camlzip hxd.string bigstringaf checkseum.c de zl gz lzo
-   alcotest))
+ (libraries
+  fmt
+  base64
+  camlzip
+  bigarray-compat
+  bigstringaf
+  checkseum.c
+  de
+  zl
+  gz
+  lzo
+  alcotest))
 
 (executable
  (name test_deflate)
  (modules test_deflate)
- (libraries de bigstringaf alcotest))
+ (libraries fmt de bigstringaf alcotest))
 
 (rule
  (alias runtest)

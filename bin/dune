@@ -1,10 +1,12 @@
 (executable
  (name pipe)
  (modules pipe)
- (libraries checkseum.c bigstringaf fmt rresult mtime mtime.clock.os
-   decompress.de decompress.zl decompress.gz cmdliner))
-
-(executable
- (name lz)
- (modules lz)
- (libraries checkseum.c decompress.lz))
+ (package decompress)
+ (public_name decompress.pipe)
+ (libraries
+  checkseum.c
+  unix
+  decompress.de
+  decompress.zl
+  decompress.gz
+  cmdliner))

@@ -1,0 +1,7 @@
+(cram
+ (deps
+  ../corpus/news
+  ../../bindings/stubs/libdecompress.a
+  ../../bindings/stubs/decompress.h
+  zpipe.c
+  %{bin:decompress.pipe}))

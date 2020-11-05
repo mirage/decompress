@@ -3,16 +3,23 @@ let l = De.Lz77.make_window ~bits:15
 let o = De.bigstring_create De.io_buffer_size
 let i = De.bigstring_create De.io_buffer_size
 let q = De.Queue.create 4096
+let str fmt = Format.asprintf fmt
+let error_msgf fmt = Format.kasprintf (fun err -> Error (`Msg err)) fmt
 
 let bigstring_input ic buf off len =
   let tmp = Bytes.create len in
   let len = input ic tmp 0 len in
-  Bigstringaf.blit_from_bytes tmp ~src_off:0 buf ~dst_off:off ~len
+  for i = 0 to len - 1 do
+    buf.{off + i} <- Bytes.get tmp i
+  done
   ; len
 
 let bigstring_output oc buf off len =
-  let tmp = Bigstringaf.substring buf ~off ~len in
-  output_string oc tmp
+  let res = Bytes.create len in
+  for i = 0 to len - 1 do
+    Bytes.set res i buf.{off + i}
+  done
+  ; output_string oc (Bytes.unsafe_to_string res)
 
 let run_inflate () =
   let open De in
@@ -27,11 +34,11 @@ let run_inflate () =
       bigstring_output stdout o 0 len
       ; Inf.flush decoder
       ; go ()
-    | `Malformed err -> Fmt.epr "%s\n%!" err ; `Error err
+    | `Malformed err -> `Error (false, str "%s." err)
     | `End ->
       let len = io_buffer_size - Inf.dst_rem decoder in
       if len > 0 then bigstring_output stdout o 0 len
-      ; `Ok () in
+      ; `Ok 0 in
   go ()
 
 let run_deflate () =
@@ -62,7 +69,7 @@ let run_deflate () =
     | `Ok | `Block -> compress () in
   Def.dst encoder o 0 io_buffer_size
   ; compress ()
-  ; `Ok ()
+  ; `Ok 0
 
 let run_zlib_inflate () =
   let open Zl in
@@ -78,13 +85,11 @@ let run_zlib_inflate () =
       let len = De.io_buffer_size - Inf.dst_rem decoder in
       bigstring_output stdout o 0 len
       ; Inf.flush decoder |> go
-    | `Malformed err ->
-      Fmt.epr "%si (remaining byte(s): %d)\n%!" err (Inf.dst_rem decoder)
-      ; `Error err
+    | `Malformed err -> `Error (false, str "%s." err)
     | `End decoder ->
       let len = De.io_buffer_size - Inf.dst_rem decoder in
       if len > 0 then bigstring_output stdout o 0 len
-      ; `Ok () in
+      ; `Ok 0 in
   go decoder
 
 let run_zlib_deflate () =
@@ -103,7 +108,7 @@ let run_zlib_deflate () =
     | `End encoder ->
       let len = De.io_buffer_size - Def.dst_rem encoder in
       if len > 0 then bigstring_output stdout o 0 len
-      ; `Ok () in
+      ; `Ok 0 in
   Def.dst encoder o 0 De.io_buffer_size |> go
 
 let run_gzip_inflate () =
@@ -119,19 +124,14 @@ let run_gzip_inflate () =
       let len = io_buffer_size - Inf.dst_rem decoder in
       bigstring_output stdout o 0 len
       ; Inf.flush decoder |> go
-    | `Malformed err ->
-      Fmt.epr "%s (remaining byte(s): %d)\n%!" err (Inf.dst_rem decoder)
-      ; `Error err
+    | `Malformed err -> `Error (false, str "%s." err)
     | `End decoder ->
       let len = io_buffer_size - Inf.dst_rem decoder in
       if len > 0 then bigstring_output stdout o 0 len
-      ; `Ok () in
+      ; `Ok 0 in
   go decoder
 
-(* XXX(dinosaure): UNSAFE! *)
-let now () =
-  let res = Mtime_clock.now () in
-  Int64.to_int32 (Mtime.to_uint64_ns res)
+let now () = Int32.of_float (Unix.gettimeofday ())
 
 let run_gzip_deflate () =
   let open Gz in
@@ -150,14 +150,17 @@ let run_gzip_deflate () =
     | `End encoder ->
       let len = io_buffer_size - Def.dst_rem encoder in
       if len > 0 then bigstring_output stdout o 0 len
-      ; `Ok () in
+      ; `Ok 0 in
   Def.dst encoder o 0 io_buffer_size |> go
 
 let run deflate format =
-  match format with
-  | `Deflate -> if deflate then run_deflate () else run_inflate ()
-  | `Zlib -> if deflate then run_zlib_deflate () else run_zlib_inflate ()
-  | `Gzip -> if deflate then run_gzip_deflate () else run_gzip_inflate ()
+  match deflate, format with
+  | true, `Deflate -> run_deflate ()
+  | false, `Deflate -> run_inflate ()
+  | true, `Zlib -> run_zlib_deflate ()
+  | false, `Zlib -> run_zlib_inflate ()
+  | true, `Gzip -> run_gzip_deflate ()
+  | false, `Gzip -> run_gzip_inflate ()
 
 open Cmdliner
 
@@ -171,11 +174,11 @@ let format =
     | "zlib" -> Ok `Zlib
     | "gzip" -> Ok `Gzip
     | "deflate" -> Ok `Deflate
-    | x -> Rresult.R.error_msgf "Invalid format: %S" x in
+    | x -> error_msgf "Invalid format: %S" x in
   let pp ppf = function
-    | `Zlib -> Fmt.pf ppf "zlib"
-    | `Gzip -> Fmt.pf ppf "gzip"
-    | `Deflate -> Fmt.pf ppf "deflate" in
+    | `Zlib -> Format.pp_print_string ppf "zlib"
+    | `Gzip -> Format.pp_print_string ppf "gzip"
+    | `Deflate -> Format.pp_print_string ppf "deflate" in
   let format = Arg.conv (parser, pp) in
   Arg.(value & opt format `Deflate & info ["f"; "format"])
 
@@ -184,11 +187,11 @@ let command =
   let exits = Term.default_exits in
   let man =
     [
-      `S "Description"
+      `S Manpage.s_description
     ; `P
         "$(tname) reads from standard input and writes the \
          compressed/decompressed data to standard output."
     ] in
-  Term.(pure run $ deflate $ format), Term.info "pipe" ~exits ~doc ~man
+  Term.(ret (const run $ deflate $ format)), Term.info "pipe" ~exits ~doc ~man
 
-let () = Term.(exit @@ eval command)
+let () = Term.(exit_status @@ eval command)

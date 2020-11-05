@@ -3,20 +3,20 @@
  (public_name decompress.de)
  (modules de)
  (ocamlopt_flags -O3 -unbox-closures -unbox-closures-factor 20)
- (libraries checkseum bigarray-compat))
+ (libraries optint checkseum bigarray-compat))
 
 (library
  (name lz)
  (public_name decompress.lz)
  (modules lz)
  (ocamlopt_flags -O3 -unbox-closures -unbox-closures-factor 20)
- (libraries de))
+ (libraries optint checkseum bigarray-compat de))
 
 (library
  (name rfc1951)
  (public_name rfc1951)
  (modules rfc1951)
- (libraries checkseum bigarray-compat))
+ (libraries optint checkseum bigarray-compat))
 
 (rule
  (deps de.ml)
@@ -28,13 +28,13 @@
  (name zl)
  (public_name decompress.zl)
  (modules zl)
- (libraries de))
+ (libraries bigarray-compat optint checkseum de))
 
 (library
  (name gz)
  (public_name decompress.gz)
  (modules gz)
- (libraries de))
+ (libraries bigarray-compat optint checkseum de))
 
 (library
  (name lzo)
