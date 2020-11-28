@@ -808,28 +808,28 @@ module Inf = struct
 
       consume () ;
       len := !hold land 0xff ;
-      hold := !hold asr 8 ;
+      hold := !hold lsr 8 ;
       bits := !bits - 8 ;
 
       consume () ;
       len := ((!hold land 0xff) lsl 8) lor !len ;
-      hold := !hold asr 8 ;
+      hold := !hold lsr 8 ;
       bits := !bits - 8 ;
 
       consume () ;
       nlen := !hold land 0xff ;
-      hold := !hold asr 8 ;
+      hold := !hold lsr 8 ;
       bits := !bits - 8;
 
       consume () ;
       nlen := ((!hold land 0xff) lsl 8) lor !nlen ;
-      hold := !hold asr 8 ;
+      hold := !hold lsr 8 ;
       bits := !bits - 8 ;
 
       if !nlen != 0xffff - !len
       then err_invalid_complement_of_length d
       else ( d.hold <- 0 ; d.bits <- 0 ; d.l <- !len ; d.s <- Flat ; flat d ) in
-    d.hold <- d.hold asr (d.bits land 7) ;
+    d.hold <- d.hold lsr (d.bits land 7) ;
     (* XXX(cfcs): diff between [d.bits] and [d.bits round down to nearest multiple of 8]. *)
     let truncated_bits = d.bits land (lnot 7) in
     (* XXX(cfcs): round down to nearest multiple of 8, logical equivalents:
