@@ -119,6 +119,32 @@ module Inf : sig
 
   val checksum : decoder -> optint
   (** [checkseum d] is ADLER-32 checksum of consumed inputs. *)
+
+  module Non_streamable : sig
+    (** A non-streamable implementation of the RFC 1951. It considers the input
+      to be whole and is therefore able to save some time *)
+
+    type error =
+       | Unexpected_end_of_input
+       | Invalid_kind_of_block
+       | Invalid_dictionary
+       | Invalid_complement_of_length
+       | Invalid_distance
+       | Invalid_distance_code
+    (** The type for inflation errors. *)
+
+    val pp_error: Format.formatter -> error -> unit
+
+    val inflate : src:bigstring -> dst:bigstring -> w:window -> (int * int, error * (int * int)) result
+    (** [inflate src dst w] inflate the content of src into dst using the window
+      w.
+
+      In case of sucess, it returns the bytes read and the bytes writen in an
+      Ok result.
+
+      In case of failure, it returns the error, the bytes read and the bytes
+      writen in an Error result. *)
+  end
 end
 
 (** {2 Queue.}

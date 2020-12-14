@@ -1447,6 +1447,309 @@ module Inf = struct
     ; d.s <- Header
     ; d.k <- decode_k
     ; WInf.reset d.w
+
+  module Non_streamable = struct
+    type decoder =
+      { i: bigstring
+      ; mutable i_pos : int
+      ; mutable i_len : int
+      ; mutable hold : int
+      ; mutable bits : int
+      ; mutable last : bool
+      ; o : bigstring
+      ; mutable o_pos : int
+      ; w : WInf.t
+      ; mutable l : int (* literal / length *)
+      ; mutable d : int (* distance *)
+      }
+
+    (* errors. *)
+
+    type error =
+      | Unexpected_end_of_input
+      | Invalid_kind_of_block
+      | Invalid_dictionary
+      | Invalid_complement_of_length
+      | Invalid_distance
+      | Invalid_distance_code
+
+    let pp_error ppf e =
+      let s = match e with
+      | Unexpected_end_of_input      -> "Unexpected_end_of_input"
+      | Invalid_kind_of_block        -> "Invalid_kind_of_block"
+      | Invalid_dictionary           -> "Invalid_dictionary"
+      | Invalid_complement_of_length -> "Invalid_complement_of_length"
+      | Invalid_distance             -> "Invalid_distance"
+      | Invalid_distance_code        -> "Invalid_distance_code"
+      in
+      Format.fprintf ppf "%s" s
+
+    exception Malformed of error
+
+    let err_unexpected_end_of_input () =
+      raise (Malformed Unexpected_end_of_input)
+
+    let err_invalid_kind_of_block () =
+      raise (Malformed Invalid_kind_of_block)
+
+    let err_invalid_dictionary () =
+      raise (Malformed Invalid_dictionary)
+
+    let err_invalid_complement_of_length () =
+      raise (Malformed Invalid_complement_of_length)
+
+    let err_invalid_distance () =
+      raise (Malformed Invalid_distance)
+
+    let err_invalid_distance_code () =
+      raise (Malformed Invalid_distance_code)
+
+    (* remaining bytes to read [d.i]. *)
+    let i_rem d = d.i_len - d.i_pos
+    [@@inline]
+
+    let _fill_byte d =
+      if i_rem d <= 0
+      then
+        err_unexpected_end_of_input ();
+      d.hold <- d.hold lor ((unsafe_get_uint8 d.i d.i_pos) lsl d.bits);
+      d.i_pos <- d.i_pos + 1;
+      d.bits <- d.bits + 8
+    [@@inline]
+
+    let rec fill_bits d n =
+      if d.bits < n
+      then
+        ( _fill_byte d
+        ; fill_bits d n)
+
+    let pop_bits d n =
+      let v = d.hold land (1 lsl n - 1) in
+      d.hold <- d.hold lsr n ;
+      d.bits <- d.bits - n ;
+      v
+    [@@inline]
+
+    let flat d =
+      d.hold <- d.hold lsr (d.bits land 7) ;
+      d.bits <- d.bits land (lnot 7) ;
+      fill_bits d 8 ;
+      let len = pop_bits d 8 in
+      fill_bits d 8 ;
+      let len = pop_bits d 8 lsl 8 lor len in
+      fill_bits d 8 ;
+      let nlen = pop_bits d 8 in
+      fill_bits d 8 ;
+      let nlen = pop_bits d 8 lsl 8 lor nlen in
+      if nlen != 0xffff - len
+      then err_invalid_complement_of_length ()
+      else
+        ( d.hold <- 0 ;
+          d.bits <- 0 ;
+          let m_len = min (min (i_rem d) len) (bigstring_length d.o - d.o_pos) in
+          WInf.blit d.w d.i d.i_pos d.o d.o_pos m_len ;
+          d.o_pos <- d.o_pos + m_len ;
+          d.i_pos <- d.i_pos + m_len ;
+          let len = len - m_len in
+          if len <> 0
+          then
+            err_unexpected_end_of_input () )
+
+    let inflate lit dist d =
+      let rec fill_bits lit d n =
+        if d.bits < n
+        then
+          ( _fill_byte d
+          ; fill_bits lit d n)
+      in
+      let exception End in
+      let exception Invalid_distance in
+      let exception Invalid_distance_code in
+      let lit_mask = lit.Lookup.m in
+      let dist_mask = dist.Lookup.m in
+      try
+        let rec length () =
+          fill_bits lit d lit.Lookup.l ;
+          let value = lit.Lookup.t.(d.hold land lit_mask) land Lookup.mask in
+          let len = lit.Lookup.t.(d.hold land lit_mask) lsr 15 in
+          d.hold <- d.hold lsr len ;
+          d.bits <- d.bits - len ;
+          if value < 256
+          then ( unsafe_set_uint8 d.o d.o_pos value
+                ; WInf.add d.w value
+                ; d.o_pos <- d.o_pos + 1
+                ; length ())
+          else if value == 256 then raise_notrace End
+          else ( d.l <- value - 257; extra_length ())
+        and extra_length () =
+          let len = _extra_lbits.(d.l) in
+          fill_bits lit d len ;
+          let extra = pop_bits d len in
+          d.l <- _base_length.(d.l land 0x1f) + 3 + extra ;
+          distance ()
+        and distance () =
+          fill_bits lit d dist.Lookup.l ;
+          let value = dist.Lookup.t.(d.hold land dist_mask) land Lookup.mask in
+          let len = dist.Lookup.t.(d.hold land dist_mask) lsr 15 in
+          d.hold <- d.hold lsr len ;
+          d.bits <- d.bits - len ;
+          d.d <- value ;
+          extra_distance ();
+        and extra_distance () =
+          let len = _extra_dbits.(d.d land 0x1f) in
+          fill_bits lit d len ;
+          let extra = pop_bits d len in
+          d.d <- _base_dist.(d.d) + 1 + extra ;
+          write ()
+        and write () =
+          if d.d == 0 then raise_notrace Invalid_distance_code ;
+          if d.d > WInf.have d.w then raise_notrace Invalid_distance ;
+          let len = min d.l (bigstring_length d.o - d.o_pos) in
+          let off = WInf.mask (d.w.WInf.w - d.d) in
+          if d.d == 1
+          then
+            ( let v = unsafe_get_uint8 d.w.WInf.raw off in
+              WInf.fill d.w v d.o d.o_pos len )
+          else
+            ( let off = WInf.mask (d.w.WInf.w - d.d) in
+              let pre = WInf.max - off in
+              let rst = len - pre in
+              if rst > 0
+              then ( WInf.blit d.w d.w.WInf.raw off d.o d.o_pos pre
+                    ; WInf.blit d.w d.w.WInf.raw 0 d.o (d.o_pos + pre) rst )
+              else WInf.blit d.w d.w.WInf.raw off d.o d.o_pos len ) ;
+          d.o_pos <- d.o_pos + len ;
+          if d.l - len == 0 then length () else d.l <- d.l - len
+        in
+        length ()
+      with End -> ()
+          | Invalid_distance -> err_invalid_distance ()
+          | Invalid_distance_code -> err_invalid_distance_code ()
+
+    let fixed d =
+      inflate fixed_lit fixed_dist d
+
+    (* XXX(clecat): The table functions are almost a copy of the stream implementation, by
+       adapting their code, they should be easily merged *)
+    let make_table t hlit hdist d =
+      try
+        if t.(256) == 0 then ( raise_notrace Invalid_huffman ) ;
+        (* XXX(dinosaure): an huffman tree MUST have at least an End-Of-Block
+          symbol. *)
+
+        let t_lit, l_lit = huffman LENS t 0 hlit in
+        let t_dist, l_dist = huffman DISTS t hlit hdist in
+
+        let lit = Lookup.make t_lit l_lit in
+        let dist = Lookup.make t_dist l_dist in
+
+        inflate lit dist d
+      with Invalid_huffman ->
+        err_invalid_dictionary ()
+
+    let inflate_table d t max_bits res (hlit, hdist, _) =
+      let max_res = hlit + hdist in
+      let mask = (1 lsl max_bits) - 1 in
+      let get d =
+        fill_bits d max_bits ;
+        let v = t.(d.hold land mask) land Lookup.mask in
+        let len = t.(d.hold land mask) lsr 15 in
+        d.hold <- d.hold lsr len ;
+        d.bits <- d.bits - len ;
+        v in
+      let get_bits d n =
+        fill_bits d n ;
+        pop_bits d n
+      in
+      let ret r d =
+        make_table r hlit hdist d in
+      let rec record i copy len d =
+        if i + copy > max_res then ( err_invalid_dictionary () )
+        else ( for x = 0 to copy - 1 do res.(i + x) <- len done
+            ; if i + copy < max_res
+              then go (i + copy) (get d) d
+              else ret res d )
+      and go i v d =
+        if v < 16
+        then ( res.(i) <- v
+            ; if succ i < max_res then go (succ i) (get d) d else ret res d )
+        else if v == 16
+        then ( if i == 0
+              then ( err_invalid_dictionary () )
+              else ( let v = get_bits d 2 in
+                      record i (v + 3) res.(i - 1) d ) )
+        else if v == 17
+        then ( let v = get_bits d 3 in
+              record i (v + 3) 0 d )
+        else if v == 18
+        then ( let v = get_bits d 7 in
+              record i (v + 11) 0 d )
+        else assert false (* TODO: really never occur? *) in
+      go 0 (get d) d
+
+    let table d hlit hdist hclen =
+      let i = ref 0 in
+      let res = Array.make 19 0 in
+
+      while !i < hclen
+      do
+        fill_bits d 3;
+        let code = pop_bits d 3 in
+        res.(zigzag.(!i)) <- code ;
+        incr i ;
+      done ;
+      try
+        let t, l = huffman CODES res 0 19 in
+        let r= Array.make (hlit + hdist) 0 in
+        let h= (hlit, hdist, hclen) in
+        inflate_table d t l r h
+      with Invalid_huffman ->
+        err_invalid_dictionary ()
+
+    let dynamic d =
+      fill_bits d 14;
+      let hlit = pop_bits d 5 + 257 in
+      let hdist = pop_bits d 5 + 1 in
+      let hclen = pop_bits d 4 + 4 in
+      table d hlit hdist hclen
+
+    let rec decode d =
+        fill_bits d 3;
+        let last = pop_bits d 1 == 1 in
+        d.last <- last ;
+        let block_type = pop_bits d 2 in
+        ( match block_type with
+        | 0 -> flat d
+        | 1 -> fixed d
+        | 2 -> dynamic d
+        | 3 -> err_invalid_kind_of_block ()
+        | _ -> assert false) ;
+        if d.last
+        then
+          WInf.tail d.w
+        else
+          decode d
+
+    let inflate ~src ~dst ~w =
+      let d =
+        { i= src
+        ; i_pos= 0
+        ; i_len= bigstring_length src
+        ; o= dst
+        ; o_pos= 0
+        ; hold= 0
+        ; bits= 0
+        ; last= false
+        ; l= 0
+        ; d= 0
+        ; w= WInf.from w }
+      in
+      try
+        decode d ;
+        Ok (d.i_pos, d.o_pos)
+      with
+        | Malformed e -> Error (e, (d.i_pos, d.o_pos))
+  end
 end
 
 let unsafe_set_cursor d c = d.Inf.w.WInf.w <- c
