@@ -1455,7 +1455,6 @@ module Inf = struct
       ; mutable i_len : int
       ; mutable hold : int
       ; mutable bits : int
-      ; mutable last : bool
       ; o : bigstring
       ; mutable o_pos : int
       ; w : WInf.t
@@ -1716,7 +1715,6 @@ module Inf = struct
     let rec decode d =
         fill_bits d 3;
         let last = pop_bits d 1 == 1 in
-        d.last <- last ;
         let block_type = pop_bits d 2 in
         ( match block_type with
         | 0 -> flat d
@@ -1724,7 +1722,7 @@ module Inf = struct
         | 2 -> dynamic d
         | 3 -> err_invalid_kind_of_block ()
         | _ -> assert false) ;
-        if d.last
+        if last
         then
           WInf.tail d.w
         else
@@ -1739,7 +1737,6 @@ module Inf = struct
         ; o_pos= 0
         ; hold= 0
         ; bits= 0
-        ; last= false
         ; l= 0
         ; d= 0
         ; w= WInf.from w }
