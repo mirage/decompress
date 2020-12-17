@@ -1452,11 +1452,12 @@ module Inf = struct
     type decoder =
       { i: bigstring
       ; mutable i_pos : int
-      ; mutable i_len : int
+      ; i_len : int
       ; mutable hold : int
       ; mutable bits : int
       ; o : bigstring
       ; mutable o_pos : int
+      ; o_len : int
       ; w : WInf.t
       }
 
@@ -1526,7 +1527,7 @@ module Inf = struct
         ( if len > i_rem d
           then
             err_unexpected_end_of_input () ;
-          if len > bigstring_length d.o - d.o_pos
+          if len > d.o_len - d.o_pos
           then
             err_unexpected_end_of_output () ;
           WInf.blit d.w d.i d.i_pos d.o d.o_pos len ;
@@ -1601,7 +1602,7 @@ module Inf = struct
         and write l d_ =
           if d_ == 0 then raise_notrace Invalid_distance_code ;
           if d_ > WInf.have d.w then raise_notrace Invalid_distance ;
-          let len = min l (bigstring_length d.o - d.o_pos) in
+          let len = min l (d.o_len - d.o_pos) in
           let off = WInf.mask (d.w.WInf.w - d_) in
           if d_ == 1
           then
@@ -1733,6 +1734,7 @@ module Inf = struct
         ; i_len= bigstring_length src
         ; o= dst
         ; o_pos= 0
+        ; o_len= bigstring_length dst
         ; hold= 0
         ; bits= 0
         ; w= WInf.from w }
