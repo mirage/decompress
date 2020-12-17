@@ -1458,14 +1458,13 @@ module Inf = struct
       ; o : bigstring
       ; mutable o_pos : int
       ; w : WInf.t
-      ; mutable l : int (* literal / length *)
-      ; mutable d : int (* distance *)
       }
 
     (* errors. *)
 
     type error =
       | Unexpected_end_of_input
+      | Unexpected_end_of_output
       | Invalid_kind_of_block
       | Invalid_dictionary
       | Invalid_complement_of_length
@@ -1475,6 +1474,7 @@ module Inf = struct
     let pp_error ppf e =
       let s = match e with
       | Unexpected_end_of_input      -> "Unexpected_end_of_input"
+      | Unexpected_end_of_output     -> "Unexpected_end_of_output"
       | Invalid_kind_of_block        -> "Invalid_kind_of_block"
       | Invalid_dictionary           -> "Invalid_dictionary"
       | Invalid_complement_of_length -> "Invalid_complement_of_length"
@@ -1487,6 +1487,9 @@ module Inf = struct
 
     let err_unexpected_end_of_input () =
       raise (Malformed Unexpected_end_of_input)
+
+    let err_unexpected_end_of_output () =
+      raise (Malformed Unexpected_end_of_output)
 
     let err_invalid_kind_of_block () =
       raise (Malformed Invalid_kind_of_block)
@@ -1507,13 +1510,43 @@ module Inf = struct
     let i_rem d = d.i_len - d.i_pos
     [@@inline]
 
-    let _fill_byte d =
-      if i_rem d <= 0
+    let flat d =
+      d.i_pos <- d.i_pos - (d.bits / 8) ;
+      d.hold <- 0 ;
+      d.bits <- 0 ;
+      if i_rem d < 4
       then
-        err_unexpected_end_of_input ();
-      d.hold <- d.hold lor ((unsafe_get_uint8 d.i d.i_pos) lsl d.bits);
-      d.i_pos <- d.i_pos + 1;
-      d.bits <- d.bits + 8
+        err_unexpected_end_of_input () ;
+      let len = (unsafe_get_uint16 d.i d.i_pos) in
+      let nlen = (unsafe_get_uint16 d.i (d.i_pos + 2)) in
+      d.i_pos <- d.i_pos + 4;
+      if nlen != 0xffff - len
+      then err_invalid_complement_of_length ()
+      else
+        ( if len > i_rem d
+          then
+            err_unexpected_end_of_input () ;
+          if len > bigstring_length d.o - d.o_pos
+          then
+            err_unexpected_end_of_output () ;
+          WInf.blit d.w d.i d.i_pos d.o d.o_pos len ;
+          d.o_pos <- d.o_pos + len ;
+          d.i_pos <- d.i_pos + len )
+
+    let _fill_byte d =
+      if i_rem d < 1
+      then
+        err_unexpected_end_of_input ()
+      else
+          ( if i_rem d <> 1
+            then
+              ( d.hold <- d.hold lor ((unsafe_get_uint16 d.i d.i_pos) lsl d.bits);
+                d.i_pos <- d.i_pos + 2;
+                d.bits <- d.bits + 16)
+            else
+              ( d.hold <- d.hold lor ((unsafe_get_uint8 d.i d.i_pos) lsl d.bits);
+                d.i_pos <- d.i_pos + 1;
+                d.bits <- d.bits + 8))
     [@@inline]
 
     let rec fill_bits d n =
@@ -1529,48 +1562,16 @@ module Inf = struct
       v
     [@@inline]
 
-    let flat d =
-      d.hold <- d.hold lsr (d.bits land 7) ;
-      d.bits <- d.bits land (lnot 7) ;
-      fill_bits d 8 ;
-      let len = pop_bits d 8 in
-      fill_bits d 8 ;
-      let len = pop_bits d 8 lsl 8 lor len in
-      fill_bits d 8 ;
-      let nlen = pop_bits d 8 in
-      fill_bits d 8 ;
-      let nlen = pop_bits d 8 lsl 8 lor nlen in
-      if nlen != 0xffff - len
-      then err_invalid_complement_of_length ()
-      else
-        ( d.hold <- 0 ;
-          d.bits <- 0 ;
-          let m_len = min (min (i_rem d) len) (bigstring_length d.o - d.o_pos) in
-          WInf.blit d.w d.i d.i_pos d.o d.o_pos m_len ;
-          d.o_pos <- d.o_pos + m_len ;
-          d.i_pos <- d.i_pos + m_len ;
-          let len = len - m_len in
-          if len <> 0
-          then
-            err_unexpected_end_of_input () )
+    exception End
+    exception Invalid_distance
+    exception Invalid_distance_code
 
     let inflate lit dist d =
-      let rec fill_bits lit d n =
-        if d.bits < n
-        then
-          ( _fill_byte d
-          ; fill_bits lit d n)
-      in
-      let exception End in
-      let exception Invalid_distance in
-      let exception Invalid_distance_code in
-      let lit_mask = lit.Lookup.m in
-      let dist_mask = dist.Lookup.m in
       try
         let rec length () =
-          fill_bits lit d lit.Lookup.l ;
-          let value = lit.Lookup.t.(d.hold land lit_mask) land Lookup.mask in
-          let len = lit.Lookup.t.(d.hold land lit_mask) lsr 15 in
+          fill_bits d lit.Lookup.l ;
+          let value = lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask in
+          let len = lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 in
           d.hold <- d.hold lsr len ;
           d.bits <- d.bits - len ;
           if value < 256
@@ -1579,38 +1580,35 @@ module Inf = struct
                 ; d.o_pos <- d.o_pos + 1
                 ; length ())
           else if value == 256 then raise_notrace End
-          else ( d.l <- value - 257; extra_length ())
-        and extra_length () =
-          let len = _extra_lbits.(d.l) in
-          fill_bits lit d len ;
+          else ( extra_length (value - 257))
+        and extra_length l =
+          let len = _extra_lbits.(l) in
+          fill_bits d len ;
           let extra = pop_bits d len in
-          d.l <- _base_length.(d.l land 0x1f) + 3 + extra ;
-          distance ()
-        and distance () =
-          fill_bits lit d dist.Lookup.l ;
-          let value = dist.Lookup.t.(d.hold land dist_mask) land Lookup.mask in
-          let len = dist.Lookup.t.(d.hold land dist_mask) lsr 15 in
+          distance (_base_length.(l land 0x1f) + 3 + extra)
+        and distance l =
+          fill_bits d dist.Lookup.l ;
+          let value = dist.Lookup.t.(d.hold land dist.Lookup.m) land Lookup.mask in
+          let len = dist.Lookup.t.(d.hold land dist.Lookup.m) lsr 15 in
           d.hold <- d.hold lsr len ;
           d.bits <- d.bits - len ;
-          d.d <- value ;
-          extra_distance ();
-        and extra_distance () =
-          let len = _extra_dbits.(d.d land 0x1f) in
-          fill_bits lit d len ;
+          extra_distance l value;
+        and extra_distance l d_ =
+          let len = _extra_dbits.(d_ land 0x1f) in
+          fill_bits d len ;
           let extra = pop_bits d len in
-          d.d <- _base_dist.(d.d) + 1 + extra ;
-          write ()
-        and write () =
-          if d.d == 0 then raise_notrace Invalid_distance_code ;
-          if d.d > WInf.have d.w then raise_notrace Invalid_distance ;
-          let len = min d.l (bigstring_length d.o - d.o_pos) in
-          let off = WInf.mask (d.w.WInf.w - d.d) in
-          if d.d == 1
+          write l (_base_dist.(d_) + 1 + extra)
+        and write l d_ =
+          if d_ == 0 then raise_notrace Invalid_distance_code ;
+          if d_ > WInf.have d.w then raise_notrace Invalid_distance ;
+          let len = min l (bigstring_length d.o - d.o_pos) in
+          let off = WInf.mask (d.w.WInf.w - d_) in
+          if d_ == 1
           then
             ( let v = unsafe_get_uint8 d.w.WInf.raw off in
               WInf.fill d.w v d.o d.o_pos len )
           else
-            ( let off = WInf.mask (d.w.WInf.w - d.d) in
+            ( let off = WInf.mask (d.w.WInf.w - d_) in
               let pre = WInf.max - off in
               let rst = len - pre in
               if rst > 0
@@ -1618,7 +1616,7 @@ module Inf = struct
                     ; WInf.blit d.w d.w.WInf.raw 0 d.o (d.o_pos + pre) rst )
               else WInf.blit d.w d.w.WInf.raw off d.o d.o_pos len ) ;
           d.o_pos <- d.o_pos + len ;
-          if d.l - len == 0 then length () else d.l <- d.l - len
+          if l - len == 0 then length ()
         in
         length ()
       with End -> ()
@@ -1737,15 +1735,13 @@ module Inf = struct
         ; o_pos= 0
         ; hold= 0
         ; bits= 0
-        ; l= 0
-        ; d= 0
         ; w= WInf.from w }
       in
       try
         decode d ;
         Ok (d.i_pos, d.o_pos)
       with
-        | Malformed e -> Error (e, (d.i_pos, d.o_pos))
+        | Malformed e -> Error e
   end
 end
 

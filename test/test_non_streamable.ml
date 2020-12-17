@@ -85,14 +85,14 @@ let decode =
   let pp ppf =
     Fmt.result ppf
       ~ok:(Fmt.pair ~sep:(Fmt.any ",") Fmt.int Fmt.int)
-      ~error:(Fmt.pair ~sep:(Fmt.any ",") Inf.Non_streamable.pp_error (Fmt.pair ~sep:(Fmt.any ",") Fmt.int Fmt.int))
+      ~error:Inf.Non_streamable.pp_error
   in
   let equal =
     Result.equal
       ~ok:
         (fun (i1, o1) (i2, o2) -> Int.equal i1 i2 && Int.equal o1 o2)
       ~error:
-        (fun (e1, (i1, o1)) (e2, (i2, o2)) -> e1 == e2 && Int.equal i1 i2 && Int.equal o1 o2)
+        (fun e1 e2 -> e1 == e2)
   in
   Alcotest.testable pp equal
 
@@ -104,7 +104,7 @@ let decode_i =
 let decode_o =
   function
   | Ok (_, v) -> v
-  | Error (_, (_, v)) -> v
+  | Error _ -> raise Alcotest.Test_error
 
 let encode ~block:kind lst =
   let res = Buffer.create 16 in
@@ -136,56 +136,56 @@ let invalid_complement_of_length () =
   Alcotest.test_case "invalid complement of length" `Quick @@ fun () ->
   let src = bigstring_of_string "\x00\x00\x00\x00\x00" in
   Alcotest.(check decode) "invalid complement of length"
-    (Error (Invalid_complement_of_length, (5, 0)))
+    (Error Invalid_complement_of_length)
     (Inf.Non_streamable.inflate ~src ~dst ~w)
 
 let invalid_kind_of_block () =
   Alcotest.test_case "invalid kind of block" `Quick @@ fun () ->
   let src = bigstring_of_string "\x06" in
   Alcotest.(check decode) "invalid kind of block"
-    (Error (Invalid_kind_of_block, (1, 0)))
+    (Error Invalid_kind_of_block)
     (Inf.Non_streamable.inflate ~src ~dst ~w)
 
 let invalid_code_lengths () =
   Alcotest.test_case "invalid code lengths" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\xfe\xff" in
   Alcotest.(check decode) "invalid code lengths"
-    (Error (Invalid_dictionary, (4, 0)))
+    (Error Invalid_dictionary)
     (Inf.Non_streamable.inflate ~src ~dst ~w)
 
 let invalid_bit_length_repeat () =
   Alcotest.test_case "invalid bit length repeat" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\x24\x49\x00" in
   Alcotest.(check decode) "invalid bit length repeat"
-    (Error (Invalid_dictionary, (4, 0)))
+    (Error Invalid_dictionary)
     (Inf.Non_streamable.inflate ~src ~dst ~w)
 
 let invalid_codes () =
   Alcotest.test_case "invalid codes -- missing end-of-block" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\x24\xe9\xff\x6d" in
   Alcotest.(check decode) "invalid codes -- missing end-of-block"
-    (Error (Invalid_dictionary, (6, 0)))
+    (Error Invalid_dictionary)
     (Inf.Non_streamable.inflate ~src ~dst ~w)
 
 let invalid_lengths () =
   Alcotest.test_case "invalid literals/lengths" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x80\x49\x92\x24\x49\x92\x24\x49\x92\x24\x71\xff\xff\x93\x11\x00" in
   Alcotest.(check decode) "invalid literals/lengths"
-    (Error (Invalid_dictionary, (16, 0)))
+    (Error Invalid_dictionary)
     (Inf.Non_streamable.inflate ~src ~dst ~w)
 
 let invalid_distances () =
   Alcotest.test_case "invalid distances" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x80\x49\x92\x24\x49\x92\x24\x0f\xb4\xff\xff\xc3\x84" in
   Alcotest.(check decode) "invalid distances"
-    (Error (Invalid_dictionary, (14, 0)))
+    (Error Invalid_dictionary)
     (Inf.Non_streamable.inflate ~src ~dst ~w)
 
 let too_many_length_or_distance_symbols () =
   Alcotest.test_case "too many length of distance symbols" `Quick @@ fun () ->
   let src = bigstring_of_string "\xfc\x00\x00" in
   Alcotest.(check decode) "too many length of distance symbols"
-    (Error (Unexpected_end_of_input, (3, 0)))
+    (Error Unexpected_end_of_input)
     (Inf.Non_streamable.inflate ~src ~dst ~w)
 (* XXX(dinosaure): error is not conform to what we expect (best will be [Invalid
    dictionary]), TODO! *)
@@ -193,12 +193,9 @@ let too_many_length_or_distance_symbols () =
 let invalid_distance_code () =
   Alcotest.test_case "invalid distance code" `Quick @@ fun () ->
   let src = bigstring_of_string "\x02\x7e\xff\xff" in
-  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
   Alcotest.(check decode) "invalid distance code"
-    (Error (Invalid_distance_code, (2, 0)))
-    res;
-  Alcotest.(check string) "non-corrupted output"
-    "" (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+    (Error Invalid_distance_code)
+    (Inf.Non_streamable.inflate ~src ~dst ~ w)
 
 (* XXX(dinosaure): see [Inf.base_dist]'s comment about this behavior. *)
 
@@ -206,7 +203,7 @@ let invalid_distance_too_far_back () =
   Alcotest.test_case "invalid distance too far back" `Quick @@ fun () ->
   let src = bigstring_of_string "\x0c\xc0\x81\x00\x00\x00\x00\x00\x90\xff\x6b\x04\x00" in
   Alcotest.(check decode) "invalid distance too far back"
-    (Error (Invalid_distance, (12, 0)))
+    (Error Invalid_distance)
     (Inf.Non_streamable.inflate ~src ~dst ~w)
 
 let fixed () =

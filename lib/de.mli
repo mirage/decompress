@@ -126,6 +126,7 @@ module Inf : sig
 
     type error =
        | Unexpected_end_of_input
+       | Unexpected_end_of_output
        | Invalid_kind_of_block
        | Invalid_dictionary
        | Invalid_complement_of_length
@@ -135,7 +136,7 @@ module Inf : sig
 
     val pp_error: Format.formatter -> error -> unit
 
-    val inflate : src:bigstring -> dst:bigstring -> w:window -> (int * int, error * (int * int)) result
+    val inflate : src:bigstring -> dst:bigstring -> w:window -> (int * int, error) result
     (** [inflate src dst w] inflate the content of src into dst using the window
       w.
 
