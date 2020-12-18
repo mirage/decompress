@@ -1534,7 +1534,7 @@ module Inf = struct
           d.o_pos <- d.o_pos + len ;
           d.i_pos <- d.i_pos + len )
 
-    let _fill_byte d =
+    let _fill_bits d =
       if i_rem d < 1
       then
         err_unexpected_end_of_input ()
@@ -1553,7 +1553,7 @@ module Inf = struct
     let rec fill_bits d n =
       if d.bits < n
       then
-        ( _fill_byte d
+        ( _fill_bits d
         ; fill_bits d n)
 
     let pop_bits d n =
@@ -1568,27 +1568,36 @@ module Inf = struct
     exception Invalid_distance_code
 
     let inflate lit dist d =
+      let rec fill_bits d lit n =
+        if d.bits < n && not
+          (lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask == 256
+          && lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 <= d.bits
+          && (i_rem d) < 1)
+        then
+          ( _fill_bits d
+          ; fill_bits d lit n)
+      in
       try
         let rec length () =
-          fill_bits d lit.Lookup.l ;
+          fill_bits d lit lit.Lookup.l ;
           let value = lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask in
           let len = lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 in
           d.hold <- d.hold lsr len ;
           d.bits <- d.bits - len ;
           if value < 256
           then ( unsafe_set_uint8 d.o d.o_pos value
-                ; WInf.add d.w value
-                ; d.o_pos <- d.o_pos + 1
-                ; length ())
+               ; WInf.add d.w value
+               ; d.o_pos <- d.o_pos + 1
+               ; length ())
           else if value == 256 then raise_notrace End
           else ( extra_length (value - 257))
         and extra_length l =
           let len = _extra_lbits.(l) in
-          fill_bits d len ;
+          fill_bits d lit len ;
           let extra = pop_bits d len in
           distance (_base_length.(l land 0x1f) + 3 + extra)
         and distance l =
-          fill_bits d dist.Lookup.l ;
+          fill_bits d lit dist.Lookup.l ;
           let value = dist.Lookup.t.(d.hold land dist.Lookup.m) land Lookup.mask in
           let len = dist.Lookup.t.(d.hold land dist.Lookup.m) lsr 15 in
           d.hold <- d.hold lsr len ;
@@ -1596,7 +1605,7 @@ module Inf = struct
           extra_distance l value;
         and extra_distance l d_ =
           let len = _extra_dbits.(d_ land 0x1f) in
-          fill_bits d len ;
+          fill_bits d lit len ;
           let extra = pop_bits d len in
           write l (_base_dist.(d_) + 1 + extra)
         and write l d_ =

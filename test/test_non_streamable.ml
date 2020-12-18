@@ -505,29 +505,97 @@ let flat_and_fixed () =
   Alcotest.(check string) "deadbeefaaaa"
     expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
 
+let w0 = make_window ~bits:15
+let w1 = make_window ~bits:15
+let i = bigstring_create io_buffer_size
+let o = bigstring_create io_buffer_size
+let q = Queue.create (2 * 2 * 4096)
+let b = Buffer.create 4096
+
+let compress_and_uncompress ic =
+  Buffer.clear b;
+  Queue.reset q ;
+  let refill input =
+    let len = min (in_channel_length ic - (pos_in ic)) io_buffer_size in
+    for i = 0 to len - 1
+    do
+      let v = Char.code (input_char ic) in
+      unsafe_set_uint8 input i v
+    done ;
+    len
+  in
+  let flush output l =
+    for i = 0 to l - 1
+    do Buffer.add_char b (Char.unsafe_chr (unsafe_get_uint8 output i)) done ;
+  in
+
+  Higher.compress ~w:w0 ~q ~i ~o ~refill ~flush;
+
+  let src = bigstring_of_string (Bytes.to_string (Buffer.to_bytes b)) in
+  let dst = bigstring_create (in_channel_length ic) in
+
+  match Inf.Non_streamable.inflate ~src ~dst ~w:w1 with
+  | Ok (_, l) ->
+    Stdlib.seek_in ic 0 ;
+    Buffer.clear b;
+    for i = 0 to l - 1
+    do Buffer.add_char b (Char.unsafe_chr (unsafe_get_uint8 dst i)) done ;
+    let contents = Buffer.contents b in
+    let rec slow_compare pos =
+      match input_char ic with
+      | chr ->
+        if pos >= String.length contents then Fmt.invalid_arg "Reach end of contents" ;
+        if contents.[pos] <> chr
+        then Fmt.invalid_arg "Contents differ at %08x\n%!" pos ; slow_compare (succ pos)
+      | exception End_of_file ->
+        if pos <> String.length contents
+        then Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)" (String.length contents) pos in
+    slow_compare 0
+  | Error err -> Alcotest.failf "Error when inflating: %a" Inf.Non_streamable.pp_error err
+
+let test_corpus filename =
+  Alcotest.test_case filename `Slow @@ fun () ->
+  let ic = open_in Filename.(concat "corpus" filename) in
+  compress_and_uncompress ic ; close_in ic
+
 let tests =
   [ "ns_invalids", [ invalid_complement_of_length ()
-                ; invalid_kind_of_block ()
-                ; invalid_code_lengths ()
-                ; invalid_bit_length_repeat ()
-                ; invalid_codes ()
-                ; invalid_lengths ()
-                ; invalid_distances ()
-                ; too_many_length_or_distance_symbols ()
-                ; invalid_distance_code ()
-                ; invalid_distance_too_far_back () ]
+                   ; invalid_kind_of_block ()
+                   ; invalid_code_lengths ()
+                   ; invalid_bit_length_repeat ()
+                   ; invalid_codes ()
+                   ; invalid_lengths ()
+                   ; invalid_distances ()
+                   ; too_many_length_or_distance_symbols ()
+                   ; invalid_distance_code ()
+                   ; invalid_distance_too_far_back () ]
   ; "ns_valids", [ fixed ()
-              ; stored ()
-              ; length_extra ()
-              ; long_distance_and_extra ()
-              ; window_end ()
-              ; huffman_length_extra ()
-              ; dynamic_and_fixed ()
-              ; fixed_and_dynamic ()
-              ; dynamic_and_dynamic ()
-              ; flat_of_string ()
-              ; flat_block ()
-              ; flat ()
-              ; max_flat ()
-              ; fixed_and_flat ()
-              ; flat_and_fixed () ] ]
+                 ; stored ()
+                 ; length_extra ()
+                 ; long_distance_and_extra ()
+                 ; window_end ()
+                 ; huffman_length_extra ()
+                 ; dynamic_and_fixed ()
+                 ; fixed_and_dynamic ()
+                 ; dynamic_and_dynamic ()
+                 ; flat_of_string ()
+                 ; flat_block ()
+                 ; flat ()
+                 ; max_flat ()
+                 ; fixed_and_flat ()
+                 ; flat_and_fixed () ]
+    ; "ns_calgary", [ test_corpus "bib"
+                    ; test_corpus "rfc5322.txt"
+                    ; test_corpus "book1"
+                    ; test_corpus "book2"
+                    ; test_corpus "geo"
+                    ; test_corpus "news"
+                    ; test_corpus "obj1"
+                    ; test_corpus "obj2"
+                    ; test_corpus "paper1"
+                    ; test_corpus "paper2"
+                    ; test_corpus "pic"
+                    ; test_corpus "progc"
+                    ; test_corpus "progl"
+                    ; test_corpus "progp"
+                    ; test_corpus "trans" ] ]
