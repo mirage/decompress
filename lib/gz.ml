@@ -847,6 +847,8 @@ module Higher = struct
         ~ascii:configuration.ascii
         ~hcrc:configuration.hcrc
         ~mtime:(configuration.mtime time)
+	?filename
+	?comment
         configuration.os in
     let rec go encoder = match Def.encode encoder with
       | `Await encoder ->
