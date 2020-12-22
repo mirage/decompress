@@ -505,6 +505,345 @@ let flat_and_fixed () =
   Alcotest.(check string) "deadbeefaaaa"
     expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
 
+let fuzz0 () =
+  Alcotest.test_case "fuzz0" `Quick @@ fun () ->
+  let src = bigstring_of_string "{\220\n s\017\027\211\\\006\211w\176`\142\2007\156oZBo\163\136\017\247\
+                                 \158\247\012e\241\234sn_$\210\223\017\213\138\147]\129M\137<\242\1867\021\
+                                 c\194\156\135\194\167-wo\006\200\198" in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected = "\xe3\x85" in
+  Alcotest.(check decode) "fuzz0"
+    (Ok (4, String.length expected))
+    res;
+  Alcotest.(check string) "0x00 * 33025"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz1 () =
+  Alcotest.test_case "fuzz1" `Quick @@ fun () ->
+  let src = bigstring_of_string "\019\208nO\200\189r\020\176" in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected = "\016+\135`m\212\197" in
+  Alcotest.(check decode) "fuzz1"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz1"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz2 () =
+  Alcotest.test_case "fuzz2" `Quick @@ fun () ->
+  let src = bigstring_of_string "\x93\x3a\x55\x47\x12\x80\x51\x56\x3a\x01\x00\x00" in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\x1a\xca\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e" (* ..~~~~~~~~~~~~~~ *)
+    ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e" (* ~~~~~~~~~~~~~~~~ *)
+    ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e" (* ~~~~~~~~~~~~~~~~ *)
+    ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x3a\x2c\x50"                     (* ~~~~~~~~:,P *)      ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz2"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz2"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz3 () =
+  Alcotest.test_case "fuzz3" `Quick @@ fun () ->
+  let src = bigstring_of_string "\x93\x3a\x55\x47\x12\x3a\x51\x36\x0a\x01\x00\x00" in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a" (* ..~..~..~..~..~. *)
+    ; "\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca" (* .~..~..~..~..~.. *)
+    ; "\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e" (* ~..~..~..~..~..~ *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76" (* .v.v.v.v.v.v.v.v *)
+    ; "\xc8\x76\xc8\x76"                                                 (* .v.v *)             ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz3"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz3"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz4 () =
+  Alcotest.test_case "fuzz4" `Quick @@ fun () ->
+  let src = bigstring_of_string "\x93\x3a\x55\x47\x12\x3a\x51\x56\x0a\x06\x80\x00" in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a" (* ..~..~..~..~..~. *)
+    ; "\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca" (* .~..~..~..~..~.. *)
+    ; "\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e" (* ~..~..~..~..~..~ *)
+    ; "\xc8\x76\x75\x75\x75\x75\x75\x75"                                 (* .vuuuuuu *)         ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz4"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz4"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz5 () =
+  Alcotest.test_case "fuzz5" `Quick @@ fun () ->
+  let src =
+    [ "\x93\x3a\x55\x01\x01\x01\x01\xe6\x01\x01\x01\x01\x01\x01\x01\x01" (* .:U............. *)
+    ; "\x01\x01\x01\x01\x01\x00\x00"                                     (* ....... *)          ] in
+  let src = bigstring_of_string (String.concat "" src) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\x1a\xca\x78\x78\x78\x78\x78\x78\x78\x50\x50\x37\x50\x50\x50\x50" (* ..xxxxxxxPP7PPPP *)
+    ; "\x50\x50\x50\x50\x50\x50\x50\x50\x50"                             (* PPPPPPPPP *)        ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz5"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz5"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz6 () =
+  Alcotest.test_case "fuzz6" `Quick @@ fun () ->
+  let src = bigstring_of_string "\x93\x8c\x8c\x8c\x8c\x7b\x8c\x8c\x8c\x01\x00\x00" in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\x19\x59\x59\x59\x5e\xe3\x59\x5e\xe3\x59\x5e\xe3\x59\x5e\xe3\x59" (* .YYY^.Y^.Y^.Y^.Y *)
+    ; "\x5e\xe3\x33"                                                     (* ^.3 *)              ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz6"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz6"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz7 () =
+  Alcotest.test_case "fuzz7" `Quick @@ fun () ->
+  let src = bigstring_of_string "\x93\x3a\x55\x69\x12\x3a\x3f\x10\x08\x01\x00\x00" in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected = "\x1a\xca\x79\x34\x55\x9f\x51\x9f\x51\x9f" in
+  Alcotest.(check decode) "fuzz7"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz7"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz8 () =
+  Alcotest.test_case "fuzz8" `Quick @@ fun () ->
+  let src = bigstring_of_string "\x7a\x37\x6d\x99\x13" in
+  Alcotest.(check decode) "fuzz8"
+    (Error Unexpected_end_of_input)
+    (Inf.Non_streamable.inflate ~src ~dst ~w)
+
+let fuzz9 () =
+  Alcotest.test_case "fuzz9" `Quick @@ fun () ->
+  let src =
+    [ "\x9b\x01\x95\xfc\x51\xd2\xed\xc8\xce\xc8\xff\x80\x00\x00\x7f\xff" (* ....Q........... *)
+    ; "\x79\x2f\xe9\x51\x88\x7b\xb8\x2f\xef\xa5\x8c\xf8\xf1\xb6\xce\xc8" (* y/.Q.{./........ *)
+    ; "\xb8\xc8\xff\x2f\x00\x7f\x88\x7b\xbc"                             (* .../...{. *)        ] in
+  let src = bigstring_of_string (String.concat "" src) in
+  Alcotest.(check decode) "fuzz9"
+    (Error Invalid_distance)
+    (Inf.Non_streamable.inflate ~src ~dst ~w)
+
+let fuzz10 () =
+  Alcotest.test_case "fuzz10" `Quick @@ fun () ->
+  let lst =
+    [ `Literal (Char.chr 231); `Literal (Char.chr 60); `Literal (Char.chr 128)
+    ; `Copy (1, 19); `End ] in
+  let src = bigstring_of_string (encode_dynamic lst) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  Alcotest.(check decode) "fuzz10"
+    (Ok (De.bigstring_length src, 22))
+    res
+
+let fuzz11 () =
+  Alcotest.test_case "fuzz11" `Quick @@ fun () ->
+  let lst =
+    [ `Literal (Char.chr 228)
+    ; `Literal (Char.chr 255)
+    ; `Copy (1, 130)
+    ; `End ] in
+  let src = bigstring_of_string (encode_dynamic lst) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected = "\228" ^ String.make 131 '\xff' in
+  Alcotest.(check decode) "fuzz11"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz11"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz12 () =
+  Alcotest.test_case "fuzz12" `Quick @@ fun () ->
+  let lst =
+    [ `Literal (Char.chr 71)
+    ; `Literal (Char.chr 0)
+    ; `Literal (Char.chr 255)
+    ; `Copy (2, 249)
+    ; `End ] in
+  let src = bigstring_of_string (encode_dynamic lst) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\x47\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* G............... *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00" (* ................ *)
+    ; "\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00"                 (* ............ *)
+    ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz12"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz12"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz13 () =
+  Alcotest.test_case "fuzz13" `Quick @@ fun () ->
+  let src =
+    [ "\x9b\x0e\x02\x00"                                                 (* .... *)
+    ] in
+  let src = bigstring_of_string (String.concat "" src) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected = "\x97\x97\x97\x97\x97" in
+  Alcotest.(check decode) "fuzz13"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz13"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz14 () =
+  Alcotest.test_case "fuzz14" `Quick @@ fun () ->
+  let src =
+    [ "\x0b\xff\x7f\x0c\x0c\x8f\xcd\x0e\x02\x21\x64\x0c\x04\x73\xff\x80" (* .........!d..s.. *)
+    ; "\x20\x0c\x8f\x1c\x1c\x1c\x1c\x0c\x0c\x0c\x0c\x64\x1c\x7f\x0c\x0c" (*  ..........d.... *)
+    ; "\x8f\xcd\x0e\x02\x21\xff\xff\x80"                                 (* ....!... *)
+    ] in
+  let src = bigstring_of_string (String.concat "" src) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\x57\xff\xc6\xff\xc6\xff\xc6\xff\xc6\x9b\x52\xc6\x9b\x52\xc6\xc6" (* W.........R..R.. *)
+    ; "\x9b\x52\xc6\xc6\x9b\x52\xc6\xc6\x9b\x52\xc6\xc6\xc6\xc6\x9d\xfc" (* .R...R...R...... *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc\x9d\xfc" (* ................ *)
+    ; "\x9d\xfc\x9d\xfc\x9d\xfc\x53\x53\x53\x9b\x52\xc6\x9b\x52\xc6\x9b" (* ......SSS.R..R.. *)
+    ; "\x52\xc6\x9b\x52\xc6\x9b\x52\xc6\x9b\x52\xc6\x9b\x52\x33\x5f\xc6" (* R..R..R..R..R3_. *)
+    ; "\x5f\xc6\x5f\xc6\x5f\xc6\x9b\x52\xc6\x9b\x52\xc6\x4f\xff"         (* _._._..R..R.O. *)
+    ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz14"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz14"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz15 () =
+  Alcotest.test_case "fuzz15" `Quick @@ fun () ->
+  let src =
+    [ "\x75\x85\xcd\x0e\x02\x21\x0c\x84\x3d\xf3\x14\x3d\xc2\x65\x63\xb2" (* u....!..=..=.ec. *)
+    ; "\x0f\x64\xf8\x69\xdc\xc6\xc2\x12\x58\x12\xe4\xe9\x5d\xa3\x28\x26" (* .d.i....X...].(& *)
+    ; "\xee\xad\xc2\x65\x63\xb2\x0f\x64\xf8\x69\xdc\xc6\xc2\x12\x58\x12" (* ...ec..d.i....X. *)
+    ; "\xe4\xe9\x5d\x66\xfb\xe8\x57\x57\x18\xf3\x5b\xdd\xcb\x73"         (* ..]f..WW..[..s *)
+    ] in
+  let src = bigstring_of_string (String.concat "" src) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\x78\x20\x5f\x74\x6c\x69\x63"                                     (* x _tlic *)
+    ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz15"
+    (Ok (40, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz15"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz16 () =
+  Alcotest.test_case "fuzz16" `Quick @@ fun () ->
+  let lst = [ `Literal '@'
+            ; `Copy (1, 212)
+            ; `Copy (129, 258)
+            ; `Copy (7, 131)
+            ; `Copy (527, 208)
+            ; `Copy (129, 258)
+            ; `End ] in
+  let src = bigstring_of_string (encode_dynamic lst) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected = String.make 1068 '@' in
+  Alcotest.(check decode) "fuzz16"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz16"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz17 () =
+  Alcotest.test_case "fuzz17" `Quick @@ fun () ->
+  let lst = [ `Literal (Char.chr 218); `Copy (1, 21); `Literal (Char.chr 190); `Literal (Char.chr 218); `Literal (Char.chr 0); `End ] in
+  let src = bigstring_of_string (encode_dynamic lst) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda" (* ................ *)
+    ; "\xda\xda\xda\xda\xda\xda\xbe\xda\x00"                             (* ......... *)
+    ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz17"
+    (Ok (De.bigstring_length src, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz17"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
+let fuzz18 () =
+  Alcotest.test_case "fuzz18" `Quick @@ fun () ->
+  let src =
+    [ "\x75\x8f\xcd\x0e\x02\x21\x0c\x84\x3d\xf3\x14\x3d\xfc\x54\x63\xb2" (* u....!..=..=.Tc. *)
+    ; "\x0f\x64\xf8\x69\xdc\xc6\xc2\x12\x58\x12\xe4\xe9\x5d\xa3\x28\x26" (* .d.i....X...].(& *)
+    ; "\xee\xad\x33\xcd\xfc\x9d\x1a\x5e\x1e\xcc\xe7\xf9\x24\x99\x40\x06" (* ..3....^....$.@. *)
+    ; "\xed\x11\x4c\x56\xfb\xe8\x57\x57\x0a\xf3\x5b\xd9\xcb\x60\xd5\xd5" (* ..LV..WW..[..`.. *)
+    ] in
+  let src = bigstring_of_string (String.concat "" src) in
+  let res = Inf.Non_streamable.inflate ~src ~dst ~ w in
+  let expected =
+    [ "\x75\x27\x5a\xfb\x64\x64\x2b\x63\x29\x67\x6e\x60\x20\x67\x6e\x60" (* u'dd+c)gn` gn` *)
+    ; "\x20\x67\x6e\x60\x5e\x28\x20\x5d\x6e\x0a\x63\x29\x67\x6e\x60\x20" (*  gn`^( ]n.c)gn`  *)
+    ; "\x67\x6e\x60\x20\x67\x6e\x63\x29\x67\x6e\x60\x20\x67\x73\x60\x69" (* gn` gnc)gn` gs`i *)
+    ; "\x63"                                                             (* c *)
+    ] in
+  let expected = String.concat "" expected in
+  Alcotest.(check decode) "fuzz18"
+    (Ok (60, String.length expected))
+    res;
+  Alcotest.(check string) "fuzz18"
+    expected (Bigstringaf.substring dst ~off:0 ~len:(decode_o res))
+
 let w0 = make_window ~bits:15
 let w1 = make_window ~bits:15
 let i = bigstring_create io_buffer_size
@@ -584,18 +923,37 @@ let tests =
                  ; max_flat ()
                  ; fixed_and_flat ()
                  ; flat_and_fixed () ]
-    ; "ns_calgary", [ test_corpus "bib"
-                    ; test_corpus "rfc5322.txt"
-                    ; test_corpus "book1"
-                    ; test_corpus "book2"
-                    ; test_corpus "geo"
-                    ; test_corpus "news"
-                    ; test_corpus "obj1"
-                    ; test_corpus "obj2"
-                    ; test_corpus "paper1"
-                    ; test_corpus "paper2"
-                    ; test_corpus "pic"
-                    ; test_corpus "progc"
-                    ; test_corpus "progl"
-                    ; test_corpus "progp"
-                    ; test_corpus "trans" ] ]
+  ; "ns_fuzz", [ fuzz0 ()
+               ; fuzz1 ()
+               ; fuzz2 ()
+               ; fuzz3 ()
+               ; fuzz4 ()
+               ; fuzz5 ()
+               ; fuzz6 ()
+               ; fuzz7 ()
+               ; fuzz8 ()
+               ; fuzz9 ()
+               ; fuzz10 ()
+               ; fuzz11 ()
+               ; fuzz12 ()
+               ; fuzz13 ()
+               ; fuzz14 ()
+               ; fuzz15 ()
+               ; fuzz16 ()
+               ; fuzz17 ()
+               ; fuzz18 () ]
+  ; "ns_calgary", [ test_corpus "bib"
+                  ; test_corpus "rfc5322.txt"
+                  ; test_corpus "book1"
+                  ; test_corpus "book2"
+                  ; test_corpus "geo"
+                  ; test_corpus "news"
+                  ; test_corpus "obj1"
+                  ; test_corpus "obj2"
+                  ; test_corpus "paper1"
+                  ; test_corpus "paper2"
+                  ; test_corpus "pic"
+                  ; test_corpus "progc"
+                  ; test_corpus "progl"
+                  ; test_corpus "progp"
+                  ; test_corpus "trans" ] ]
