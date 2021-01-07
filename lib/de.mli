@@ -18,7 +18,8 @@
 module Bigarray = Bigarray_compat
 (** MirageOS compatibility. *)
 
-type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+type bigstring =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 (** The type for [bigstring]. *)
 
 type optint = Optint.t
@@ -252,17 +253,17 @@ module Def : sig
   (** The type for DEFLATE header block. *)
   type kind =
     | Flat of int
-    (** A [Flat len] block is a non-compressed block of [len] byte(s). After a
+        (** A [Flat len] block is a non-compressed block of [len] byte(s). After a
        {i flat} block, output is aligned on bytes. *)
     | Fixed
-    (** A [Fixed] block is a compressed block by a precomputed Huffman tree. Any
+        (** A [Fixed] block is a compressed block by a precomputed Huffman tree. Any
        symbols can be encoded with this kind of block - {!encode} should never
        return [`Block] with it. *)
     | Dynamic of dynamic
-    (** A [Dynamic h] block is a compressed block by an Huffman tree represented
+        (** A [Dynamic h] block is a compressed block by an Huffman tree represented
        by [h]. It allows to encode a subset of symbols (or any symbols). *)
 
-  type block = { kind: kind; last: bool; }
+  type block = {kind: kind; last: bool}
   (** The type for DEFLATE block. *)
 
   type encode = [ `Await | `Flush | `Block of block ]
@@ -275,7 +276,8 @@ module Def : sig
      current block is last block (see {!block}), {!encode} raises an
      [Invalid_argument].}} *)
 
-  val dynamic_of_frequencies : literals:literals -> distances:distances -> dynamic
+  val dynamic_of_frequencies :
+    literals:literals -> distances:distances -> dynamic
   (** [dynamic_of_frequencies ~literals ~distances] is a DEFLATE DYNAMIC block
      header computed from given frequencies. According frequencies,
      [dynamic_of_frequencies] makes a Huffman tree which provides smaller
@@ -405,12 +407,13 @@ end
 
 module Higher : sig
   val compress :
-    w:window ->
-    q:Queue.t ->
-    i:bigstring ->
-    o:bigstring ->
-    refill:(bigstring -> int) ->
-    flush:(bigstring -> int -> unit) -> unit
+       w:window
+    -> q:Queue.t
+    -> i:bigstring
+    -> o:bigstring
+    -> refill:(bigstring -> int)
+    -> flush:(bigstring -> int -> unit)
+    -> unit
   (** [compress ~w ~q ~i ~o ~refill ~flush] is [Zlib.compress] (with
      [~header:false]) provided by [camlzip] package.
 
@@ -428,11 +431,12 @@ module Higher : sig
      how many bytes it wrote. *)
 
   val uncompress :
-    w:window ->
-    i:bigstring ->
-    o:bigstring ->
-    refill:(bigstring -> int) ->
-    flush:(bigstring -> int -> unit) -> (unit, [> `Msg of string ]) result
+       w:window
+    -> i:bigstring
+    -> o:bigstring
+    -> refill:(bigstring -> int)
+    -> flush:(bigstring -> int -> unit)
+    -> (unit, [> `Msg of string ]) result
   (** [uncompress ~w ~i ~o ~refill ~flush] is [Zlib.uncompress] (with
      [~header:false]) provided by [camlzip] package.
 
@@ -448,8 +452,20 @@ module Higher : sig
       When [compress] has written output buffer, it calls [flush] with [o] and
      how many bytes it wrote. *)
 
-  val of_string : o:bigstring -> w:window -> string -> flush:(bigstring -> int -> unit) -> (unit, [> `Msg of string ]) result
-  val to_string : ?buffer:int -> i:bigstring -> w:window -> q:Queue.t -> refill:(bigstring -> int) -> string
+  val of_string :
+       o:bigstring
+    -> w:window
+    -> string
+    -> flush:(bigstring -> int -> unit)
+    -> (unit, [> `Msg of string ]) result
+
+  val to_string :
+       ?buffer:int
+    -> i:bigstring
+    -> w:window
+    -> q:Queue.t
+    -> refill:(bigstring -> int)
+    -> string
 end
 
 (** / **)
@@ -457,11 +473,14 @@ end
 val unsafe_set_cursor : Inf.decoder -> int -> unit
 
 module Lookup : sig
-  type t = { t : int array; m : int; l : int; }
+  type t = {t: int array; m: int; l: int}
+
   val get : t -> int -> int * int
 end
 
 module T : sig
-  type tree = { lengths : int array; max_code : int; tree : Lookup.t; }
-  val make : length:int -> ?max_length:int -> int array -> bl_count:int array -> tree
+  type tree = {lengths: int array; max_code: int; tree: Lookup.t}
+
+  val make :
+    length:int -> ?max_length:int -> int array -> bl_count:int array -> tree
 end

@@ -1,9 +1,8 @@
-type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+type bigstring =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
 type error =
-  [ `Malformed of string
-  | `Invalid_argument of string
-  | `Invalid_dictionary ]
+  [ `Malformed of string | `Invalid_argument of string | `Invalid_dictionary ]
 
 val pp_error : Format.formatter -> error -> unit
 
@@ -17,7 +16,8 @@ val uncompress : bigstring -> bigstring -> (bigstring, [> error ]) result
     {- [`Invalid_dictionary] if an {i op-code} of [input] refers to
        an unbound location.}} *)
 
-val uncompress_with_buffer : ?chunk:int -> bigstring -> (string, [> error ]) result
+val uncompress_with_buffer :
+  ?chunk:int -> bigstring -> (string, [> error ]) result
 (** [uncompress ?chunk input] returns a fresh-allocated [string] which is the
    inflated contents of [input]. An internal {!Buffer.t} is used and it can be
    initialized with [chunk] (default to [0x1000]). Otherwise, it returns same errors

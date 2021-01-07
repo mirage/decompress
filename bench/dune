@@ -15,10 +15,18 @@
 
 (rule
  (targets zpipe)
- (deps (:zpipe zpipe.c))
- (action (run %{cc} %{zpipe} -lz -o %{targets})))
+ (deps
+  (:zpipe zpipe.c))
+ (action
+  (run %{cc} %{zpipe} -lz -o %{targets})))
 
 (rule
  (targets output.csv)
- (deps (:run run.exe) (:zpipe zpipe) (:bench bench.exe))
- (action (chdir %{workspace_root} (run %{run} -o %{targets}))))
+ (deps
+  (:run run.exe)
+  (:zpipe zpipe)
+  (:bench bench.exe))
+ (action
+  (chdir
+   %{workspace_root}
+   (run %{run} -o %{targets}))))
