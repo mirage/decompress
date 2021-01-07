@@ -409,12 +409,12 @@ module Higher : sig
   val compress :
        w:window
     -> q:Queue.t
-    -> i:bigstring
-    -> o:bigstring
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
+    -> bigstring
+    -> bigstring
     -> unit
-  (** [compress ~w ~q ~i ~o ~refill ~flush] is [Zlib.compress] (with
+  (** [compress ~w ~q ~refill ~flush i o] is [Zlib.compress] (with
      [~header:false]) provided by [camlzip] package.
 
       {ul
@@ -432,12 +432,12 @@ module Higher : sig
 
   val uncompress :
        w:window
-    -> i:bigstring
-    -> o:bigstring
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
+    -> bigstring
+    -> bigstring
     -> (unit, [> `Msg of string ]) result
-  (** [uncompress ~w ~i ~o ~refill ~flush] is [Zlib.uncompress] (with
+  (** [uncompress ~w ~refill ~flush i o] is [Zlib.uncompress] (with
      [~header:false]) provided by [camlzip] package.
 
       {ul
@@ -461,10 +461,10 @@ module Higher : sig
 
   val to_string :
        ?buffer:int
-    -> i:bigstring
     -> w:window
     -> q:Queue.t
     -> refill:(bigstring -> int)
+    -> bigstring
     -> string
 end
 

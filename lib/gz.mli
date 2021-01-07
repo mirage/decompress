@@ -273,12 +273,12 @@ module Higher : sig
     -> ?comment:string
     -> w:window
     -> q:De.Queue.t
-    -> i:bigstring
-    -> o:bigstring
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
     -> 't
     -> 't configuration
+    -> bigstring
+    -> bigstring
     -> unit
 
   type metadata = {
@@ -290,9 +290,9 @@ module Higher : sig
   (** Type of {i metadata} available into a GZIP flow. *)
 
   val uncompress :
-       i:bigstring
-    -> o:bigstring
-    -> refill:(bigstring -> int)
+       refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
+    -> bigstring
+    -> bigstring
     -> (metadata, [> `Msg of string ]) result
 end

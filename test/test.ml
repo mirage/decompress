@@ -2050,12 +2050,11 @@ let higher_zlib input =
   Queue.reset q
   ; let refill = emitter_from_string input in
     let flush, contents = producer_to_string () in
-    Zl.Higher.compress ~level:0 ~w ~q ~i ~o ~refill ~flush
+    Zl.Higher.compress ~level:0 ~w ~q ~refill ~flush i o
     ; Fmt.epr "%S\n%!" (contents ())
     ; let refill = emitter_from_string (contents ()) in
       let flush, contents = producer_to_string () in
-      let res =
-        Zl.Higher.uncompress ~allocate:(fun _ -> w) ~i ~o ~refill ~flush in
+      let res = Zl.Higher.uncompress ~allocate:(fun _ -> w) ~refill ~flush i o in
       failwith_on_error_msg res
       ; Alcotest.(check string) "higher" input (contents ())
 
@@ -2069,7 +2068,7 @@ let test_multiple_flush_zlib () =
   Queue.reset q
   ; let refill = emitter_from_string "foo" in
     let flush, contents = producer_to_string () in
-    Zl.Higher.compress ~level:0 ~w ~q ~i ~o ~refill ~flush
+    Zl.Higher.compress ~level:0 ~w ~q ~refill ~flush i o
     ; let input = contents () in
       let decoder =
         Zl.Inf.decoder (`String input) ~o ~allocate:(fun bits ->

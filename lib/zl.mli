@@ -203,12 +203,12 @@ module Higher : sig
        ?level:int
     -> w:window
     -> q:De.Queue.t
-    -> i:bigstring
-    -> o:bigstring
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
+    -> bigstring
+    -> bigstring
     -> unit
-  (** [compress ?level ~w ~q ~i ~o ~refill ~flush] is [Zlib.compress] (with
+  (** [compress ?level ~w ~q ~refill ~flush i o] is [Zlib.compress] (with
      [~header:true]) provided by [camlzip] package.
 
       {ul
@@ -226,12 +226,12 @@ module Higher : sig
 
   val uncompress :
        allocate:(int -> window)
-    -> i:bigstring
-    -> o:bigstring
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
+    -> bigstring
+    -> bigstring
     -> (unit, [> `Msg of string ]) result
-  (** [uncompress ~allocate ~i ~o ~refill ~flush] is [Zlib.uncompress] (with
+  (** [uncompress ~allocate ~refill ~flush i o] is [Zlib.uncompress] (with
      [~header:true]) provided by [camlzip] package.
 
       {ul

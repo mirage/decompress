@@ -538,7 +538,7 @@ module Def = struct
 end
 
 module Higher = struct
-  let compress ?(level = 0) ~w ~q ~i ~o ~refill ~flush =
+  let compress ?(level = 0) ~w ~q ~refill ~flush i o =
     let encoder = Def.encoder `Manual `Manual ~q ~w ~level in
     let rec go encoder =
       match Def.encode encoder with
@@ -554,7 +554,7 @@ module Higher = struct
         if len > 0 then flush o len in
     go (Def.dst encoder o 0 (bigstring_length o))
 
-  let uncompress ~allocate ~i ~o ~refill ~flush =
+  let uncompress ~allocate ~refill ~flush i o =
     let decoder = Inf.decoder `Manual ~allocate ~o in
     let rec go decoder =
       match Inf.decode decoder with

@@ -302,7 +302,7 @@ let () =
         done
         ; payloads := rest
         ; String.length data in
-    Higher.compress ~w ~q ~i ~o ~refill ~flush
+    Higher.compress ~w ~q ~refill ~flush i o
 
     ; let splits = split (Buffer.contents res) in
       Buffer.clear res
@@ -322,7 +322,7 @@ let () =
             ; payloads := rest
             ; String.length data in
 
-        match Higher.uncompress ~w ~i ~o ~refill ~flush with
+        match Higher.uncompress ~w ~refill ~flush i o with
         | Ok () ->
           Crowbar.check_eq ~eq:String.equal ~pp:pp_string ~cmp:String.compare
             (Buffer.contents res) (String.concat "" inputs)

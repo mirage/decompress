@@ -930,12 +930,12 @@ module Higher = struct
       ?comment
       ~w
       ~q
-      ~i
-      ~o
       ~refill
       ~flush
       time
-      configuration =
+      configuration
+      i
+      o =
     let encoder =
       Def.encoder `Manual `Manual ~q ~w ~level ~ascii:configuration.ascii
         ~hcrc:configuration.hcrc ~mtime:(configuration.mtime time) ?filename
@@ -961,7 +961,7 @@ module Higher = struct
     ; extra: key:string -> string option
   }
 
-  let uncompress ~i ~o ~refill ~flush =
+  let uncompress ~refill ~flush i o =
     let decoder = Inf.decoder `Manual ~o in
     let rec go decoder =
       match Inf.decode decoder with

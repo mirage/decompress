@@ -4308,7 +4308,7 @@ module Lz77 = struct
 end
 
 module Higher = struct
-  let compress ~w ~q ~i ~o ~refill ~flush =
+  let compress ~w ~q ~refill ~flush i o =
     let state = Lz77.state `Manual ~w ~q in
     let encoder = Def.encoder `Manual ~q in
     let kind = ref Def.Fixed in
@@ -4352,7 +4352,7 @@ module Higher = struct
     ; Def.dst encoder o 0 (bigstring_length o)
     ; compress ()
 
-  let uncompress ~w ~i ~o ~refill ~flush =
+  let uncompress ~w ~refill ~flush i o =
     let decoder = Inf.decoder `Manual ~o ~w in
 
     let rec decompress () =
@@ -4385,7 +4385,7 @@ module Higher = struct
       | `Malformed err -> Error (`Msg err) in
     decompress ()
 
-  let to_string ?(buffer = 4096) ~i ~w ~q ~refill =
+  let to_string ?(buffer = 4096) ~w ~q ~refill i =
     let buf = Buffer.create buffer in
     let state = Lz77.state `Manual ~q ~w in
     let encoder = Def.encoder (`Buffer buf) ~q in
