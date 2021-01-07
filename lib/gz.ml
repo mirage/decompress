@@ -295,7 +295,7 @@ module Inf = struct
       (Optint.to_int32 d.wr)
 
   let err_invalid_header _ = malformedf "Invalid GZip header"
-  let err_invalid_header_crc d = malformedf "Invalid GZip header checksum"
+  let err_invalid_header_crc _ = malformedf "Invalid GZip header checksum"
 
   (* remaining bytes to read [d.i]. *)
   let i_rem d = d.i_len - d.i_pos + 1 [@@inline]
@@ -346,7 +346,7 @@ module Inf = struct
   let checksum d =
     let k d =
       match d.dd with
-      | Dd {state; _} ->
+      | Dd _ ->
         let crc = unsafe_get_uint32_le d.t 0 in
         let isize = unsafe_get_uint32_le d.t 4 in
 
@@ -357,7 +357,7 @@ module Inf = struct
       | _ -> assert false in
     t_fill k (t_need 8 d)
 
-  let rec zero_terminated k d =
+  let zero_terminated k d =
     let buf = Buffer.create 16 in
 
     let rec go d =
@@ -397,8 +397,6 @@ module Inf = struct
       else err_unexpected_end_of_input d in
     go n d
 
-  let option_apply ~none x f = match x with Some x -> f x | None -> none
-  let zero = String.make 1 '\000'
   let option_iter f = function Some x -> f x | None -> ()
 
   let string_of_hdr d =
@@ -423,7 +421,7 @@ module Inf = struct
           d.fcomment
       ; Buffer.contents res
 
-  let rec fhcrc k d =
+  let fhcrc k d =
     let rec go d =
       if i_rem d >= 2 then
         let hdr = string_of_hdr d in

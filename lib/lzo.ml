@@ -13,7 +13,6 @@ let pp_error ppf = function
   | `Invalid_argument err -> pf ppf "%s" err
   | `Invalid_dictionary -> pf ppf "Invalid dictionary"
 
-let ( <.> ) f g x = f (g x)
 let bigstring_length x = Bigarray.Array1.dim x [@@inline]
 
 let bigstring_create l =
@@ -34,11 +33,6 @@ let get_char buf ofs =
   ; unsafe_get_char buf ofs
 
 external unsafe_get_int16 : bigstring -> int -> int = "%caml_bigstring_get16u"
-
-let get_int16 buf ofs =
-  if ofs < 0 || ofs > bigstring_length buf - 2 then raise Out_of_bound
-  ; unsafe_get_int16 buf ofs
-
 external unsafe_get_int8 : bigstring -> int -> int = "%caml_ba_unsafe_ref_1"
 
 let get_int8 buf ofs =
@@ -65,10 +59,6 @@ let get_int64 buf ofs =
 
 external unsafe_set_int32 : bigstring -> int -> int32 -> unit
   = "%caml_bigstring_set32"
-
-let set_int32 buf ofs x =
-  if ofs < 0 || ofs > bigstring_length buf - 4 then raise Out_of_bound
-  ; unsafe_set_int32 buf ofs x
 
 external swap16 : int -> int = "%bswap16"
 
@@ -206,7 +196,7 @@ let transmit_to_buffer buf v len =
   ; v.o_pos <- v.o_pos + len
   ; Ok ()
 
-let copy_to_buffer buf v ~off ~len =
+let copy_to_buffer buf _v ~off ~len =
   let rec go off len =
     if len = 0 then Ok ()
     else
@@ -236,10 +226,7 @@ let count t =
       ; Ok ((!res * 255) + get_int8 t.i !idx))
     else Error (`Malformed "Invalid input")
 
-type ('a, 'b) k =
-  | Ok of 'a
-  | Error of 'b
-  | Kontinuation of (unit -> ('a, 'b) t)
+type ('a, 'b) k = Ok of 'a | Error of 'b
 
 let ( >>= ) :
     ('a, 'err) result -> ('a -> ('b, 'err) result) -> ('b, 'err) result =
@@ -275,10 +262,7 @@ let run :
         ; Ok ())
       else raise Out_of_bound
     | Bind (x, f) -> (
-      match go t x with
-      | Ok v -> go t (f v)
-      | Error _ as err -> err
-      | Kontinuation x -> go t (Bind (x (), f)))
+      match go t x with Ok v -> go t (f v) | Error _ as err -> err)
     | Fix fix ->
       (* XXX(dinosaure): [Kontinuation] exists to break the stack-overflow with [js_of_ocaml] but
          it was not implemented yet. *)
@@ -295,16 +279,12 @@ let run :
       ; let fiber =
           copy t ~off ~len:(len + 2) >>= fun () -> copy_done ~transmit t in
         match fiber with Ok v -> Ok v | Error err -> Error err) in
-  let rec unroll t fiber : _ result =
-    match go t fiber with
-    | Ok v -> Ok v
-    | Error err -> Error err
-    | Kontinuation fiber -> unroll t (fiber ()) in
+  let unroll t fiber : _ result =
+    match go t fiber with Ok v -> Ok v | Error err -> Error err in
   unroll t fiber
 
 module DSL = struct
   let return x = Return x
-  let bind x f = Bind (x, f)
   let ( >>= ) x f = Bind (x, f)
   let peek v = Peek v
   let junk v = Junk v
@@ -314,7 +294,6 @@ module DSL = struct
   let count = Count
   let copy ~off ~len state = Copy ({off; len}, state)
   let leshort = Short `LE
-  let beshort = Short `BE
   let end_of_lzo = Return ()
   let fix f = Fix f
   let malformedf fmt = kstrf (fun s -> Fail (`Malformed s)) fmt
@@ -330,7 +309,8 @@ let fiber : (unit, [> error ]) t =
   read byte >>= fun chr ->
   state >>= fun state ->
   match chr, (state :> int) land 3 with
-  | '\001' .. '\015', 0 -> transmit (Char.code chr + 3) state >>= fun () -> m
+  | '\001' .. '\015', 0 ->
+    transmit ~len:(Char.code chr + 3) state >>= fun () -> m
   | '\000', 0 ->
     count >>= fun count ->
     let len = 3 + 15 + count in
@@ -631,7 +611,7 @@ let record_trailer ~off ~len in_data out_data out_pos =
   ; incr out_pos
   ; !out_pos
 
-let compress in_data in_pos in_len out_data out_pos out_len t wrkmem =
+let compress in_data in_pos in_len out_data out_pos _out_len t wrkmem =
   let idx_end = max 0 (in_len - 20) in
 
   let rec literal idx0 idx1 op t =
@@ -661,7 +641,7 @@ let compress in_data in_pos in_len out_data out_pos out_len t wrkmem =
           let idx1 = idx1 - t in
           let t = 0 in
           let unrecorded = idx0 - idx1 in
-          let op, idx1 =
+          let op, _idx1 =
             record_literals ~off:idx1 ~len:unrecorded in_data out_data out_pos
               op in
 
@@ -710,7 +690,7 @@ let compress in_data in_len out_data out_len wrkmem =
         ; let t, out_pos =
             compress in_data idx ll out_data out_pos out_len t wrkmem in
           go (idx + ll) (len - ll) out_pos t)
-  and trailer idx len out_pos t =
+  and trailer _idx len out_pos t =
     let t = t + len in
     let out_pos =
       record_trailer ~off:(in_len - t) ~len:t in_data out_data out_pos in

@@ -20,4 +20,6 @@ depends: [
   "ocaml"      {>= "4.07.0"}
   "dune"       {>= "1.0"}
   "decompress" {= version}
+  "bigarray-compat"
+  "checkseum"
 ]

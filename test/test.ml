@@ -2294,7 +2294,7 @@ let test_generate_empty_gzip () =
     let encoder =
       Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l Gz.Unix ~q ~w ~level:3
     in
-    let rec go encoder =
+    let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
       | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
@@ -2319,7 +2319,7 @@ let test_generate_empty_gzip_with_name () =
     let encoder =
       Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l
         Gz.Unix ~q ~w ~level:0 in
-    let rec go encoder =
+    let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
       | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
@@ -2346,7 +2346,7 @@ let test_generate_foo_gzip () =
     let encoder =
       Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l
         Gz.Unix ~q ~w ~level:0 in
-    let rec go encoder =
+    let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
       | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
@@ -2366,7 +2366,7 @@ let test_generate_foo_gzip () =
       match Gz.Inf.decode decoder with
       | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-      | `End decoder -> Alcotest.(check pass) "GZip terminate" () ()
+      | `End _ -> Alcotest.(check pass) "GZip terminate" () ()
       | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
 let test_with_camlzip () =
@@ -2375,7 +2375,7 @@ let test_with_camlzip () =
   let encoder =
     Gz.Def.encoder (`String "foo") (`Channel oc) ~filename:"foo.gz" ~mtime:0l
       Gz.Unix ~q ~w ~level:0 in
-  let rec go encoder =
+  let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
     | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
@@ -2393,7 +2393,7 @@ let test_gzip_hcrc () =
   let encoder =
     Gz.Def.encoder (`String "foo & bar") (`Channel oc) ~filename:"foo.gz"
       ~mtime:0l Gz.Unix ~hcrc:true ~q ~w ~level:0 in
-  let rec go encoder =
+  let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
     | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
@@ -2454,7 +2454,7 @@ let test_gzip_os v_os =
   let encoder =
     Gz.Def.encoder (`String input) (`Buffer buf) ~mtime:0l v_os ~hcrc:true ~q ~w
       ~level:0 in
-  let rec go encoder =
+  let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
     | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"

@@ -322,10 +322,11 @@ let () =
             ; payloads := rest
             ; String.length data in
 
-        Higher.uncompress ~w ~i ~o ~refill ~flush
-
-        ; Crowbar.check_eq ~eq:String.equal ~pp:pp_string ~cmp:String.compare
+        match Higher.uncompress ~w ~i ~o ~refill ~flush with
+        | Ok () ->
+          Crowbar.check_eq ~eq:String.equal ~pp:pp_string ~cmp:String.compare
             (Buffer.contents res) (String.concat "" inputs)
+        | Error (`Msg err) -> Crowbar.fail err
 
 let q = Queue.create 0x10000
 
@@ -370,7 +371,8 @@ let () =
       for i = 0 to l - 1 do
         Buffer.add_char buf1 b.{i}
       done in
-    Higher.of_string ~o ~w res0 ~flush
-
-    ; Crowbar.check_eq ~eq:String.equal ~pp:pp_string ~cmp:String.compare
+    match Higher.of_string ~o ~w res0 ~flush with
+    | Ok () ->
+      Crowbar.check_eq ~eq:String.equal ~pp:pp_string ~cmp:String.compare
         (Buffer.contents buf1) (String.concat "" inputs)
+    | Error (`Msg err) -> Crowbar.fail err
