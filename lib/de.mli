@@ -120,7 +120,7 @@ module Inf : sig
   val checksum : decoder -> optint
   (** [checkseum d] is ADLER-32 checksum of consumed inputs. *)
 
-  module Non_streamable : sig
+  module Ns : sig
     (** A non-streamable implementation of the RFC 1951. It considers the input
       to be whole and is therefore able to save some time *)
 

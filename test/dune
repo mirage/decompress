@@ -1,6 +1,6 @@
 (executable
  (name test)
- (modules test)
+ (modules test test_ns)
  (libraries
   fmt
   base64

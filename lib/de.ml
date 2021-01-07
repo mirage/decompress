@@ -1448,7 +1448,7 @@ module Inf = struct
     ; d.k <- decode_k
     ; WInf.reset d.w
 
-  module Non_streamable = struct
+  module Ns = struct
     type decoder =
       { i: bigstring
       ; mutable i_pos : int
