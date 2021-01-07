@@ -84,16 +84,13 @@ let str = Alcotest.testable pp_string String.equal
 let decode =
   let pp ppf =
     Fmt.result ppf
-      ~ok:(Fmt.pair ~sep:(Fmt.any ",") Fmt.int Fmt.int)
-      ~error:Inf.Ns.pp_error
-  in
-  let equal =
-    Result.equal
-      ~ok:
-        (fun (i1, o1) (i2, o2) -> Int.equal i1 i2 && Int.equal o1 o2)
-      ~error:
-        (fun e1 e2 -> e1 == e2)
-  in
+      ~ok:(Fmt.pair ~sep:Fmt.comma Fmt.int Fmt.int)
+      ~error:Inf.Ns.pp_error in
+  let equal r1 r2 =
+    match r1, r2 with
+    | Ok (i1, o1), Ok (i2, o2) -> Int.equal i1 i2 && Int.equal o1 o2
+    | Error e1, Error e2 -> e1 == e2
+    | _ -> false in
   Alcotest.testable pp equal
 
 let decode_i =
