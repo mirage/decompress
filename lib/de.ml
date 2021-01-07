@@ -1550,11 +1550,13 @@ module Inf = struct
                 d.bits <- d.bits + 8))
     [@@inline]
 
-    let rec fill_bits d n =
+    (* clecat: Removed the rec flag on fill_bits, as it was never called with
+       d greater than 16. However, we should make sure that it is never done in
+       the future. *)
+    let fill_bits d n =
       if d.bits < n
       then
-        ( _fill_bits d
-        ; fill_bits d n)
+        _fill_bits d
 
     let pop_bits d n =
       let v = d.hold land (1 lsl n - 1) in
@@ -1568,14 +1570,13 @@ module Inf = struct
     exception Invalid_distance_code
 
     let inflate lit dist d =
-      let rec fill_bits d lit n =
+      let fill_bits d lit n =
         if d.bits < n && not
           (lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask == 256
           && lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 <= d.bits
           && (i_rem d) < 1)
         then
-          ( _fill_bits d
-          ; fill_bits d lit n)
+          _fill_bits d
       in
       try
         let rec length () =
