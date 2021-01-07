@@ -8,7 +8,8 @@
 module Bigarray = Bigarray_compat
 (** MirageOS compatibility. *)
 
-type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+type bigstring =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 (** The type for [bigstring]. *)
 
 type window = De.window
@@ -38,7 +39,11 @@ module Inf : sig
      provide input with {!src}. With [`String] or [`Channel] source the client
      can safely discard [`Await] case (with [assert false]). *)
 
-  type signal = [ `Await of decoder | `Flush of decoder | `End of decoder | `Malformed of string ]
+  type signal =
+    [ `Await of decoder
+    | `Flush of decoder
+    | `End of decoder
+    | `Malformed of string ]
 
   val decoder : src -> o:bigstring -> allocate:(int -> window) -> decoder
   (** [decoder src ~o ~allocate] is a decoder that inputs from [src].
@@ -195,14 +200,15 @@ end
 
 module Higher : sig
   val compress :
-    ?level:int ->
-    w:window ->
-    q:De.Queue.t ->
-    i:bigstring ->
-    o:bigstring ->
-    refill:(bigstring -> int) ->
-    flush:(bigstring -> int -> unit) -> unit
-  (** [compress ?level ~w ~q ~i ~o ~refill ~flush] is [Zlib.compress] (with
+       ?level:int
+    -> w:window
+    -> q:De.Queue.t
+    -> refill:(bigstring -> int)
+    -> flush:(bigstring -> int -> unit)
+    -> bigstring
+    -> bigstring
+    -> unit
+  (** [compress ?level ~w ~q ~refill ~flush i o] is [Zlib.compress] (with
      [~header:true]) provided by [camlzip] package.
 
       {ul
@@ -219,12 +225,13 @@ module Higher : sig
      how many bytes it wrote. *)
 
   val uncompress :
-    allocate:(int -> window) ->
-    i:bigstring ->
-    o:bigstring ->
-    refill:(bigstring -> int) ->
-    flush:(bigstring -> int -> unit) -> (unit, [> `Msg of string ]) result
-  (** [uncompress ~allocate ~i ~o ~refill ~flush] is [Zlib.uncompress] (with
+       allocate:(int -> window)
+    -> refill:(bigstring -> int)
+    -> flush:(bigstring -> int -> unit)
+    -> bigstring
+    -> bigstring
+    -> (unit, [> `Msg of string ]) result
+  (** [uncompress ~allocate ~refill ~flush i o] is [Zlib.uncompress] (with
      [~header:true]) provided by [camlzip] package.
 
       {ul

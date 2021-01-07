@@ -1,10 +1,14 @@
 (executable
  (name test)
  (modules test)
- (libraries base64 camlzip hxd.string bigstringaf checkseum.c de zl gz lzo alcotest))
+ (libraries base64 camlzip hxd.string bigstringaf checkseum.c de zl gz lzo
+   alcotest))
 
 (rule
  (alias runtest)
  (package decompress)
- (deps (:test test.exe) (source_tree corpus))
- (action (run %{test} --color=always)))
+ (deps
+  (:test test.exe)
+  (source_tree corpus))
+ (action
+  (run %{test} --color=always)))

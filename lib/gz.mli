@@ -8,7 +8,8 @@
 module Bigarray = Bigarray_compat
 (** MirageOS compatibility. *)
 
-type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+type bigstring =
+  (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 (** Type type for [bigstring]. *)
 
 type window = De.window
@@ -18,8 +19,21 @@ val io_buffer_size : int
 
 (** The type for Operating-System. *)
 type os =
-  | FAT | Amiga | VMS | Unix | VM | Atari | HPFS | Macintosh
-  | Z | CPM | TOPS20 | NTFS | QDOS | Acorn | Unknown
+  | FAT
+  | Amiga
+  | VMS
+  | Unix
+  | VM
+  | Atari
+  | HPFS
+  | Macintosh
+  | Z
+  | CPM
+  | TOPS20
+  | NTFS
+  | QDOS
+  | Acorn
+  | Unknown
 
 val pp_os : Format.formatter -> os -> unit
 (** Pretty-printer of {!os}. *)
@@ -50,8 +64,11 @@ module Inf : sig
      provide input with {!src}. With [`String] or [`Channel] source the client
      can safely discard [`Await] case (with [assert false]). *)
 
-
-  type signal = [ `Await of decoder | `Flush of decoder | `End of decoder | `Malformed of string ]
+  type signal =
+    [ `Await of decoder
+    | `Flush of decoder
+    | `End of decoder
+    | `Malformed of string ]
 
   val decoder : src -> o:bigstring -> decoder
   (** [decoder src ~o] is a decoder that inputs from [src].
@@ -158,8 +175,8 @@ module Def : sig
 
   type ret = [ `Await of encoder | `End of encoder | `Flush of encoder ]
 
-  val encoder
-    :  src
+  val encoder :
+       src
     -> dst
     -> ?ascii:bool
     -> ?hcrc:bool
@@ -245,34 +262,37 @@ module Higher : sig
   type 't configuration
   (** Type of the Operating-System configuration. *)
 
-  val configuration : ?ascii:bool -> ?hcrc:bool -> os -> ('t -> int32) -> 't configuration
+  val configuration :
+    ?ascii:bool -> ?hcrc:bool -> os -> ('t -> int32) -> 't configuration
   (** [configuration ?ascii ?hcrc os mtime] makes an Operating-System
      {!configuration} to be able to {!compress} any inputs. *)
 
-  val compress
-    :  ?level:int
+  val compress :
+       ?level:int
     -> ?filename:string
     -> ?comment:string
     -> w:window
     -> q:De.Queue.t
-    -> i:bigstring
-    -> o:bigstring
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
-    -> 't -> 't configuration
+    -> 't
+    -> 't configuration
+    -> bigstring
+    -> bigstring
     -> unit
 
-  type metadata =
-    { filename : string option
-    ; comment : string option
-    ; os : os
-    ; extra : key:string -> string option }
+  type metadata = {
+      filename: string option
+    ; comment: string option
+    ; os: os
+    ; extra: key:string -> string option
+  }
   (** Type of {i metadata} available into a GZIP flow. *)
 
-  val uncompress
-    :  i:bigstring
-    -> o:bigstring
-    -> refill:(bigstring -> int)
+  val uncompress :
+       refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
+    -> bigstring
+    -> bigstring
     -> (metadata, [> `Msg of string ]) result
 end
