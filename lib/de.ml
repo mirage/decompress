@@ -1474,13 +1474,13 @@ module Inf = struct
 
     let pp_error ppf e =
       let s = match e with
-      | Unexpected_end_of_input      -> "Unexpected_end_of_input"
-      | Unexpected_end_of_output     -> "Unexpected_end_of_output"
-      | Invalid_kind_of_block        -> "Invalid_kind_of_block"
-      | Invalid_dictionary           -> "Invalid_dictionary"
-      | Invalid_complement_of_length -> "Invalid_complement_of_length"
-      | Invalid_distance             -> "Invalid_distance"
-      | Invalid_distance_code        -> "Invalid_distance_code"
+      | Unexpected_end_of_input      -> "Unexpected end of input"
+      | Unexpected_end_of_output     -> "Unexpected end of output"
+      | Invalid_kind_of_block        -> "Invalid kind of block"
+      | Invalid_dictionary           -> "Invalid dictionary"
+      | Invalid_complement_of_length -> "Invalid complement of length"
+      | Invalid_distance             -> "Invalid distance"
+      | Invalid_distance_code        -> "Invalid distance code"
       in
       Format.fprintf ppf "%s" s
 
