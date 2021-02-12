@@ -1,6 +1,7 @@
 open De
 
 let w = make_window ~bits:15
+let l = Lz77.make_window ()
 let i = bigstring_create io_buffer_size
 let o = bigstring_create io_buffer_size
 let q = Queue.create 4096
@@ -237,7 +238,7 @@ let () =
   Crowbar.add_test ~name:"lz77" [Crowbar.list (non_empty_bytes 1024)]
   @@ fun inputs ->
   Queue.reset q
-  ; let state = Lz77.state `Manual ~w ~q in
+  ; let state = Lz77.state `Manual ~w:l ~q in
     let res = ref [] in
     let rec go inputs =
       match Lz77.compress state with

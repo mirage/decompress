@@ -654,7 +654,7 @@ module Def = struct
     ; q: De.Queue.t
     ; s: De.Lz77.state
     ; e: De.Def.encoder
-    ; w: De.window
+    ; w: De.Lz77.window
     ; state: state
     ; flg: int
     ; xfl: int

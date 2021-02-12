@@ -1,4 +1,5 @@
 let w = De.make_window ~bits:15
+let l = De.Lz77.make_window ()
 let o = De.bigstring_create De.io_buffer_size
 let i = De.bigstring_create De.io_buffer_size
 let q = De.Queue.create 4096
@@ -35,7 +36,7 @@ let run_inflate () =
 
 let run_deflate () =
   let open De in
-  let state = Lz77.state `Manual ~w ~q in
+  let state = Lz77.state `Manual ~w:l ~q in
   let kind = ref Def.Fixed in
   let encoder = Def.encoder `Manual ~q in
 
@@ -109,7 +110,7 @@ let run_zlib_inflate () =
 
 let run_zlib_deflate () =
   let open Zl in
-  let encoder = Def.encoder `Manual `Manual ~q ~w ~level:0 in
+  let encoder = Def.encoder `Manual `Manual ~q ~w:l ~level:0 in
 
   let rec go encoder =
     match Def.encode encoder with
@@ -156,7 +157,7 @@ let now () =
 let run_gzip_deflate () =
   let open Gz in
   let encoder =
-    Def.encoder `Manual `Manual ~q ~w ~level:0 ~mtime:(now ()) Gz.Unix in
+    Def.encoder `Manual `Manual ~q ~w:l ~level:0 ~mtime:(now ()) Gz.Unix in
 
   let rec go encoder =
     match Def.encode encoder with

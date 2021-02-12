@@ -385,7 +385,7 @@ module Def = struct
     ; q: De.Queue.t
     ; s: De.Lz77.state
     ; e: De.Def.encoder
-    ; w: De.window
+    ; w: De.Lz77.window
     ; state: state
     ; k: encoder -> [ `Await of encoder | `Flush of encoder | `End of encoder ]
   }
@@ -458,7 +458,8 @@ module Def = struct
     match e.state with
     | Hd ->
       let k e =
-        let header = (_deflated + ((De.window_bits e.w - 8) lsl 4)) lsl 8 in
+        let window_bits = 15 in
+        let header = (_deflated + ((window_bits - 8) lsl 4)) lsl 8 in
         let header = header lor (e.level lsl 6) in
         let header = header + (31 - (header mod 31)) in
         unsafe_set_uint16_be e.o e.o_pos header

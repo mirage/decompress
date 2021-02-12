@@ -18,6 +18,7 @@ let random len =
 open De (* au detail *)
 
 let w = make_window ~bits:15
+let l = Lz77.make_window ()
 let i = bigstring_create io_buffer_size
 let o = bigstring_create io_buffer_size
 let q = Queue.create 4096
@@ -755,7 +756,7 @@ let cmds = Alcotest.list cmd
 let lz77_0 () =
   Alcotest.test_case "simple match" `Quick @@ fun () ->
   Queue.reset q
-  ; let state = Lz77.state (`String "aaaaa") ~w ~q in
+  ; let state = Lz77.state (`String "aaaaa") ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -768,7 +769,7 @@ let lz77_0 () =
 let lz77_1 () =
   Alcotest.test_case "no match" `Quick @@ fun () ->
   Queue.reset q
-  ; let state = Lz77.state (`String "abcde") ~w ~q in
+  ; let state = Lz77.state (`String "abcde") ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -810,7 +811,7 @@ let lz77_2 () =
       ; "\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x19\x38\x80" (* ........8. *)
       ] in
     let input = String.concat "" inputs in
-    let state = Lz77.state (`String input) ~w ~q in
+    let state = Lz77.state (`String input) ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -826,7 +827,7 @@ let lz77_3 () =
   ; let inputs =
       ["\xf6\x21\xff\x7f\x00\x9d\x0d\xf6\x21\xff\x7f" (* .!......!.. *)] in
     let input = String.concat "" inputs in
-    let state = Lz77.state (`String input) ~w ~q in
+    let state = Lz77.state (`String input) ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -850,7 +851,7 @@ let lz77_4 () =
       ; "\xff\x57\xff\xe8\x03\x00" (* .W.... *)
       ] in
     let input = String.concat "" inputs in
-    let state = Lz77.state (`String input) ~w ~q in
+    let state = Lz77.state (`String input) ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -1112,7 +1113,7 @@ let lz77_corpus_rfc5322 () =
   Alcotest.test_case "rfc5322" `Quick @@ fun () ->
   let ic = open_in "corpus/rfc5322.txt" in
   Queue.reset q
-  ; let state = Lz77.state (`Channel ic) ~w ~q in
+  ; let state = Lz77.state (`Channel ic) ~w:l ~q in
     let res = ref "" in
     let rec go () =
       match Lz77.compress state with
@@ -1761,7 +1762,7 @@ let tree_rfc5322_corpus () =
     Alcotest.(check (pair int int)) "literal 6" (10, 0x35f) (len_6, code_6)
     ; Alcotest.(check (pair int int)) "eob" (15, 0x6fff) (len_eob, code_eob)
 
-let w0 = make_window ~bits:15
+let w0 = Lz77.make_window ()
 let w1 = make_window ~bits:15
 let s = bigstring_create io_buffer_size
 let o = bigstring_create io_buffer_size
@@ -1861,7 +1862,7 @@ let gzip_compress_and_uncompress ~filename ic =
   ; let os = bigstring_create io_buffer_size in
     let bf = Buffer.create 4096 in
     let encoder =
-      Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l Gz.Unix ~q ~w
+      Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l Gz.Unix ~q ~w:l
         ~level:0 in
     let decoder = Gz.Inf.decoder `Manual ~o in
 
@@ -1920,7 +1921,7 @@ let gzip_compress_and_uncompress ~filename ic =
 
 let zlib_compress_and_uncompress ic =
   De.Queue.reset q
-  ; let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w ~level:0 in
+  ; let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w:l ~level:0 in
     let decoder =
       Zl.Inf.decoder `Manual ~o ~allocate:(fun bits -> De.make_window ~bits)
     in
@@ -2050,7 +2051,7 @@ let higher_zlib input =
   Queue.reset q
   ; let refill = emitter_from_string input in
     let flush, contents = producer_to_string () in
-    Zl.Higher.compress ~level:0 ~w ~q ~refill ~flush i o
+    Zl.Higher.compress ~level:0 ~w:l ~q ~refill ~flush i o
     ; Fmt.epr "%S\n%!" (contents ())
     ; let refill = emitter_from_string (contents ()) in
       let flush, contents = producer_to_string () in
@@ -2068,7 +2069,7 @@ let test_multiple_flush_zlib () =
   Queue.reset q
   ; let refill = emitter_from_string "foo" in
     let flush, contents = producer_to_string () in
-    Zl.Higher.compress ~level:0 ~w ~q ~refill ~flush i o
+    Zl.Higher.compress ~level:0 ~w:l ~q ~refill ~flush i o
     ; let input = contents () in
       let decoder =
         Zl.Inf.decoder (`String input) ~o ~allocate:(fun bits ->
@@ -2098,7 +2099,7 @@ let test_empty_with_zlib () =
   Alcotest.test_case "empty zlib" `Quick @@ fun () ->
   Queue.reset q
   ; let buf = Buffer.create 16 in
-    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w ~level:3 in
+    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w:l ~level:3 in
     let go encoder =
       match Zl.Def.encode encoder with
       | `Flush _ | `Await _ ->
@@ -2124,7 +2125,7 @@ let test_empty_with_zlib_and_small_output () =
   Queue.reset q
   ; let o = bigstring_create 4 in
     let buf = Buffer.create 16 in
-    let encoder = Zl.Def.encoder (`String "") `Manual ~q ~w ~level:3 in
+    let encoder = Zl.Def.encoder (`String "") `Manual ~q ~w:l ~level:3 in
     let encoder = Zl.Def.dst encoder o 0 4 in
     let rec go encoder =
       match Zl.Def.encode encoder with
@@ -2159,7 +2160,7 @@ let test_empty_with_zlib_byte_per_byte () =
   Alcotest.test_case "empty zlib (byte per byte)" `Quick @@ fun () ->
   Queue.reset q
   ; let buf = Buffer.create 16 in
-    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w ~level:3 in
+    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w:l ~level:3 in
     let go encoder =
       match Zl.Def.encode encoder with
       | `Flush _ | `Await _ ->
@@ -2291,8 +2292,8 @@ let test_generate_empty_gzip () =
   Queue.reset q
   ; let buf = Buffer.create 16 in
     let encoder =
-      Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l Gz.Unix ~q ~w ~level:3
-    in
+      Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l Gz.Unix ~q ~w:l
+        ~level:3 in
     let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2317,7 +2318,7 @@ let test_generate_empty_gzip_with_name () =
   ; let buf = Buffer.create 16 in
     let encoder =
       Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l
-        Gz.Unix ~q ~w ~level:0 in
+        Gz.Unix ~q ~w:l ~level:0 in
     let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2344,7 +2345,7 @@ let test_generate_foo_gzip () =
   ; let buf = Buffer.create 16 in
     let encoder =
       Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l
-        Gz.Unix ~q ~w ~level:0 in
+        Gz.Unix ~q ~w:l ~level:0 in
     let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2373,7 +2374,7 @@ let test_with_camlzip () =
   let oc = open_out "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo") (`Channel oc) ~filename:"foo.gz" ~mtime:0l
-      Gz.Unix ~q ~w ~level:0 in
+      Gz.Unix ~q ~w:l ~level:0 in
   let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2391,7 +2392,7 @@ let test_gzip_hcrc () =
   let oc = open_out "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo & bar") (`Channel oc) ~filename:"foo.gz"
-      ~mtime:0l Gz.Unix ~hcrc:true ~q ~w ~level:0 in
+      ~mtime:0l Gz.Unix ~hcrc:true ~q ~w:l ~level:0 in
   let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2451,8 +2452,8 @@ let test_gzip_os v_os =
   let input = random 256 in
   let buf = Buffer.create 16 in
   let encoder =
-    Gz.Def.encoder (`String input) (`Buffer buf) ~mtime:0l v_os ~hcrc:true ~q ~w
-      ~level:0 in
+    Gz.Def.encoder (`String input) (`Buffer buf) ~mtime:0l v_os ~hcrc:true ~q
+      ~w:l ~level:0 in
   let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"

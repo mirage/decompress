@@ -185,7 +185,7 @@ module Def : sig
     -> mtime:int32
     -> os
     -> q:De.Queue.t
-    -> w:window
+    -> w:De.Lz77.window
     -> level:int
     -> encoder
   (** [encoder src dst ~mtime os ~q ~w ~level] is an encoder that inputs from
@@ -271,7 +271,7 @@ module Higher : sig
        ?level:int
     -> ?filename:string
     -> ?comment:string
-    -> w:window
+    -> w:De.Lz77.window
     -> q:De.Queue.t
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
