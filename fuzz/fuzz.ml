@@ -1,7 +1,7 @@
 open De
 
 let w = make_window ~bits:15
-let l = Lz77.make_window ()
+let l = Lz77.make_window ~bits:15
 let i = bigstring_create io_buffer_size
 let o = bigstring_create io_buffer_size
 let q = Queue.create 4096

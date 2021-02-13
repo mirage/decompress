@@ -1,5 +1,5 @@
 let w = De.make_window ~bits:15
-let l = De.Lz77.make_window ()
+let l = De.Lz77.make_window ~bits:15
 let o = De.bigstring_create De.io_buffer_size
 let i = De.bigstring_create De.io_buffer_size
 let q = De.Queue.create 4096

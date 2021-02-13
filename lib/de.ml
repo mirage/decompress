@@ -2605,354 +2605,10 @@ module Def = struct
   let encode e = e.k e
 end
 
-(*
-module WDef = struct
-  type t = {raw: bigstring; mutable r: int; mutable w: int; mutable c: optint}
-
-  let max = 1 lsl 15
-  let mask = max - 1
-  let ( = ) (a : int) b = a == b
-  let mask v = v land mask
-  let empty t = t.r = t.w
-  let size t = t.w - t.r
-  let available t = max - (t.w - t.r)
-  let is_empty t = empty t
-
-  let[@warning "-32"] make () =
-    {
-      raw= Bigarray.Array1.create Bigarray.char Bigarray.c_layout max
-    ; r= 0
-    ; w= 0
-    ; c= Checkseum.Adler32.default
-    }
-
-  let from raw = {raw; r= 0; w= 0; c= Checkseum.Adler32.default}
-
-  let update w =
-    let c = Checkseum.Adler32.unsafe_digest_bigstring w.raw 0 max w.c in
-    w.c <- c
-
-  let iter t f =
-    let len = size t in
-    let msk = mask t.r in
-    let pre = max - msk in
-    let rst = len - pre in
-
-    if rst > 0 then (
-      for i = 0 to pre - 1 do
-        f (unsafe_get_char t.raw (msk + i))
-      done
-      ; for i = 0 to rst - 1 do
-          f (unsafe_get_char t.raw i)
-        done)
-    else
-      for i = 0 to len - 1 do
-        f (unsafe_get_char t.raw (msk + i))
-      done
-
-  (* XXX(dinosaure): [unsafe_] means that [i] can be out of [r] and [w] - but
-     still is a valid index in [raw]. *)
-  let unsafe_get_char t i = unsafe_get_char t.raw (mask i) [@@inline always]
-  let m = max - 1
-
-  let unsafe_get_uint16 t i =
-    if mask i == m then
-      if Sys.big_endian then
-        (unsafe_get_uint8 t.raw 0 lsl 8) lor unsafe_get_uint8 t.raw m
-      else (unsafe_get_uint8 t.raw m lsl 8) lor unsafe_get_uint8 t.raw 0
-    else unsafe_get_uint16 t.raw (mask i)
-    [@@inline always]
-
-  let unsafe_get_uint8 t i = unsafe_get_uint8 t.raw (mask i) [@@inline always]
-
-  let tail w =
-    let msk = mask w.w in
-    if msk > 0 then (
-      let c = Checkseum.Adler32.unsafe_digest_bigstring w.raw 0 msk w.c in
-      w.w <- 0
-      ; w.r <- 0 (* XXX(dinosaure): reset! *)
-      ; w.c <- c)
-
-  let feed t buf off len =
-    let msk = mask t.w in
-    let pre = max - msk in
-    let rst = len - pre in
-    if rst > 0 then (
-      unsafe_blit buf off t.raw msk pre
-      ; update t
-      ; unsafe_blit buf (off + pre) t.raw 0 rst)
-    else (
-      unsafe_blit buf off t.raw msk len
-      ; if mask (t.w + len) == 0 && len > 0 then update t)
-    ; t.w <- t.w + len
-
-  let junk t len = t.r <- t.r + len
-  let checksum w = w.c
-end
-*)
-
-(*
-module Lz77 = struct
-  type decode = [ `Await | `Flush | `End ]
-  type src = [ `Channel of in_channel | `String of string | `Manual ]
-
-  let _max_match = 258
-  let _min_match = 3
-  let _lookahead = _max_match + _min_match + 1
-  let _hash_bits = 15
-  let _hash_shift = (_hash_bits + _min_match - 1) / _min_match
-  let _hash_size = 1 lsl _hash_bits
-  let _hash_mask = _hash_size - 1
-
-  type state = {
-      src: src
-    ; mutable i: bigstring
-    ; mutable i_pos: int
-    ; mutable i_len: int
-    ; l: literals
-    ; d: distances
-    ; w: WDef.t
-    ; h: int array
-    ; h_msk: int
-    ; b: Queue.t
-    ; mutable k: state -> decode
-  }
-
-  let literals s = s.l
-  let distances s = s.d
-  let checksum s = WDef.checksum s.w
-
-  let eoi s =
-    s.i <- bigstring_empty
-    ; s.i_pos <- 0
-    ; s.i_len <- min_int
-
-  (* set [s.i] with [s]. *)
-  let src d s j l =
-    if j < 0 || l < 0 || j + l > bigstring_length s then invalid_bounds j l
-    ; if l == 0 then eoi d
-      else (
-        d.i <- s
-        ; d.i_pos <- j
-        ; d.i_len <- j + l - 1)
-
-  let refill k s =
-    match s.src with
-    | `String _ -> eoi s ; k s
-    | `Channel ic ->
-      let res = input_bigstring ic s.i 0 (bigstring_length s.i) in
-      src s s.i 0 res ; k s
-    | `Manual ->
-      s.k <- k
-      ; `Await
-
-  let flush k s =
-    s.k <- k
-    ; `Flush
-
-  (* remaining bytes to read [s.i]. *)
-  let i_rem s = s.i_len - s.i_pos + 1 [@@inline]
-  let src_rem s = i_rem s
-
-  (* XXX(dinoaure): [lt] is not very safe! *)
-
-  let rec nothing s =
-    s.k <- nothing
-    ; `End
-
-  let rec pending s =
-    let len = min (Queue.available s.b) (WDef.size s.w) in
-
-    let msk = WDef.mask s.w.r in
-    let pre = WDef.max - msk in
-    let rst = len - pre in
-
-    if rst > 0 then (
-      Queue.blit s.b s.w.raw msk pre
-      ; Queue.blit s.b s.w.raw 0 rst)
-    else Queue.blit s.b s.w.raw msk len
-
-    ; WDef.iter s.w (succ_literal s.l)
-    ; WDef.junk s.w len
-
-    ; if WDef.is_empty s.w then (
-        WDef.tail s.w
-        ; s.k <- nothing
-        ; `End)
-      else flush pending s
-
-  let rec fill s =
-    let rem = i_rem s in
-
-    if rem <= 0 then if rem < 0 then pending s else refill fill s
-    else
-      let len = min (WDef.available s.w) rem in
-      WDef.feed s.w s.i s.i_pos len
-      ; s.i_pos <- s.i_pos + len
-
-      ; let k s = if i_rem s == 0 then refill fill s else fill s in
-
-        (* XXX(dinosaure): optimize this branch. TODO! *)
-        if WDef.size s.w >= 2 then
-          if Queue.available s.b < 2 then flush fill s else deffast k s
-        else refill fill s
-
-  and deffast k s =
-    assert (Queue.available s.b >= 2)
-    ; assert (WDef.size s.w >= 2)
-    ; assert (WDef.size s.w <= WDef.max)
-
-    ; let i = ref s.w.r in
-      let len = ref 0 in
-      let dst = ref 0 in
-
-      let exception Match in
-      let exception Literal in
-      (* XXX(dinosaure): prelude, a [match] is >= 3.  *)
-      let chr = WDef.unsafe_get_char s.w !i in
-      Queue.push_exn s.b (Queue.cmd (`Literal chr))
-      ; incr i
-      ; succ_literal s.l chr
-      ; let chr = WDef.unsafe_get_char s.w !i in
-        Queue.push_exn s.b (Queue.cmd (`Literal (WDef.unsafe_get_char s.w !i)))
-        ; incr i
-        ; succ_literal s.l chr
-
-        ; while s.w.w - !i >= 3 && not (Queue.is_full s.b) do
-            try
-              if
-                WDef.unsafe_get_uint8 s.w !i
-                == WDef.unsafe_get_uint8 s.w (!i - 1)
-                && WDef.unsafe_get_uint16 s.w (!i - 1)
-                   == WDef.unsafe_get_uint16 s.w (!i + 1)
-              then (
-                len := 3
-                ; dst := 1
-                ; raise_notrace Match)
-
-              ; let hash =
-                  let v = WDef.unsafe_get_uint16 s.w !i in
-                  WDef.unsafe_get_uint16 s.w (!i + 1) lxor v in
-                let source = s.h.(hash land s.h_msk) in
-                s.h.(hash land s.h_msk) <- !i
-
-                ; dst := !i - source
-
-                ; (* XXX(dinosaure): should be safe where [!i] is the newest indice in [w]. *)
-                  if
-                    !dst == 0
-                    || !dst >= WDef.max
-                    (* XXX(dinosaure): deliver only valid distance *)
-                    || source + 3 - min_int >= !i - min_int
-                    (* XXX(dinosaure): [source] ∈ no emitted characters *)
-                    || source - min_int < s.w.r - min_int
-                    (* XXX(dinosaure): too old! *)
-                    || WDef.unsafe_get_uint16 s.w !i
-                       <> WDef.unsafe_get_uint16 s.w source
-                    || WDef.unsafe_get_uint16 s.w (!i + 1)
-                       <> WDef.unsafe_get_uint16 s.w (source + 1)
-                  then raise_notrace Literal
-
-                ; len := 3
-
-                ; raise_notrace Match
-            with
-            | Literal ->
-              let chr = WDef.unsafe_get_char s.w !i in
-              Queue.push_exn s.b (Queue.cmd (`Literal chr))
-              ; incr i
-              ; succ_literal s.l chr
-            | Match ->
-              if !dst == 1 then (
-                let vv = WDef.unsafe_get_uint16 s.w !i in
-                let v = WDef.unsafe_get_uint8 s.w !i in
-
-                while
-                  !len + 2 <= _max_match
-                  && s.w.w - (!i + !len + 2) > 0
-                  (* XXX(dinosaure): stay under write cursor. *)
-                  && WDef.unsafe_get_uint16 s.w (!i + !len) == vv
-                do
-                  len := !len + 2
-                done
-
-                ; if
-                    !len + 1 <= _max_match
-                    && s.w.w - (!i + !len + 1) > 0
-                    && WDef.unsafe_get_uint8 s.w (!i + !len) == v
-                  then incr len
-
-                ; Queue.push_exn s.b (Queue.cmd (`Copy (!dst, !len)))
-                ; i := !i + !len
-                ; succ_length s.l !len
-                ; succ_distance s.d !dst)
-              else
-                let source = !i - !dst in
-
-                (* XXX(dinosaure): try to go furthermore. *)
-                while
-                  !len + 2 <= _max_match
-                  && source + !len + 2 - min_int < !i + !len + 2 - min_int
-                  (* XXX(dinosaure): stay outside non-emitted characters. *)
-                  && s.w.w - (!i + !len + 2) > 0
-                  (* XXX(dinosaure): stay under write cursor. *)
-                  && WDef.unsafe_get_uint16 s.w (!i + !len)
-                     == WDef.unsafe_get_uint16 s.w (source + !len)
-                do
-                  len := !len + 2
-                done
-
-                ; if
-                    !len + 1 <= _max_match
-                    && source + !len + 1 - min_int < !i - !len + 1 - min_int
-                    && s.w.w - (!i + !len + 1) > 0
-                    && WDef.unsafe_get_uint8 s.w (!i + !len)
-                       == WDef.unsafe_get_uint8 s.w (source + !len)
-                  then incr len
-
-                ; Queue.push_exn s.b (Queue.cmd (`Copy (!dst, !len)))
-                ; i := !i + !len
-                ; succ_length s.l !len
-                ; succ_distance s.d !dst
-          done
-
-        ; WDef.junk s.w (!i - s.w.r)
-
-        ; if Queue.is_full s.b then flush k s
-          else if i_rem s == 0 then refill fill s
-          else k s
-
-  let compress s = s.k s
-
-  let state src ~w ~q =
-    let i, i_pos, i_len =
-      match src with
-      | `Manual -> bigstring_empty, 1, 0
-      | `String x -> bigstring_of_string x, 0, String.length x - 1
-      | `Channel _ -> bigstring_create io_buffer_size, 1, 0 in
-    {
-      src
-    ; i
-    ; i_pos
-    ; i_len
-    ; l= make_literals ()
-    ; d= make_distances ()
-    ; w= WDef.from w
-    ; h= Array.make (1 lsl 8) 0
-    ; h_msk= (1 lsl 8) - 1
-    ; b= q
-    ; k= fill
-    }
-end
-*)
-
 module Lz77 = struct
   let _max_match = 258
   let _min_match = 3
   let _min_lookahead = _max_match + _min_match + 1
-  let _wsize = 1 lsl 15
-  let _wmask = _wsize - 1
-  let _max_dist = _wsize - _min_lookahead
   let ( .!() ) buf pos = unsafe_get_uint32 buf pos
   let ( .![] ) buf pos = unsafe_get_uint16 buf pos
   let ( .!{} ) buf pos = unsafe_get_uint8 buf pos
@@ -2964,7 +2620,12 @@ module Lz77 = struct
     ; nice_length: int
   }
 
-  let _4 = {max_chain= 128; max_lazy= 16; good_length= 8; nice_length= 128}
+  let _4 = {good_length= 4; max_lazy= 4; nice_length= 16; max_chain= 16}
+  let _5 = {good_length= 8; max_lazy= 16; nice_length= 32; max_chain= 32}
+  let _6 = {good_length= 8; max_lazy= 16; nice_length= 128; max_chain= 128}
+  let _7 = {good_length= 8; max_lazy= 32; nice_length= 128; max_chain= 256}
+  let _8 = {good_length= 32; max_lazy= 128; nice_length= 258; max_chain= 1024}
+  let _9 = {good_length= 32; max_lazy= 258; nice_length= 258; max_chain= 4096}
   let _mem_level = 8 (* default *)
 
   let _hash_bits = _mem_level + 7
@@ -2986,6 +2647,7 @@ module Lz77 = struct
     ; l: literals
     ; d: distances
     ; w: bigstring
+    ; wbits: int
     ; mutable lookahead: int
     ; mutable strstart: int
     ; prev: int array
@@ -3002,6 +2664,8 @@ module Lz77 = struct
     ; mutable k: configuration -> state -> decode
   }
 
+  let max_dist s = (1 lsl s.wbits) - _min_lookahead
+
   exception Break
 
   (* cur is the head of the hash chain for the current string
@@ -3009,8 +2673,9 @@ module Lz77 = struct
    * prev_length >= 1
    * len >= _min_lookahead *)
   let longest_match cfg s cur_match =
+    let wmask = (1 lsl s.wbits) - 1 in
     let str_end = s.strstart + (_max_match - 1) in
-    let limit = if s.strstart > _max_dist then s.strstart - _max_dist else 0 in
+    let limit = if s.strstart > max_dist s then s.strstart - max_dist s else 0 in
 
     (* Stop when !cur becomes <= limit. To somplify the code,
      * we prevent matches with the string of window index 0. *)
@@ -3035,7 +2700,7 @@ module Lz77 = struct
            s.w.![!match' + !best_len - 1] <> !scan_end
            || s.w.![!match'] <> scan_start
          then begin
-           cur_match := s.prev.(!cur_match land _wmask)
+           cur_match := s.prev.(!cur_match land wmask)
            ; decr chain_length
            ; !cur_match > limit && !chain_length != 0
          end
@@ -3063,7 +2728,7 @@ module Lz77 = struct
                  ; if len >= cfg.nice_length then raise Break
                  ; scan_end := s.w.![!scan + !best_len - 1]
                end
-             ; cur_match := s.prev.(!cur_match land _wmask)
+             ; cur_match := s.prev.(!cur_match land wmask)
              ; decr chain_length
              ; !cur_match > limit && !chain_length != 0
          end
@@ -3118,21 +2783,20 @@ module Lz77 = struct
     s.crc <- Checkseum.Adler32.digest_bigstring s.i s.i_pos len s.crc
 
   let insert_string s str =
+    let wmask = (1 lsl s.wbits) - 1 in
     s.hash <- update_hash s.hash s.w.!{str + (_min_match - 1)}
     ; let res = s.head.(s.hash) in
-      s.prev.(str land _wmask) <- res
+      s.prev.(str land wmask) <- res
       ; s.head.(s.hash) <- str
       ; res
 
   let succ_length literals length =
-    assert (length >= 3 && length <= 255 + 3)
-    ; literals.(256 + 1 + _length.(length - 3)) <-
-        literals.(256 + 1 + _length.(length - 3)) + 1
+    literals.(256 + 1 + _length.(length - 3)) <-
+      literals.(256 + 1 + _length.(length - 3)) + 1
 
   let succ_distance distances distance =
-    assert (distance >= 1 && distance <= 32767 + 1)
-    ; distances.(_distance (pred distance)) <-
-        distances.(_distance (pred distance)) + 1
+    distances.(_distance (pred distance)) <-
+      distances.(_distance (pred distance)) + 1
 
   let emit_match s ~off ~len =
     Queue.push_exn s.q (Queue.cmd (`Copy (off, len)))
@@ -3164,24 +2828,25 @@ module Lz77 = struct
     else `End
 
   let slide_hash s =
+    let wsize = 1 lsl s.wbits in
     let m = ref 0 in
     let n = ref _hash_size in
     let p = ref !n in
     while
       decr p
       ; m := s.head.(!p)
-      ; s.head.(!p) <- (if !m >= _wsize then !m - _wsize else 0)
+      ; s.head.(!p) <- (if !m >= wsize then !m - wsize else 0)
       ; decr n
       ; !n != 0
     do
       ()
     done
-    ; n := _wsize
+    ; n := wsize
     ; p := !n
     ; while
         decr p
         ; m := s.prev.(!p)
-        ; s.prev.(!p) <- (if !m >= _wsize then !m - _wsize else 0)
+        ; s.prev.(!p) <- (if !m >= wsize then !m - wsize else 0)
         ; decr n
         ; !n != 0
       do
@@ -3189,55 +2854,57 @@ module Lz77 = struct
       done
 
   let rec fill_window (cfg : configuration) s =
-    let more = ref ((_wsize * 2) - s.lookahead - s.strstart) in
+    let wsize = 1 lsl s.wbits in
+    let wmask = wsize - 1 in
+    let more = (wsize * 2) - s.lookahead - s.strstart in
     (* max *)
-    if s.strstart >= _wsize + _max_dist then begin
-      memcpy s.w ~src_off:_wsize s.w ~dst_off:0 ~len:(_wsize - !more)
-      ; s.match_start <- s.match_start - _wsize
-      ; s.strstart <- s.strstart - _wsize
-      ; slide_hash s
-      ; more := !more + _wsize
-    end
-    ; let rem = i_rem s in
-      if rem <= 0 (* if (s->strm->avail_in == 0) break; *) then
-        if rem < 0 then
-          if s.lookahead > 0 then deflate_slow 0 cfg s else trailing s
-        else refill fill_window s
-      else
-        try
-          let len = min !more rem in
-          memcpy s.i ~src_off:s.i_pos s.w ~dst_off:(s.strstart + s.lookahead)
-            ~len
-          ; (*d*) update_crc s len
-          ; s.lookahead <- s.lookahead + len
-          ; (*d*) s.i_pos <- s.i_pos + len
-          ; if s.lookahead + s.insert >= _min_match then begin
-              let str = ref (s.strstart - s.insert) in
-              let insert = ref s.insert in
-              s.hash <- s.w.!{!str}
-              ; s.hash <- update_hash s.hash s.w.!{!str + 1}
-              ; while s.lookahead + !insert >= _min_match && !insert != 0 do
-                  s.hash <- update_hash s.hash s.w.!{!str + _min_match - 1}
-                  ; s.prev.(!str land _wmask) <- s.head.(s.hash)
-                  ; s.head.(s.hash) <- !str
-                  ; incr str
-                  ; decr insert
-                  ; if s.lookahead + !insert < _min_match then (
-                      s.insert <- !insert
-                      ; raise Break)
-                done
-              ; s.insert <- !insert
-            end
-          ; if s.lookahead < _min_lookahead && i_rem s >= 0 then
-              refill fill_window s
-            else deflate_slow 0 cfg s
-        with Break -> deflate_slow 0 cfg s
+    let more =
+      if s.strstart >= wsize + max_dist s then begin
+        memcpy s.w ~src_off:wsize s.w ~dst_off:0 ~len:(wsize - more)
+        ; s.match_start <- s.match_start - wsize
+        ; s.strstart <- s.strstart - wsize
+        ; slide_hash s
+        ; more + wsize
+      end
+      else more in
+    let rem = i_rem s in
+    if rem <= 0 (* if (s->strm->avail_in == 0) break; *) then
+      if rem < 0 then if s.lookahead > 0 then deflate_slow cfg s else trailing s
+      else refill fill_window s
+    else
+      try
+        let len = min more rem in
+        memcpy s.i ~src_off:s.i_pos s.w ~dst_off:(s.strstart + s.lookahead) ~len
+        ; (*d*) update_crc s len
+        ; s.lookahead <- s.lookahead + len
+        ; (*d*) s.i_pos <- s.i_pos + len
+        ; if s.lookahead + s.insert >= _min_match then begin
+            let str = ref (s.strstart - s.insert) in
+            let insert = ref s.insert in
+            s.hash <- s.w.!{!str}
+            ; s.hash <- update_hash s.hash s.w.!{!str + 1}
+            ; while s.lookahead + !insert >= _min_match && !insert != 0 do
+                s.hash <- update_hash s.hash s.w.!{!str + _min_match - 1}
+                ; s.prev.(!str land wmask) <- s.head.(s.hash)
+                ; s.head.(s.hash) <- !str
+                ; incr str
+                ; decr insert
+                ; if s.lookahead + !insert < _min_match then (
+                    s.insert <- !insert
+                    ; raise Break)
+              done
+            ; s.insert <- !insert
+          end
+        ; if s.lookahead < _min_lookahead && i_rem s >= 0 then
+            refill fill_window s
+          else deflate_slow cfg s
+      with Break -> deflate_slow cfg s
 
-  and enough hash_head cfg s =
+  and enough cfg s =
     if s.lookahead < _min_lookahead then fill_window cfg s
-    else deflate_slow hash_head cfg s
+    else deflate_slow cfg s
 
-  and deflate_slow _hash_head cfg s =
+  and deflate_slow cfg s =
     let hash_head = ref 0 in
     if s.lookahead >= _min_match then hash_head := insert_string s s.strstart
     ; s.prev_length <- s.match_length
@@ -3246,7 +2913,7 @@ module Lz77 = struct
     ; (if
        !hash_head != 0
        && s.prev_length < cfg.max_lazy
-       && s.strstart - !hash_head <= _max_dist
+       && s.strstart - !hash_head <= max_dist s
       then
        let match_length = longest_match cfg s !hash_head in
        if
@@ -3275,27 +2942,27 @@ module Lz77 = struct
         ; s.match_length <- _min_match - 1
         ; s.strstart <- s.strstart + 1
         ; if flush then (
-            s.k <- enough !hash_head
+            s.k <- enough
             ; `Flush)
-          else enough !hash_head cfg s
+          else enough cfg s
       end
       else if s.match_available then begin
         match emit_literal s (unsafe_get_char s.w (s.strstart - 1)) with
         | true ->
           s.strstart <- s.strstart + 1
           ; s.lookahead <- s.lookahead - 1
-          ; s.k <- enough !hash_head
+          ; s.k <- enough
           ; `Flush
         | false ->
           s.strstart <- s.strstart + 1
           ; s.lookahead <- s.lookahead - 1
-          ; enough !hash_head cfg s
+          ; enough cfg s
       end
       else begin
         s.match_available <- true
         ; s.strstart <- s.strstart + 1
         ; s.lookahead <- s.lookahead - 1
-        ; enough !hash_head cfg s
+        ; enough cfg s
       end
 
   let _literals = 256
@@ -3306,8 +2973,39 @@ module Lz77 = struct
   let distances {d; _} = d
   let literals {l; _} = l
 
+  let ctz x =
+    let n = ref 0 and x = ref x and y = ref 0 in
+    if Sys.word_size = 64 then (
+      n := 63
+      ; y := !x lsl 32
+      ; if !y != 0 then (
+          n := !n - 32
+          ; x := !y))
+    else n := 31
+    ; y := !x lsl 16
+    ; if !y != 0 then (
+        n := !n - 16
+        ; x := !y)
+    ; y := !x lsl 8
+    ; if !y != 0 then (
+        n := !n - 8
+        ; x := !y)
+    ; y := !x lsl 4
+    ; if !y != 0 then (
+        n := !n - 4
+        ; x := !y)
+    ; y := !x lsl 2
+    ; if !y != 0 then (
+        n := !n - 2
+        ; x := !y)
+    ; y := !x lsl 1
+    ; if !y != 0 then n := !n - 1
+    ; !n
+
   let state ~q ~w src =
-    let cfg = _4 in
+    let wbits = ctz (bigstring_length w / 2) - 1 in
+    let wsize = 1 lsl wbits in
+    let cfg = _6 in
     let i, i_pos, i_len =
       match src with
       | `Manual -> bigstring_empty, 1, 0
@@ -3322,9 +3020,10 @@ module Lz77 = struct
     ; l= make_literals ()
     ; d= make_distances ()
     ; w
+    ; wbits
     ; lookahead= 0
     ; strstart= 0
-    ; prev= Array.make _wsize 0
+    ; prev= Array.make wsize 0
     ; head= Array.make _hash_size 0
     ; hash= 0
     ; match_start= 0
@@ -3335,14 +3034,14 @@ module Lz77 = struct
     ; prev_match= 0
     ; q
     ; crc= Checkseum.Adler32.default
-    ; k= enough 0
+    ; k= enough
     }
 
   let compress s = s.k s.cfg s
 
   type window = bigstring
 
-  let make_window () = bigstring_create (_wsize * 2)
+  let make_window ~bits = bigstring_create ((1 lsl bits) * 2)
 end
 
 module Higher = struct

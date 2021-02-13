@@ -390,7 +390,7 @@ module Lz77 : sig
 
   type window
 
-  val make_window : unit -> window
+  val make_window : bits:int -> window
 
   val state : q:Queue.t -> w:window -> src -> state
   (** [state src ~w ~q] is an state that inputs from [src] and that outputs to [q].
