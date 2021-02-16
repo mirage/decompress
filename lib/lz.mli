@@ -18,4 +18,4 @@ val src : state -> bigstring -> int -> int -> unit
 val src_rem : state -> int
 val make_window : bits:int -> window
 val compress : state -> decode
-val state : q:De.Queue.t -> w:window -> src -> state
+val state : ?level:int -> q:De.Queue.t -> w:window -> src -> state

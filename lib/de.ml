@@ -3004,10 +3004,18 @@ module Lz77 = struct
     ; if !y != 0 then n := !n - 1
     ; !n
 
-  let state ~q ~w src =
+  let state ?(level = 4) ~q ~w src =
     let wbits = ctz (bigstring_length w / 2) - 1 in
     let wsize = 1 lsl wbits in
-    let cfg = _6 in
+    let cfg =
+      match level with
+      | 0 | 1 | 2 | 3 | 4 -> _4
+      | 5 -> _5
+      | 6 -> _6
+      | 7 -> _7
+      | 8 -> _8
+      | 9 -> _9
+      | _ -> invalid_arg "Invalid level of compression: %d" level in
     let i, i_pos, i_len =
       match src with
       | `Manual -> bigstring_empty, 1, 0
