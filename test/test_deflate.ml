@@ -102,4 +102,10 @@ let () =
         ; deflate_with_level ~level:9 "corpus/book2"
         ; deflate_with_level ~level:9 "corpus/news"
         ] )
+    ; ( "1"
+      , [
+          deflate_with_level ~level:1 "corpus/pic"
+        ; deflate_with_level ~level:1 "corpus/book2"
+        ; deflate_with_level ~level:1 "corpus/news"
+        ] )
     ]

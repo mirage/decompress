@@ -2622,6 +2622,9 @@ module Lz77 = struct
     ; nice_length: int
   }
 
+  let _1 = {good_length= 4; max_lazy= 4; nice_length= 8; max_chain= 4}
+  let _2 = {good_length= 4; max_lazy= 5; nice_length= 16; max_chain= 8}
+  let _3 = {good_length= 4; max_lazy= 6; nice_length= 32; max_chain= 32}
   let _4 = {good_length= 4; max_lazy= 4; nice_length= 16; max_chain= 16}
   let _5 = {good_length= 8; max_lazy= 16; nice_length= 32; max_chain= 32}
   let _6 = {good_length= 8; max_lazy= 16; nice_length= 128; max_chain= 128}
@@ -2643,6 +2646,7 @@ module Lz77 = struct
   type state = {
       src: src
     ; cfg: configuration
+    ; level: int
     ; mutable i: bigstring
     ; mutable i_pos: int
     ; mutable i_len: int
@@ -2859,6 +2863,8 @@ module Lz77 = struct
     let wsize = 1 lsl s.wbits in
     let wmask = wsize - 1 in
     let more = (wsize * 2) - s.lookahead - s.strstart in
+    let deflate =
+      match s.level with 1 | 2 | 3 -> deflate_fast | _ -> deflate_slow in
     (* max *)
     let more =
       if s.strstart >= wsize + max_dist s then begin
@@ -2871,7 +2877,7 @@ module Lz77 = struct
       else more in
     let rem = i_rem s in
     if rem <= 0 (* if (s->strm->avail_in == 0) break; *) then
-      if rem < 0 then if s.lookahead > 0 then deflate_slow cfg s else trailing s
+      if rem < 0 then if s.lookahead > 0 then deflate cfg s else trailing s
       else refill fill_window s
     else
       try
@@ -2899,12 +2905,55 @@ module Lz77 = struct
           end
         ; if s.lookahead < _min_lookahead && i_rem s >= 0 then
             refill fill_window s
-          else deflate_slow cfg s
-      with Break -> deflate_slow cfg s
+          else deflate cfg s
+      with Break -> deflate cfg s
 
   and enough cfg s =
     if s.lookahead < _min_lookahead then fill_window cfg s
-    else deflate_slow cfg s
+    else
+      match s.level with
+      | 1 | 2 | 3 -> deflate_fast cfg s
+      | _ -> deflate_slow cfg s
+
+  and deflate_fast cfg s =
+    let hash_head = ref 0 in
+    let flush = ref false in
+    if s.lookahead >= _min_match then hash_head := insert_string s s.strstart
+    ; if !hash_head != 0 && s.strstart - !hash_head <= max_dist s then
+        s.match_length <- longest_match cfg s !hash_head
+    ; if s.match_length >= _min_match then begin
+        flush :=
+          emit_match s ~off:(s.strstart - s.match_start) ~len:s.match_length
+        ; s.lookahead <- s.lookahead - s.match_length
+        ; if s.match_length <= cfg.max_lazy && s.lookahead >= _min_match then begin
+            s.match_length <- s.match_length - 1
+            ; while
+                s.strstart <- s.strstart + 1
+                ; hash_head := insert_string s s.strstart
+                ; s.match_length <- s.match_length - 1
+                ; s.match_length != 0
+              do
+                ()
+              done
+            ; s.strstart <- s.strstart + 1
+          end
+          else begin
+            s.strstart <- s.strstart + s.match_length
+            ; s.match_length <- 0
+            ; s.hash <- s.w.!{s.strstart}
+            ; s.hash <- update_hash s.hash s.w.!{s.strstart + 1}
+          end
+      end
+      else begin
+        flush := emit_literal s (unsafe_get_char s.w s.strstart)
+        ; s.lookahead <- s.lookahead - 1
+        ; s.strstart <- s.strstart + 1
+      end
+    ; match !flush with
+      | true ->
+        s.k <- enough
+        ; `Flush
+      | false -> enough cfg s
 
   and deflate_slow cfg s =
     let hash_head = ref 0 in
@@ -3009,7 +3058,10 @@ module Lz77 = struct
     let wsize = 1 lsl wbits in
     let cfg =
       match level with
-      | 0 | 1 | 2 | 3 | 4 -> _4
+      | 0 | 1 -> _1
+      | 2 -> _2
+      | 3 -> _3
+      | 4 -> _4
       | 5 -> _5
       | 6 -> _6
       | 7 -> _7
@@ -3027,6 +3079,7 @@ module Lz77 = struct
     ; i_pos
     ; i_len
     ; cfg
+    ; level
     ; l= make_literals ()
     ; d= make_distances ()
     ; w

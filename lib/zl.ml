@@ -514,26 +514,24 @@ module Def = struct
       | `Manual -> bigstring_empty, 1, 0
       | `Buffer _ | `Channel _ ->
         bigstring_create io_buffer_size, 0, io_buffer_size - 1 in
-    if level < 0 || level > 3 then
-      invalid_arg "Invalid compression level %d (must be in the range 0...3)"
-        level
-    ; {
-        src
-      ; dst
-      ; i
-      ; i_pos
-      ; i_len
-      ; o
-      ; o_pos
-      ; o_len
-      ; level
-      ; e= De.Def.encoder `Manual ~q
-      ; s= De.Lz77.state `Manual ~q ~w
-      ; q
-      ; w
-      ; state= Hd
-      ; k= encode
-      }
+    {
+      src
+    ; dst
+    ; i
+    ; i_pos
+    ; i_len
+    ; o
+    ; o_pos
+    ; o_len
+    ; level=
+        (match level with 0 | 1 -> 0 | 2 | 3 | 4 | 5 -> 1 | 6 -> 2 | _ -> 3)
+    ; e= De.Def.encoder `Manual ~q
+    ; s= De.Lz77.state ~level `Manual ~q ~w
+    ; q
+    ; w
+    ; state= Hd
+    ; k= encode
+    }
 
   let encode e = e.k e
 end
