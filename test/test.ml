@@ -1168,93 +1168,81 @@ let tree_rfc5322_corpus () =
 
 let w0 = Lz77.make_window ~bits:15
 let w1 = make_window ~bits:15
-let s = bigstring_create io_buffer_size
+let t = bigstring_create io_buffer_size
 let o = bigstring_create io_buffer_size
-let q = Queue.create (2 * 2 * 4096)
+let q = Queue.create 0x4000
 let b = Buffer.create 4096
 
 let compress_and_uncompress ic =
-  let state = Lz77.state (`Channel ic) ~w:w0 ~q in
-  let kind = ref Def.Fixed in
+  let state = Lz77.state ~q ~w:w0 (`Channel ic) in
   let encoder = Def.encoder `Manual ~q in
-  let decoder = Inf.decoder `Manual ~w:w1 ~o in
+  let decoder = Inf.decoder `Manual ~o ~w:w1 in
 
-  Buffer.clear b
+  let rec compress () =
+    match De.Lz77.compress state with
+    | `Await -> assert false
+    | `Flush ->
+      let literals = Lz77.literals state in
+      let distances = Lz77.distances state in
+      Fmt.epr "[compress]: `Flush.\n%!"
+      ; encode
+        @@ Def.encode encoder
+             (`Block
+               {
+                 Def.kind=
+                   Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
+               ; last= false
+               })
+    | `End ->
+      Fmt.epr "[compress]: `End.\n%!"
+      ; Queue.push_exn q Queue.eob
+      ; pending @@ Def.encode encoder (`Block {Def.kind= Fixed; last= true})
+  and pending = function
+    | `Partial | `Ok ->
+      let len = bigstring_length t - Def.dst_rem encoder in
+      Fmt.epr "[pending]: `Partial (%d byte(s)).\n%!" len
+      ; Inf.src decoder t 0 len
+      ; decode @@ Inf.decode decoder
+    | `Block -> assert false
+  and encode = function
+    | `Partial ->
+      let len = bigstring_length t - Def.dst_rem encoder in
+      Fmt.epr "[encode]: `Partial (%d byte(s)).\n%!" len
+      ; Inf.src decoder t 0 len
+      ; decode @@ Inf.decode decoder
+    | `Ok ->
+      Fmt.epr "[encode] `Ok.\n%!"
+      ; compress ()
+    | `Block ->
+      Fmt.epr "[encode] `Ok.\n%!"
+      ; compress ()
+  and decode = function
+    | `Await ->
+      Def.dst encoder t 0 (bigstring_length t)
+      ; encode @@ Def.encode encoder `Await
+    | (`Flush | `End) as state ->
+      let len = bigstring_length o - Inf.dst_rem decoder in
+      let str = Bigstringaf.substring o ~off:0 ~len in
+      Fmt.epr "[decode] `Flush | `End (%d byte(s)).\n%!" len
+      ; Buffer.add_string b str
+      ; if state = `Flush then (
+          Inf.flush decoder
+          ; decode @@ Inf.decode decoder)
+        else Fmt.epr "[decode] `End.\n%!"
+    | `Malformed err -> Alcotest.failf "Malformed compressed input: %S" err
+  in
+
+  Def.dst encoder t 0 (bigstring_length t)
+  ; Buffer.clear b
   ; Queue.reset q
-  ; Def.dst encoder s 0 io_buffer_size
+  ; compress ()
 
-  ; let rec partial k = function
-      | `Await -> k @@ Def.encode encoder `Await
-      | `End ->
-        for i = 0 to io_buffer_size - Inf.dst_rem decoder - 1 do
-          Buffer.add_char b (Char.unsafe_chr (unsafe_get_uint8 o i))
-        done
-      | `Flush ->
-        for i = 0 to io_buffer_size - Inf.dst_rem decoder - 1 do
-          Buffer.add_char b (Char.unsafe_chr (unsafe_get_uint8 o i))
-        done
-        ; Inf.flush decoder
-        ; Def.dst encoder s 0 io_buffer_size
-        ; partial k @@ Inf.decode decoder
-      | `Malformed err -> invalid_arg err
-    and compress () =
-      match Lz77.compress state with
-      | `Await -> assert false
-      | `End ->
-        Queue.push_exn q Queue.eob
-        ; pending
-          @@ Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true})
-      | `Flush ->
-        kind :=
-          Def.Dynamic
-            (Def.dynamic_of_frequencies ~literals:(Lz77.literals state)
-               ~distances:(Lz77.distances state))
-        ; encode @@ Def.encode encoder (`Block {Def.kind= !kind; last= false})
-    and encode = function
-      | `Partial ->
-        let len = io_buffer_size - Def.dst_rem encoder in
-        Inf.src decoder s 0 len
-        ; partial encode @@ Inf.decode decoder
-      | `Ok -> compress ()
-      | `Block ->
-        kind :=
-          Def.Dynamic
-            (Def.dynamic_of_frequencies ~literals:(Lz77.literals state)
-               ~distances:(Lz77.distances state))
-        ; encode @@ Def.encode encoder (`Block {Def.kind= !kind; last= false})
-    and pending = function
-      | `Partial ->
-        let len = io_buffer_size - Def.dst_rem encoder in
-        Inf.src decoder s 0 len
-        ; partial pending @@ Inf.decode decoder
-      | `Ok -> last @@ Def.encode encoder `Flush
-      | `Block -> assert false
-    and last = function
-      | `Partial ->
-        let len = io_buffer_size - Def.dst_rem encoder in
-        Inf.src decoder s 0 len
-        ; partial pending @@ Inf.decode decoder
-      | `Ok -> partial pending @@ Inf.decode decoder
-      | `Block -> assert false in
-
-    compress ()
-    ; Stdlib.seek_in ic 0
-    ; let contents = Buffer.contents b in
-
-      let rec slow_compare pos =
-        match input_char ic with
-        | chr ->
-          if pos >= String.length contents then
-            Fmt.invalid_arg "Reach end of contents"
-          ; if contents.[pos] <> chr then
-              Fmt.invalid_arg "Contents differ at %08x\n%!" pos
-          ; slow_compare (succ pos)
-        | exception End_of_file ->
-          if pos <> String.length contents then
-            Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)"
-              (String.length contents) pos in
-
-      slow_compare 0
+  ; Fmt.epr "End of compress/decompress.\n%!"
+  ; Stdlib.seek_in ic 0
+  ; let a0 = Buffer.contents b in
+    let ln = Stdlib.in_channel_length ic in
+    let a1 = really_input_string ic ln in
+    Alcotest.(check string) "contents" a0 a1
 
 let test_corpus filename =
   Alcotest.test_case filename `Slow @@ fun () ->
