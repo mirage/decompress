@@ -2271,10 +2271,12 @@ module Def = struct
         ; e.o_pos <- e.o_pos + 1)
 
     ; if bits + e.bits > 31 then flush (flush_bits ~bits ~hold k) e
-      else if bits > 0 then (
-        e.hold <- ((hold land 0xffff) lsl e.bits) lor e.hold
-        ; e.bits <- e.bits + min bits 16
-        ; flush_bits ~bits:(min 0 (bits - 16)) ~hold:(hold lsr 16) k e)
+      else if bits > 0 then
+        (e.hold <- ((hold land 0xffff) lsl e.bits) lor e.hold
+         ; let len = min bits 16 in
+           e.bits <- e.bits + len
+           ; flush_bits ~bits:(bits - len) ~hold:(hold lsr len) k)
+          e
       else k e
 
   and write e =
