@@ -18,6 +18,7 @@ let random len =
 open De (* au detail *)
 
 let w = make_window ~bits:15
+let l = Lz77.make_window ~bits:15
 let i = bigstring_create io_buffer_size
 let o = bigstring_create io_buffer_size
 let q = Queue.create 4096
@@ -314,8 +315,7 @@ let fuzz2 () =
     ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e"
       (* ~~~~~~~~~~~~~~~~ *)
     ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e"
-      (* ~~~~~~~~~~~~~~~~ *)
-    ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x3a\x2c\x50"
+      (* ~~~~~~~~~~~~~~~~ *); "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x3a\x2c\x50"
       (* ~~~~~~~~:,P *)
     ] in
   Alcotest.test_case "fuzz2" `Quick @@ fun () ->
@@ -365,9 +365,7 @@ let fuzz3 () =
     ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76"
       (* .v.v.v.v.v.v.v.v *)
     ; "\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76\xc8\x76"
-      (* .v.v.v.v.v.v.v.v *)
-    ; "\xc8\x76\xc8\x76"
-      (* .v.v *)
+      (* .v.v.v.v.v.v.v.v *); "\xc8\x76\xc8\x76" (* .v.v *)
     ] in
   Alcotest.test_case "fuzz3" `Quick @@ fun () ->
   let decoder =
@@ -384,9 +382,7 @@ let fuzz4 () =
     ; "\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca"
       (* .~..~..~..~..~.. *)
     ; "\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e"
-      (* ~..~..~..~..~..~ *)
-    ; "\xc8\x76\x75\x75\x75\x75\x75\x75"
-      (* .vuuuuuu *)
+      (* ~..~..~..~..~..~ *); "\xc8\x76\x75\x75\x75\x75\x75\x75" (* .vuuuuuu *)
     ] in
   Alcotest.test_case "fuzz4" `Quick @@ fun () ->
   let decoder =
@@ -399,15 +395,12 @@ let fuzz5 () =
   let input =
     [
       "\x93\x3a\x55\x01\x01\x01\x01\xe6\x01\x01\x01\x01\x01\x01\x01\x01"
-      (* .:U............. *)
-    ; "\x01\x01\x01\x01\x01\x00\x00"
-      (* ....... *)
+      (* .:U............. *); "\x01\x01\x01\x01\x01\x00\x00" (* ....... *)
     ] in
   let expected_output =
     [
       "\x1a\xca\x78\x78\x78\x78\x78\x78\x78\x50\x50\x37\x50\x50\x50\x50"
-      (* ..xxxxxxxPP7PPPP *)
-    ; "\x50\x50\x50\x50\x50\x50\x50\x50\x50"
+      (* ..xxxxxxxPP7PPPP *); "\x50\x50\x50\x50\x50\x50\x50\x50\x50"
       (* PPPPPPPPP *)
     ] in
   Alcotest.test_case "fuzz5" `Quick @@ fun () ->
@@ -419,9 +412,7 @@ let fuzz6 () =
   let expected_output =
     [
       "\x19\x59\x59\x59\x5e\xe3\x59\x5e\xe3\x59\x5e\xe3\x59\x5e\xe3\x59"
-      (* .YYY^.Y^.Y^.Y^.Y *)
-    ; "\x5e\xe3\x33"
-      (* ^.3 *)
+      (* .YYY^.Y^.Y^.Y^.Y *); "\x5e\xe3\x33" (* ^.3 *)
     ] in
   Alcotest.test_case "fuzz6" `Quick @@ fun () ->
   let decoder =
@@ -466,8 +457,7 @@ let fuzz9 () =
       "\x9b\x01\x95\xfc\x51\xd2\xed\xc8\xce\xc8\xff\x80\x00\x00\x7f\xff"
       (* ....Q........... *)
     ; "\x79\x2f\xe9\x51\x88\x7b\xb8\x2f\xef\xa5\x8c\xf8\xf1\xb6\xce\xc8"
-      (* y/.Q.{./........ *)
-    ; "\xb8\xc8\xff\x2f\x00\x7f\x88\x7b\xbc"
+      (* y/.Q.{./........ *); "\xb8\xc8\xff\x2f\x00\x7f\x88\x7b\xbc"
       (* .../...{. *)
     ] in
   let decoder = Inf.decoder (`String (String.concat "" inputs)) ~o ~w in
@@ -488,10 +478,7 @@ let huffman_length_extra () =
       let res =
         encode ~block:(Def.Dynamic dynamic)
           [
-            `Literal '\000'
-          ; `Literal '\000'
-          ; `Copy (1, 258)
-          ; `Copy (1, 256)
+            `Literal '\000'; `Literal '\000'; `Copy (1, 258); `Copy (1, 256)
           ; `End
           ] in
       Alcotest.(check str)
@@ -505,11 +492,8 @@ let fuzz10 () =
   Alcotest.test_case "fuzz10" `Quick @@ fun () ->
   let lst =
     [
-      `Literal (Char.chr 231)
-    ; `Literal (Char.chr 60)
-    ; `Literal (Char.chr 128)
-    ; `Copy (1, 19)
-    ; `End
+      `Literal (Char.chr 231); `Literal (Char.chr 60); `Literal (Char.chr 128)
+    ; `Copy (1, 19); `End
     ] in
   let res = encode_dynamic lst in
   let decoder = Inf.decoder (`String res) ~o ~w in
@@ -536,11 +520,8 @@ let fuzz12 () =
   Alcotest.test_case "fuzz12" `Quick @@ fun () ->
   let lst =
     [
-      `Literal (Char.chr 71)
-    ; `Literal (Char.chr 0)
-    ; `Literal (Char.chr 255)
-    ; `Copy (2, 249)
-    ; `End
+      `Literal (Char.chr 71); `Literal (Char.chr 0); `Literal (Char.chr 255)
+    ; `Copy (2, 249); `End
     ] in
   let res = encode_dynamic lst in
   let decoder = Inf.decoder (`String res) ~o ~w in
@@ -596,8 +577,7 @@ let fuzz14 () =
       "\x0b\xff\x7f\x0c\x0c\x8f\xcd\x0e\x02\x21\x64\x0c\x04\x73\xff\x80"
       (* .........!d..s.. *)
     ; "\x20\x0c\x8f\x1c\x1c\x1c\x1c\x0c\x0c\x0c\x0c\x64\x1c\x7f\x0c\x0c"
-      (*  ..........d.... *)
-    ; "\x8f\xcd\x0e\x02\x21\xff\xff\x80" (* ....!... *)
+      (*  ..........d.... *); "\x8f\xcd\x0e\x02\x21\xff\xff\x80" (* ....!... *)
     ] in
   let input = String.concat "" inputs in
   let decoder = Inf.decoder (`String input) ~o ~w in
@@ -671,13 +651,8 @@ let fuzz16 () =
   Alcotest.test_case "fuzz16" `Quick @@ fun () ->
   let lst =
     [
-      `Literal '@'
-    ; `Copy (1, 212)
-    ; `Copy (129, 258)
-    ; `Copy (7, 131)
-    ; `Copy (527, 208)
-    ; `Copy (129, 258)
-    ; `End
+      `Literal '@'; `Copy (1, 212); `Copy (129, 258); `Copy (7, 131)
+    ; `Copy (527, 208); `Copy (129, 258); `End
     ] in
   let res = encode_dynamic lst in
   Fmt.epr "> %S.\n%!" res
@@ -689,12 +664,8 @@ let fuzz17 () =
   Alcotest.test_case "fuzz17" `Quick @@ fun () ->
   let lst =
     [
-      `Literal (Char.chr 218)
-    ; `Copy (1, 21)
-    ; `Literal (Char.chr 190)
-    ; `Literal (Char.chr 218)
-    ; `Literal (Char.chr 0)
-    ; `End
+      `Literal (Char.chr 218); `Copy (1, 21); `Literal (Char.chr 190)
+    ; `Literal (Char.chr 218); `Literal (Char.chr 0); `End
     ] in
   let res = encode_dynamic lst in
   let decoder = Inf.decoder (`String res) ~o ~w in
@@ -731,8 +702,7 @@ let fuzz18 () =
     ; "\x20\x67\x6e\x60\x5e\x28\x20\x5d\x6e\x0a\x63\x29\x67\x6e\x60\x20"
       (*  gn`^( ]n.c)gn`  *)
     ; "\x67\x6e\x60\x20\x67\x6e\x63\x29\x67\x6e\x60\x20\x67\x73\x60\x69"
-      (* gn` gnc)gn` gs`i *)
-    ; "\x63" (* c *)
+      (* gn` gnc)gn` gs`i *); "\x63" (* c *)
     ] in
   let output = String.concat "" outputs in
   Alcotest.(check str) "result" res output
@@ -755,7 +725,7 @@ let cmds = Alcotest.list cmd
 let lz77_0 () =
   Alcotest.test_case "simple match" `Quick @@ fun () ->
   Queue.reset q
-  ; let state = Lz77.state (`String "aaaaa") ~w ~q in
+  ; let state = Lz77.state (`String "aaaaa") ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -768,7 +738,7 @@ let lz77_0 () =
 let lz77_1 () =
   Alcotest.test_case "no match" `Quick @@ fun () ->
   Queue.reset q
-  ; let state = Lz77.state (`String "abcde") ~w ~q in
+  ; let state = Lz77.state (`String "abcde") ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -810,7 +780,7 @@ let lz77_2 () =
       ; "\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x19\x38\x80" (* ........8. *)
       ] in
     let input = String.concat "" inputs in
-    let state = Lz77.state (`String input) ~w ~q in
+    let state = Lz77.state (`String input) ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -826,7 +796,7 @@ let lz77_3 () =
   ; let inputs =
       ["\xf6\x21\xff\x7f\x00\x9d\x0d\xf6\x21\xff\x7f" (* .!......!.. *)] in
     let input = String.concat "" inputs in
-    let state = Lz77.state (`String input) ~w ~q in
+    let state = Lz77.state (`String input) ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -846,11 +816,10 @@ let lz77_4 () =
       ; "\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53"
         (* SSSSSSSSSSSSSSSS *)
       ; "\x53\x53\x53\x53\x53\x53\x53\x7f\x0e\xff\xe8\x03\x00\x00\x00\xff"
-        (* SSSSSSS......... *)
-      ; "\xff\x57\xff\xe8\x03\x00" (* .W.... *)
+        (* SSSSSSS......... *); "\xff\x57\xff\xe8\x03\x00" (* .W.... *)
       ] in
     let input = String.concat "" inputs in
-    let state = Lz77.state (`String input) ~w ~q in
+    let state = Lz77.state (`String input) ~w:l ~q in
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
@@ -864,13 +833,8 @@ let hang0 () =
   Alcotest.test_case "hang" `Quick @@ fun () ->
   let lst =
     [
-      `Literal '\003'
-    ; `Literal '\012'
-    ; `Copy (1, 247)
-    ; `Literal 'W'
-    ; `Literal '\243'
-    ; `Copy (244, 15)
-    ; `End
+      `Literal '\003'; `Literal '\012'; `Copy (1, 247); `Literal 'W'
+    ; `Literal '\243'; `Copy (244, 15); `End
     ] in
   let res = encode_dynamic lst in
   Fmt.epr "> %S.\n%!" res
@@ -905,11 +869,9 @@ let dynamic_and_fixed () =
         | `Ok -> go r) in
     go
       [
-        `Block {Def.kind= Def.Dynamic dynamic_a; Def.last= false}
-      ; `Flush
+        `Block {Def.kind= Def.Dynamic dynamic_a; Def.last= false}; `Flush
       ; `Fill [`Literal 'b'; `Copy (1, 3); `End]
-      ; `Block {Def.kind= Def.Fixed; Def.last= true}
-      ; `Flush
+      ; `Block {Def.kind= Def.Fixed; Def.last= true}; `Flush
       ]
     ; let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
       let res = unroll_inflate decoder in
@@ -940,10 +902,8 @@ let fixed_and_dynamic () =
         | `Ok -> go r) in
     go
       [
-        `Flush
-      ; `Block {Def.kind= Def.Dynamic dynamic_b; last= true}
-      ; `Fill [`Literal 'b'; `Copy (1, 3); `End]
-      ; `Flush
+        `Flush; `Block {Def.kind= Def.Dynamic dynamic_b; last= true}
+      ; `Fill [`Literal 'b'; `Copy (1, 3); `End]; `Flush
       ]
     ; Fmt.epr "> %S.\n%!" (Buffer.contents res)
     ; let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
@@ -985,8 +945,7 @@ let dynamic_and_dynamic () =
       go
         [
           `Block {Def.kind= Def.Dynamic dynamic_a; Def.last= false}
-        ; `Block {Def.kind= Def.Dynamic dynamic_b; Def.last= true}
-        ; `Flush
+        ; `Block {Def.kind= Def.Dynamic dynamic_b; Def.last= true}; `Flush
         ]
 
       ; Fmt.epr "> %S.\n%!" (Buffer.contents res)
@@ -1030,13 +989,8 @@ let fixed_and_flat () =
   let q =
     Queue.of_list
       [
-        `Literal 'a'
-      ; `Copy (1, 3)
-      ; `End
-      ; `Literal '\xDE'
-      ; `Literal '\xAD'
-      ; `Literal '\xBE'
-      ; `Literal '\xEF'
+        `Literal 'a'; `Copy (1, 3); `End; `Literal '\xDE'; `Literal '\xAD'
+      ; `Literal '\xBE'; `Literal '\xEF'
       ] in
   let b = Buffer.create 16 in
   let encoder = Def.encoder (`Buffer b) ~q in
@@ -1058,13 +1012,8 @@ let flat_and_fixed () =
   let q =
     Queue.of_list
       [
-        `Literal '\xDE'
-      ; `Literal '\xAD'
-      ; `Literal '\xBE'
-      ; `Literal '\xEF'
-      ; `Literal 'a'
-      ; `Copy (1, 3)
-      ; `End
+        `Literal '\xDE'; `Literal '\xAD'; `Literal '\xBE'; `Literal '\xEF'
+      ; `Literal 'a'; `Copy (1, 3); `End
       ] in
   let b = Buffer.create 16 in
   let encoder = Def.encoder (`Buffer b) ~q in
@@ -1112,7 +1061,7 @@ let lz77_corpus_rfc5322 () =
   Alcotest.test_case "rfc5322" `Quick @@ fun () ->
   let ic = open_in "corpus/rfc5322.txt" in
   Queue.reset q
-  ; let state = Lz77.state (`Channel ic) ~w ~q in
+  ; let state = Lz77.state (`Channel ic) ~w:l ~q in
     let res = ref "" in
     let rec go () =
       match Lz77.compress state with
@@ -1176,579 +1125,35 @@ let tree_rfc5322_corpus () =
      This test want to check if we generate the same literals/lengths tree than [zlib]. *)
   let literals =
     [|
-       0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 236
-     ; 0
-     ; 27
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 5446
-     ; 1
-     ; 311
-     ; 1
-     ; 1
-     ; 10
-     ; 1
-     ; 7
-     ; 127
-     ; 128
-     ; 30
-     ; 11
-     ; 273
-     ; 175
-     ; 1180
-     ; 73
-     ; 67
-     ; 111
-     ; 169
-     ; 137
-     ; 60
-     ; 66
-     ; 45
-     ; 26
-     ; 41
-     ; 37
-     ; 57
-     ; 32
-     ; 6
-     ; 44
-     ; 6
-     ; 1
-     ; 7
-     ; 96
-     ; 21
-     ; 115
-     ; 61
-     ; 32
-     ; 127
-     ; 9
-     ; 45
-     ; 108
-     ; 3
-     ; 2
-     ; 66
-     ; 66
-     ; 46
-     ; 81
-     ; 31
-     ; 7
-     ; 104
-     ; 169
-     ; 118
-     ; 60
-     ; 3
-     ; 49
-     ; 1
-     ; 5
-     ; 0
-     ; 54
-     ; 9
-     ; 74
-     ; 1
-     ; 1
-     ; 1
-     ; 2126
-     ; 318
-     ; 1060
-     ; 1119
-     ; 3330
-     ; 666
-     ; 377
-     ; 800
-     ; 2005
-     ; 9
-     ; 81
-     ; 970
-     ; 729
-     ; 1808
-     ; 1802
-     ; 615
-     ; 40
-     ; 1612
-     ; 1991
-     ; 2201
-     ; 537
-     ; 158
-     ; 251
-     ; 127
-     ; 389
-     ; 12
-     ; 1
-     ; 62
-     ; 1
-     ; 1
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 1
-     ; 1594
-     ; 1153
-     ; 698
-     ; 345
-     ; 326
-     ; 229
-     ; 150
-     ; 107
-     ; 172
-     ; 111
-     ; 97
-     ; 23
-     ; 100
-     ; 44
-     ; 24
-     ; 10
-     ; 20
-     ; 14
-     ; 3
-     ; 7
-     ; 17
-     ; 1
-     ; 1
-     ; 1
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 2
-     ; 2
-     ; 2
-     ; 2
-     ; 2
-     ; 2
-     ; 2
-     ; 2
-     ; 3
-     ; 4
-     ; 4
-     ; 4
-     ; 5
-     ; 6
-     ; 7
-     ; 8
-     ; 9
-     ; 10
-     ; 13
-     ; 14
-     ; 14
-     ; 15
-     ; 18
-     ; 18
-     ; 20
-     ; 23
-     ; 27
-     ; 28
-     ; 31
-     ; 35
-     ; 37
-     ; 39
-     ; 47
-     ; 48
-     ; 55
-     ; 57
-     ; 59
-     ; 66
-     ; 73
-     ; 75
-     ; 77
-     ; 80
-     ; 82
-     ; 90
-     ; 95
-     ; 103
-     ; 110
-     ; 115
-     ; 119
-     ; 124
-     ; 128
-     ; 132
-     ; 140
-     ; 144
-     ; 152
-     ; 162
-     ; 180
-     ; 183
-     ; 190
-     ; 196
-     ; 204
-     ; 212
-     ; 219
-     ; 230
-     ; 239
-     ; 241
-     ; 252
-     ; 263
-     ; 278
-     ; 284
-     ; 300
-     ; 311
-     ; 324
-     ; 363
-     ; 384
-     ; 400
-     ; 425
-     ; 444
-     ; 469
-     ; 485
-     ; 515
-     ; 559
-     ; 565
-     ; 591
-     ; 619
-     ; 655
-     ; 711
-     ; 784
-     ; 869
-     ; 954
-     ; 1000
-     ; 1109
-     ; 1145
-     ; 1210
-     ; 1279
-     ; 1366
-     ; 1510
-     ; 1740
-     ; 1922
-     ; 1972
-     ; 2121
-     ; 2298
-     ; 2489
-     ; 2773
-     ; 2936
-     ; 3206
-     ; 3519
-     ; 3702
-     ; 3886
-     ; 4093
-     ; 4787
-     ; 5709
-     ; 6198
-     ; 7221
-     ; 7979
-     ; 9758
-     ; 11907
-     ; 15200
-     ; 21665
-     ; 36865
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
-     ; 0
+       0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 236; 0; 27; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 5446; 1; 311; 1; 1; 10; 1; 7; 127; 128; 30; 11
+     ; 273; 175; 1180; 73; 67; 111; 169; 137; 60; 66; 45; 26; 41; 37; 57; 32; 6
+     ; 44; 6; 1; 7; 96; 21; 115; 61; 32; 127; 9; 45; 108; 3; 2; 66; 66; 46; 81
+     ; 31; 7; 104; 169; 118; 60; 3; 49; 1; 5; 0; 54; 9; 74; 1; 1; 1; 2126; 318
+     ; 1060; 1119; 3330; 666; 377; 800; 2005; 9; 81; 970; 729; 1808; 1802; 615
+     ; 40; 1612; 1991; 2201; 537; 158; 251; 127; 389; 12; 1; 62; 1; 1; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 1; 1594; 1153; 698; 345; 326; 229; 150; 107; 172; 111; 97; 23; 100; 44
+     ; 24; 10; 20; 14; 3; 7; 17; 1; 1; 1; 0; 0; 0; 0; 0; 2; 2; 2; 2; 2; 2; 2; 2
+     ; 3; 4; 4; 4; 5; 6; 7; 8; 9; 10; 13; 14; 14; 15; 18; 18; 20; 23; 27; 28; 31
+     ; 35; 37; 39; 47; 48; 55; 57; 59; 66; 73; 75; 77; 80; 82; 90; 95; 103; 110
+     ; 115; 119; 124; 128; 132; 140; 144; 152; 162; 180; 183; 190; 196; 204; 212
+     ; 219; 230; 239; 241; 252; 263; 278; 284; 300; 311; 324; 363; 384; 400; 425
+     ; 444; 469; 485; 515; 559; 565; 591; 619; 655; 711; 784; 869; 954; 1000
+     ; 1109; 1145; 1210; 1279; 1366; 1510; 1740; 1922; 1972; 2121; 2298; 2489
+     ; 2773; 2936; 3206; 3519; 3702; 3886; 4093; 4787; 5709; 6198; 7221; 7979
+     ; 9758; 11907; 15200; 21665; 36865; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0
+     ; 0; 0; 0; 0
     |] in
   Alcotest.(check int)
     "length of freqs"
@@ -1761,95 +1166,83 @@ let tree_rfc5322_corpus () =
     Alcotest.(check (pair int int)) "literal 6" (10, 0x35f) (len_6, code_6)
     ; Alcotest.(check (pair int int)) "eob" (15, 0x6fff) (len_eob, code_eob)
 
-let w0 = make_window ~bits:15
+let w0 = Lz77.make_window ~bits:15
 let w1 = make_window ~bits:15
-let s = bigstring_create io_buffer_size
+let t = bigstring_create io_buffer_size
 let o = bigstring_create io_buffer_size
-let q = Queue.create (2 * 2 * 4096)
+let q = Queue.create 0x4000
 let b = Buffer.create 4096
 
 let compress_and_uncompress ic =
-  let state = Lz77.state (`Channel ic) ~w:w0 ~q in
-  let kind = ref Def.Fixed in
+  let state = Lz77.state ~q ~w:w0 (`Channel ic) in
   let encoder = Def.encoder `Manual ~q in
-  let decoder = Inf.decoder `Manual ~w:w1 ~o in
+  let decoder = Inf.decoder `Manual ~o ~w:w1 in
 
-  Buffer.clear b
+  let rec compress () =
+    match De.Lz77.compress state with
+    | `Await -> assert false
+    | `Flush ->
+      let literals = Lz77.literals state in
+      let distances = Lz77.distances state in
+      Fmt.epr "[compress]: `Flush.\n%!"
+      ; encode
+        @@ Def.encode encoder
+             (`Block
+               {
+                 Def.kind=
+                   Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
+               ; last= false
+               })
+    | `End ->
+      Fmt.epr "[compress]: `End.\n%!"
+      ; Queue.push_exn q Queue.eob
+      ; pending @@ Def.encode encoder (`Block {Def.kind= Fixed; last= true})
+  and pending = function
+    | `Partial | `Ok ->
+      let len = bigstring_length t - Def.dst_rem encoder in
+      Fmt.epr "[pending]: `Partial (%d byte(s)).\n%!" len
+      ; Inf.src decoder t 0 len
+      ; decode @@ Inf.decode decoder
+    | `Block -> assert false
+  and encode = function
+    | `Partial ->
+      let len = bigstring_length t - Def.dst_rem encoder in
+      Fmt.epr "[encode]: `Partial (%d byte(s)).\n%!" len
+      ; Inf.src decoder t 0 len
+      ; decode @@ Inf.decode decoder
+    | `Ok ->
+      Fmt.epr "[encode] `Ok.\n%!"
+      ; compress ()
+    | `Block ->
+      Fmt.epr "[encode] `Ok.\n%!"
+      ; compress ()
+  and decode = function
+    | `Await ->
+      Def.dst encoder t 0 (bigstring_length t)
+      ; encode @@ Def.encode encoder `Await
+    | (`Flush | `End) as state ->
+      let len = bigstring_length o - Inf.dst_rem decoder in
+      let str = Bigstringaf.substring o ~off:0 ~len in
+      Fmt.epr "[decode] `Flush | `End (%d byte(s)).\n%!" len
+      ; Buffer.add_string b str
+      ; if state = `Flush then (
+          Inf.flush decoder
+          ; decode @@ Inf.decode decoder)
+        else Fmt.epr "[decode] `End.\n%!"
+    | `Malformed err -> Alcotest.failf "Malformed compressed input: %S" err
+  in
+
+  Def.dst encoder t 0 (bigstring_length t)
+  ; Buffer.clear b
   ; Queue.reset q
-  ; Def.dst encoder s 0 io_buffer_size
+  ; compress ()
 
-  ; let rec partial k = function
-      | `Await -> k @@ Def.encode encoder `Await
-      | `End ->
-        for i = 0 to io_buffer_size - Inf.dst_rem decoder - 1 do
-          Buffer.add_char b (Char.unsafe_chr (unsafe_get_uint8 o i))
-        done
-      | `Flush ->
-        for i = 0 to io_buffer_size - Inf.dst_rem decoder - 1 do
-          Buffer.add_char b (Char.unsafe_chr (unsafe_get_uint8 o i))
-        done
-        ; Inf.flush decoder
-        ; Def.dst encoder s 0 io_buffer_size
-        ; partial k @@ Inf.decode decoder
-      | `Malformed err -> invalid_arg err
-    and compress () =
-      match Lz77.compress state with
-      | `Await -> assert false
-      | `End ->
-        Queue.push_exn q Queue.eob
-        ; pending
-          @@ Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true})
-      | `Flush ->
-        kind :=
-          Def.Dynamic
-            (Def.dynamic_of_frequencies ~literals:(Lz77.literals state)
-               ~distances:(Lz77.distances state))
-        ; encode @@ Def.encode encoder (`Block {Def.kind= !kind; last= false})
-    and encode = function
-      | `Partial ->
-        let len = io_buffer_size - Def.dst_rem encoder in
-        Inf.src decoder s 0 len
-        ; partial encode @@ Inf.decode decoder
-      | `Ok -> compress ()
-      | `Block ->
-        kind :=
-          Def.Dynamic
-            (Def.dynamic_of_frequencies ~literals:(Lz77.literals state)
-               ~distances:(Lz77.distances state))
-        ; encode @@ Def.encode encoder (`Block {Def.kind= !kind; last= false})
-    and pending = function
-      | `Partial ->
-        let len = io_buffer_size - Def.dst_rem encoder in
-        Inf.src decoder s 0 len
-        ; partial pending @@ Inf.decode decoder
-      | `Ok -> last @@ Def.encode encoder `Flush
-      | `Block -> assert false
-    and last = function
-      | `Partial ->
-        let len = io_buffer_size - Def.dst_rem encoder in
-        Inf.src decoder s 0 len
-        ; partial pending @@ Inf.decode decoder
-      | `Ok -> partial pending @@ Inf.decode decoder
-      | `Block -> assert false in
-
-    compress ()
-    ; Stdlib.seek_in ic 0
-    ; let contents = Buffer.contents b in
-
-      let rec slow_compare pos =
-        match input_char ic with
-        | chr ->
-          if pos >= String.length contents then
-            Fmt.invalid_arg "Reach end of contents"
-          ; if contents.[pos] <> chr then
-              Fmt.invalid_arg "Contents differ at %08x\n%!" pos
-          ; slow_compare (succ pos)
-        | exception End_of_file ->
-          if pos <> String.length contents then
-            Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)"
-              (String.length contents) pos in
-
-      slow_compare 0
+  ; Fmt.epr "End of compress/decompress.\n%!"
+  ; Stdlib.seek_in ic 0
+  ; let a0 = Buffer.contents b in
+    let ln = Stdlib.in_channel_length ic in
+    let a1 = really_input_string ic ln in
+    Alcotest.(check string) "contents" a0 a1
 
 let test_corpus filename =
   Alcotest.test_case filename `Slow @@ fun () ->
@@ -1861,7 +1254,7 @@ let gzip_compress_and_uncompress ~filename ic =
   ; let os = bigstring_create io_buffer_size in
     let bf = Buffer.create 4096 in
     let encoder =
-      Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l Gz.Unix ~q ~w
+      Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l Gz.Unix ~q ~w:l
         ~level:0 in
     let decoder = Gz.Inf.decoder `Manual ~o in
 
@@ -1920,7 +1313,7 @@ let gzip_compress_and_uncompress ~filename ic =
 
 let zlib_compress_and_uncompress ic =
   De.Queue.reset q
-  ; let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w ~level:0 in
+  ; let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w:l ~level:0 in
     let decoder =
       Zl.Inf.decoder `Manual ~o ~allocate:(fun bits -> De.make_window ~bits)
     in
@@ -1989,8 +1382,9 @@ let git_object () =
   Alcotest.test_case "git object" `Quick @@ fun () ->
   let inputs =
     [
-      "\x78\x01\x01\x1e\x00\xe1\xff"
-    ; "\x9d\x02\x9d\x02\x90\xad\x14\x72\xb9\xb4\x44\x59\x5d\x21\x05\xb7\x34\x4f\x64\xe9\xa8\x5a\x3e\xd9\x91\x1f\x44\x91\xc1\x5c\xbd\xe5\x0c\xd1"
+      "\x78\x01\x01\x1e\x00\xe1\xff"; "\x9d\x02\x9d\x02\x90\xad\x14"
+    ; "\x72\xb9\xb4\x44\x59\x5d\x21"; "\x05\xb7\x34\x4f\x64\xe9\xa8"
+    ; "\x5a\x3e\xd9\x91\x1f\x44\x91"; "\xc1\x5c\xbd\xe5\x0c\xd1"
     ] in
   let decoder =
     Zl.Inf.decoder (`String (String.concat "" inputs)) ~o ~allocate:(fun _ -> w)
@@ -2002,10 +1396,12 @@ let git_object () =
     | `Malformed err -> failwith err
     | `End _ -> () in
   go decoder
-  ; let[@warning "-8"] [i0; i1] =
+  ; let[@warning "-8"] (i0 :: i1) = inputs in
+    let i1 = String.concat "" i1 in
+    let[@warning "-8"] [i0; i1] =
       List.map
         (fun x -> Bigstringaf.of_string ~off:0 ~len:(String.length x) x)
-        inputs in
+        [i0; i1] in
     let decoder = Zl.Inf.decoder `Manual ~o ~allocate:(fun _ -> w) in
     let decoder = Zl.Inf.src decoder i0 0 (Bigstringaf.length i0) in
     let rec go_i0 decoder =
@@ -2050,7 +1446,7 @@ let higher_zlib input =
   Queue.reset q
   ; let refill = emitter_from_string input in
     let flush, contents = producer_to_string () in
-    Zl.Higher.compress ~level:0 ~w ~q ~refill ~flush i o
+    Zl.Higher.compress ~level:0 ~w:l ~q ~refill ~flush i o
     ; Fmt.epr "%S\n%!" (contents ())
     ; let refill = emitter_from_string (contents ()) in
       let flush, contents = producer_to_string () in
@@ -2068,7 +1464,7 @@ let test_multiple_flush_zlib () =
   Queue.reset q
   ; let refill = emitter_from_string "foo" in
     let flush, contents = producer_to_string () in
-    Zl.Higher.compress ~level:0 ~w ~q ~refill ~flush i o
+    Zl.Higher.compress ~level:0 ~w:l ~q ~refill ~flush i o
     ; let input = contents () in
       let decoder =
         Zl.Inf.decoder (`String input) ~o ~allocate:(fun bits ->
@@ -2098,7 +1494,7 @@ let test_empty_with_zlib () =
   Alcotest.test_case "empty zlib" `Quick @@ fun () ->
   Queue.reset q
   ; let buf = Buffer.create 16 in
-    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w ~level:3 in
+    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w:l ~level:3 in
     let go encoder =
       match Zl.Def.encode encoder with
       | `Flush _ | `Await _ ->
@@ -2124,7 +1520,7 @@ let test_empty_with_zlib_and_small_output () =
   Queue.reset q
   ; let o = bigstring_create 4 in
     let buf = Buffer.create 16 in
-    let encoder = Zl.Def.encoder (`String "") `Manual ~q ~w ~level:3 in
+    let encoder = Zl.Def.encoder (`String "") `Manual ~q ~w:l ~level:3 in
     let encoder = Zl.Def.dst encoder o 0 4 in
     let rec go encoder =
       match Zl.Def.encode encoder with
@@ -2159,7 +1555,7 @@ let test_empty_with_zlib_byte_per_byte () =
   Alcotest.test_case "empty zlib (byte per byte)" `Quick @@ fun () ->
   Queue.reset q
   ; let buf = Buffer.create 16 in
-    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w ~level:3 in
+    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w:l ~level:3 in
     let go encoder =
       match Zl.Def.encode encoder with
       | `Flush _ | `Await _ ->
@@ -2291,8 +1687,8 @@ let test_generate_empty_gzip () =
   Queue.reset q
   ; let buf = Buffer.create 16 in
     let encoder =
-      Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l Gz.Unix ~q ~w ~level:3
-    in
+      Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l Gz.Unix ~q ~w:l
+        ~level:3 in
     let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2317,7 +1713,7 @@ let test_generate_empty_gzip_with_name () =
   ; let buf = Buffer.create 16 in
     let encoder =
       Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l
-        Gz.Unix ~q ~w ~level:0 in
+        Gz.Unix ~q ~w:l ~level:0 in
     let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2344,7 +1740,7 @@ let test_generate_foo_gzip () =
   ; let buf = Buffer.create 16 in
     let encoder =
       Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l
-        Gz.Unix ~q ~w ~level:0 in
+        Gz.Unix ~q ~w:l ~level:0 in
     let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2373,7 +1769,7 @@ let test_with_camlzip () =
   let oc = open_out "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo") (`Channel oc) ~filename:"foo.gz" ~mtime:0l
-      Gz.Unix ~q ~w ~level:0 in
+      Gz.Unix ~q ~w:l ~level:0 in
   let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2391,7 +1787,7 @@ let test_gzip_hcrc () =
   let oc = open_out "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo & bar") (`Channel oc) ~filename:"foo.gz"
-      ~mtime:0l Gz.Unix ~hcrc:true ~q ~w ~level:0 in
+      ~mtime:0l Gz.Unix ~hcrc:true ~q ~w:l ~level:0 in
   let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2428,12 +1824,9 @@ let test_invalid_hcrc () =
   Alcotest.test_case "invalid header crc" `Quick @@ fun () ->
   let inputs =
     [
-      "\x1f\x8b\x08\x0a\x00\x00\x00\x00\x02\x03\x66\x6f\x6f\x2e\x67\x7a"
-    ; "\x00"
-    ; "\x4b\xcb\x71\xde"
-    ; (* HCRC *)
-      "\xcf\x57\x50\x53\x48\x4a\x2c\x02\x00\x8f\x47"
-    ; "\xe4\xdd\x09\x00\x00\x00"
+      "\x1f\x8b\x08\x0a\x00\x00\x00\x00\x02\x03\x66\x6f\x6f\x2e\x67\x7a"; "\x00"
+    ; "\x4b\xcb\x71\xde"; (* HCRC *)
+      "\xcf\x57\x50\x53\x48\x4a\x2c\x02\x00\x8f\x47"; "\xe4\xdd\x09\x00\x00\x00"
     ] in
   let decoder = Gz.Inf.decoder (`String (String.concat "" inputs)) ~o in
   match Gz.Inf.decode decoder with
@@ -2451,8 +1844,8 @@ let test_gzip_os v_os =
   let input = random 256 in
   let buf = Buffer.create 16 in
   let encoder =
-    Gz.Def.encoder (`String input) (`Buffer buf) ~mtime:0l v_os ~hcrc:true ~q ~w
-      ~level:0 in
+    Gz.Def.encoder (`String input) (`Buffer buf) ~mtime:0l v_os ~hcrc:true ~q
+      ~w:l ~level:0 in
   let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -2481,9 +1874,7 @@ let test_gzip_extra () =
   Alcotest.test_case "GZip with extra" `Quick @@ fun () ->
   let inputs =
     [
-      "\x1f\x8b\x08\x0c\x63\xcb\x5f\x5e\x00\x03"
-    ; "\x00\x0a"
-    ; "lx\x00\x06ubuntu"
+      "\x1f\x8b\x08\x0c\x63\xcb\x5f\x5e\x00\x03"; "\x00\x0a"; "lx\x00\x06ubuntu"
     ; "\x66\x6f\x6f\x2e\x74\x78"
     ; "\x74\x00\x4b\xcb\xcf\xe7\x02\x00\xa8\x65\x32\x7e\x04\x00\x00\x00"
     ] in
@@ -2596,173 +1987,84 @@ let () =
     [
       ( "invalids"
       , [
-          invalid_complement_of_length ()
-        ; invalid_kind_of_block ()
-        ; invalid_code_lengths ()
-        ; invalid_bit_length_repeat ()
-        ; invalid_codes ()
-        ; invalid_lengths ()
-        ; invalid_distances ()
-        ; too_many_length_or_distance_symbols ()
-        ; invalid_distance_code ()
-        ; invalid_distance_too_far_back ()
-        ; invalid_access ()
+          invalid_complement_of_length (); invalid_kind_of_block ()
+        ; invalid_code_lengths (); invalid_bit_length_repeat ()
+        ; invalid_codes (); invalid_lengths (); invalid_distances ()
+        ; too_many_length_or_distance_symbols (); invalid_distance_code ()
+        ; invalid_distance_too_far_back (); invalid_access ()
         ] )
     ; ( "valids"
       , [
-          fixed ()
-        ; stored ()
-        ; length_extra ()
-        ; long_distance_and_extra ()
-        ; window_end ()
-        ; huffman_length_extra ()
-        ; dynamic_and_fixed ()
-        ; fixed_and_dynamic ()
-        ; dynamic_and_dynamic ()
-        ; flat_of_string ()
-        ; flat_block ()
-        ; flat ()
-        ; max_flat ()
-        ; fixed_and_flat ()
+          fixed (); stored (); length_extra (); long_distance_and_extra ()
+        ; window_end (); huffman_length_extra (); dynamic_and_fixed ()
+        ; fixed_and_dynamic (); dynamic_and_dynamic (); flat_of_string ()
+        ; flat_block (); flat (); max_flat (); fixed_and_flat ()
         ; flat_and_fixed ()
         ] )
     ; ( "fuzz"
       , [
-          fuzz0 ()
-        ; fuzz1 ()
-        ; fuzz2 ()
-        ; fuzz3 ()
-        ; fuzz4 ()
-        ; fuzz5 ()
-        ; fuzz6 ()
-        ; fuzz7 ()
-        ; fuzz8 ()
-        ; fuzz9 ()
-        ; fuzz10 ()
-        ; fuzz11 ()
-        ; fuzz12 ()
-        ; fuzz13 ()
-        ; fuzz14 ()
-        ; fuzz15 ()
-        ; fuzz16 ()
-        ; fuzz17 ()
-        ; fuzz18 ()
-        ] )
-    ; "huffman", [tree_0 (); tree_rfc5322_corpus ()]
+          fuzz0 (); fuzz1 (); fuzz2 (); fuzz3 (); fuzz4 (); fuzz5 (); fuzz6 ()
+        ; fuzz7 (); fuzz8 (); fuzz9 (); fuzz10 (); fuzz11 (); fuzz12 ()
+        ; fuzz13 (); fuzz14 (); fuzz15 (); fuzz16 (); fuzz17 (); fuzz18 ()
+        ] ); "huffman", [tree_0 (); tree_rfc5322_corpus ()]
     ; ( "lz77"
       , [
-          lz77_0 ()
-        ; lz77_1 ()
-        ; lz77_2 ()
-        ; lz77_3 ()
-        ; lz77_4 ()
+          lz77_0 (); lz77_1 (); lz77_2 (); lz77_3 (); lz77_4 ()
         ; lz77_corpus_rfc5322 ()
         ] )
     ; ( "calgary"
       , [
-          test_corpus "bib"
-        ; test_corpus "rfc5322.txt"
-        ; test_corpus "book1"
-        ; test_corpus "book2"
-        ; test_corpus "geo"
-        ; test_corpus "news"
-        ; test_corpus "obj1"
-        ; test_corpus "obj2"
-        ; test_corpus "paper1"
-        ; test_corpus "paper2"
-        ; test_corpus "pic"
-        ; test_corpus "progc"
-        ; test_corpus "progl"
-        ; test_corpus "progp"
-        ; test_corpus "trans"
+          test_corpus "bib"; test_corpus "rfc5322.txt"; test_corpus "book1"
+        ; test_corpus "book2"; test_corpus "geo"; test_corpus "news"
+        ; test_corpus "obj1"; test_corpus "obj2"; test_corpus "paper1"
+        ; test_corpus "paper2"; test_corpus "pic"; test_corpus "progc"
+        ; test_corpus "progl"; test_corpus "progp"; test_corpus "trans"
         ] )
     ; ( "zlib"
       , [
-          test_empty_with_zlib ()
-        ; test_empty_with_zlib_and_small_output ()
-        ; test_empty_with_zlib_byte_per_byte ()
-        ; test_corpus_with_zlib "bib"
-        ; test_corpus_with_zlib "book1"
-        ; test_corpus_with_zlib "book2"
-        ; test_corpus_with_zlib "geo"
-        ; test_corpus_with_zlib "news"
-        ; test_corpus_with_zlib "obj1"
-        ; test_corpus_with_zlib "obj2"
-        ; test_corpus_with_zlib "paper1"
-        ; test_corpus_with_zlib "paper2"
-        ; test_corpus_with_zlib "pic"
-        ; test_corpus_with_zlib "progc"
-        ; test_corpus_with_zlib "progl"
-        ; test_corpus_with_zlib "progp"
-        ; test_corpus_with_zlib "trans"
-        ; test_multiple_flush_zlib ()
+          test_empty_with_zlib (); test_empty_with_zlib_and_small_output ()
+        ; test_empty_with_zlib_byte_per_byte (); test_corpus_with_zlib "bib"
+        ; test_corpus_with_zlib "book1"; test_corpus_with_zlib "book2"
+        ; test_corpus_with_zlib "geo"; test_corpus_with_zlib "news"
+        ; test_corpus_with_zlib "obj1"; test_corpus_with_zlib "obj2"
+        ; test_corpus_with_zlib "paper1"; test_corpus_with_zlib "paper2"
+        ; test_corpus_with_zlib "pic"; test_corpus_with_zlib "progc"
+        ; test_corpus_with_zlib "progl"; test_corpus_with_zlib "progp"
+        ; test_corpus_with_zlib "trans"; test_multiple_flush_zlib ()
         ] )
     ; ( "gzip"
       , [
-          test_empty_gzip ()
-        ; test_empty_gzip_with_name ()
-        ; test_foo_gzip ()
-        ; test_multiple_flush_gzip ()
-        ; test_generate_empty_gzip ()
-        ; test_generate_empty_gzip_with_name ()
-        ; test_generate_foo_gzip ()
-        ; test_corpus_with_gzip "bib"
-        ; test_corpus_with_gzip "book1"
-        ; test_corpus_with_gzip "book2"
-        ; test_corpus_with_gzip "geo"
-        ; test_corpus_with_gzip "news"
-        ; test_corpus_with_gzip "obj1"
-        ; test_corpus_with_gzip "obj2"
-        ; test_corpus_with_gzip "paper1"
-        ; test_corpus_with_gzip "paper2"
-        ; test_corpus_with_gzip "pic"
-        ; test_corpus_with_gzip "progc"
-        ; test_corpus_with_gzip "progl"
-        ; test_corpus_with_gzip "progp"
-        ; test_corpus_with_gzip "trans"
-        ; test_with_camlzip ()
-        ; test_gzip_hcrc ()
-        ; test_invalid_hcrc ()
+          test_empty_gzip (); test_empty_gzip_with_name (); test_foo_gzip ()
+        ; test_multiple_flush_gzip (); test_generate_empty_gzip ()
+        ; test_generate_empty_gzip_with_name (); test_generate_foo_gzip ()
+        ; test_corpus_with_gzip "bib"; test_corpus_with_gzip "book1"
+        ; test_corpus_with_gzip "book2"; test_corpus_with_gzip "geo"
+        ; test_corpus_with_gzip "news"; test_corpus_with_gzip "obj1"
+        ; test_corpus_with_gzip "obj2"; test_corpus_with_gzip "paper1"
+        ; test_corpus_with_gzip "paper2"; test_corpus_with_gzip "pic"
+        ; test_corpus_with_gzip "progc"; test_corpus_with_gzip "progl"
+        ; test_corpus_with_gzip "progp"; test_corpus_with_gzip "trans"
+        ; test_with_camlzip (); test_gzip_hcrc (); test_invalid_hcrc ()
         ; test_gzip_extra ()
         ] )
     ; ( "gzip with os"
       , [
-          test_gzip_os Gz.FAT
-        ; test_gzip_os Gz.Amiga
-        ; test_gzip_os Gz.VMS
-        ; test_gzip_os Gz.Unix
-        ; test_gzip_os Gz.VM
-        ; test_gzip_os Gz.Atari
-        ; test_gzip_os Gz.HPFS
-        ; test_gzip_os Gz.Macintosh
-        ; test_gzip_os Gz.Z
-        ; test_gzip_os Gz.CPM
-        ; test_gzip_os Gz.TOPS20
-        ; test_gzip_os Gz.NTFS
-        ; test_gzip_os Gz.QDOS
-        ; test_gzip_os Gz.Acorn
-        ; test_gzip_os Gz.Unknown
+          test_gzip_os Gz.FAT; test_gzip_os Gz.Amiga; test_gzip_os Gz.VMS
+        ; test_gzip_os Gz.Unix; test_gzip_os Gz.VM; test_gzip_os Gz.Atari
+        ; test_gzip_os Gz.HPFS; test_gzip_os Gz.Macintosh; test_gzip_os Gz.Z
+        ; test_gzip_os Gz.CPM; test_gzip_os Gz.TOPS20; test_gzip_os Gz.NTFS
+        ; test_gzip_os Gz.QDOS; test_gzip_os Gz.Acorn; test_gzip_os Gz.Unknown
         ] )
     ; ( "lzo"
       , [
-          test_lzo_0 ()
-        ; test_lzo_1 ()
-        ; test_corpus_with_lzo "obj1"
-        ; test_corpus_with_lzo "obj2"
-        ; test_corpus_with_lzo "geo"
-        ; test_corpus_with_lzo "news"
-        ; test_corpus_with_lzo "pic"
-        ; test_corpus_with_lzo "progc"
-        ; test_corpus_with_lzo "progl"
-        ; test_corpus_with_lzo "progp"
-        ; test_corpus_with_lzo "trans"
-        ; test_corpus_with_lzo "paper1"
-        ; test_corpus_with_lzo "paper2"
-        ; test_corpus_with_lzo "book1"
-        ; test_corpus_with_lzo "book2"
-        ] )
-    ; "hang", [hang0 ()]
-    ; "git", [git_object ()]
+          test_lzo_0 (); test_lzo_1 (); test_corpus_with_lzo "obj1"
+        ; test_corpus_with_lzo "obj2"; test_corpus_with_lzo "geo"
+        ; test_corpus_with_lzo "news"; test_corpus_with_lzo "pic"
+        ; test_corpus_with_lzo "progc"; test_corpus_with_lzo "progl"
+        ; test_corpus_with_lzo "progp"; test_corpus_with_lzo "trans"
+        ; test_corpus_with_lzo "paper1"; test_corpus_with_lzo "paper2"
+        ; test_corpus_with_lzo "book1"; test_corpus_with_lzo "book2"
+        ] ); "hang", [hang0 ()]; "git", [git_object ()]
     ; ( "higher"
       , [higher_zlib0 (); higher_zlib1 (); higher_zlib2 (); higher_zlib3 ()] )
     ]

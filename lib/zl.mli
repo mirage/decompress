@@ -138,8 +138,15 @@ module Def : sig
 
   type ret = [ `Await of encoder | `End of encoder | `Flush of encoder ]
 
-  val encoder : src -> dst -> q:De.Queue.t -> w:window -> level:int -> encoder
-  (** [encoder src dst ~q ~w ~level] is an encoder that inputs from [src] and
+  val encoder :
+       ?dynamic:bool
+    -> q:De.Queue.t
+    -> w:De.Lz77.window
+    -> level:int
+    -> src
+    -> dst
+    -> encoder
+  (** [encoder ~q ~w ~level src dst] is an encoder that inputs from [src] and
      that outputs to [dst].
 
       {b Internal queue.}
@@ -201,7 +208,8 @@ end
 module Higher : sig
   val compress :
        ?level:int
-    -> w:window
+    -> ?dynamic:bool
+    -> w:De.Lz77.window
     -> q:De.Queue.t
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)

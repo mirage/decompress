@@ -388,7 +388,11 @@ module Lz77 : sig
       {- [`End] if [s] compressed all input. Given shared-queue [q] is possibly
      not empty.}} *)
 
-  val state : src -> w:window -> q:Queue.t -> state
+  type window
+
+  val make_window : bits:int -> window
+
+  val state : ?level:int -> q:Queue.t -> w:window -> src -> state
   (** [state src ~w ~q] is an state that inputs from [src] and that outputs to [q].
 
       {b Window.}

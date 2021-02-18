@@ -376,6 +376,7 @@ module Def = struct
       src: src
     ; dst: dst
     ; level: int
+    ; dynamic: bool
     ; i: bigstring
     ; i_pos: int
     ; i_len: int
@@ -385,7 +386,7 @@ module Def = struct
     ; q: De.Queue.t
     ; s: De.Lz77.state
     ; e: De.Def.encoder
-    ; w: De.window
+    ; w: De.Lz77.window
     ; state: state
     ; k: encoder -> [ `Await of encoder | `Flush of encoder | `End of encoder ]
   }
@@ -447,7 +448,7 @@ module Def = struct
     if o_rem e >= 4 then k e else flush checksum e
 
   let make_block ?(last = false) e =
-    if last = false then
+    if last = false && e.dynamic then
       let literals = De.Lz77.literals e.s in
       let distances = De.Lz77.distances e.s in
       let dynamic = De.Def.dynamic_of_frequencies ~literals ~distances in
@@ -458,7 +459,8 @@ module Def = struct
     match e.state with
     | Hd ->
       let k e =
-        let header = (_deflated + ((De.window_bits e.w - 8) lsl 4)) lsl 8 in
+        let window_bits = 15 in
+        let header = (_deflated + ((window_bits - 8) lsl 4)) lsl 8 in
         let header = header lor (e.level lsl 6) in
         let header = header + (31 - (header mod 31)) in
         unsafe_set_uint16_be e.o e.o_pos header
@@ -502,7 +504,7 @@ module Def = struct
   let src_rem = i_rem
   let dst_rem = o_rem
 
-  let encoder src dst ~q ~w ~level =
+  let encoder ?(dynamic = true) ~q ~w ~level src dst =
     let i, i_pos, i_len =
       match src with
       | `Manual -> bigstring_empty, 1, 0
@@ -513,33 +515,32 @@ module Def = struct
       | `Manual -> bigstring_empty, 1, 0
       | `Buffer _ | `Channel _ ->
         bigstring_create io_buffer_size, 0, io_buffer_size - 1 in
-    if level < 0 || level > 3 then
-      invalid_arg "Invalid compression level %d (must be in the range 0...3)"
-        level
-    ; {
-        src
-      ; dst
-      ; i
-      ; i_pos
-      ; i_len
-      ; o
-      ; o_pos
-      ; o_len
-      ; level
-      ; e= De.Def.encoder `Manual ~q
-      ; s= De.Lz77.state `Manual ~q ~w
-      ; q
-      ; w
-      ; state= Hd
-      ; k= encode
-      }
+    {
+      src
+    ; dst
+    ; i
+    ; i_pos
+    ; i_len
+    ; o
+    ; o_pos
+    ; o_len
+    ; level=
+        (match level with 0 | 1 -> 0 | 2 | 3 | 4 | 5 -> 1 | 6 -> 2 | _ -> 3)
+    ; dynamic
+    ; e= De.Def.encoder `Manual ~q
+    ; s= De.Lz77.state ~level `Manual ~q ~w
+    ; q
+    ; w
+    ; state= Hd
+    ; k= encode
+    }
 
   let encode e = e.k e
 end
 
 module Higher = struct
-  let compress ?(level = 0) ~w ~q ~refill ~flush i o =
-    let encoder = Def.encoder `Manual `Manual ~q ~w ~level in
+  let compress ?(level = 6) ?dynamic ~w ~q ~refill ~flush i o =
+    let encoder = Def.encoder `Manual `Manual ?dynamic ~q ~w ~level in
     let rec go encoder =
       match Def.encode encoder with
       | `Await encoder ->

@@ -6,6 +6,13 @@
  (libraries checkseum bigarray-compat))
 
 (library
+ (name lz)
+ (public_name decompress.lz)
+ (modules lz)
+ (ocamlopt_flags -O3 -unbox-closures -unbox-closures-factor 20)
+ (libraries de))
+
+(library
  (name rfc1951)
  (public_name rfc1951)
  (modules rfc1951)

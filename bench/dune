@@ -30,3 +30,22 @@
   (chdir
    %{workspace_root}
    (run %{run} -o %{targets}))))
+
+(library
+ (name lz_landmarks)
+ (optional)
+ (modules lz_landmarks)
+ (libraries landmarks de)
+ (preprocess
+  (pps landmarks.ppx --auto)))
+
+(rule
+ (copy ../lib/lz.ml lz_landmarks.ml))
+
+(rule
+ (copy ../lib/lz.mli lz_landmarks.mli))
+
+(executable
+ (name lzld)
+ (modules lzld)
+ (libraries lz_landmarks))
