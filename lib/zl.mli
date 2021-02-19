@@ -168,7 +168,7 @@ module Def : sig
       {b Level.}
 
       Current implementation of ZLIB does not handle any compression level.
-     However, the client must give a level between 0 and 3, inclusively.
+     However, the client must give a level between 0 and 9, inclusively.
      Otherwise, we raise an [Invalid_argument]. *)
 
   val src_rem : encoder -> int
