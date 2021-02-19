@@ -81,31 +81,23 @@ let deflate_with_level ~level filename =
   ; compress ()
   ; compare_files filename (filename ^ ".o")
 
+let corpus =
+  [
+    "corpus/bib"; "corpus/book1"; "corpus/book2"; "corpus/geo"; "corpus/news"
+  ; "corpus/obj1"; "corpus/obj2"; "corpus/paper1"; "corpus/paper2"; "corpus/pic"
+  ; "corpus/progc"; "corpus/progl"; "corpus/progp"; "corpus/trans"
+  ]
+
 let () =
   Alcotest.run "lz"
     [
-      ( "6"
-      , [
-          deflate_with_level ~level:6 "corpus/pic"
-        ; deflate_with_level ~level:6 "corpus/book2"
-        ; deflate_with_level ~level:6 "corpus/news"
-        ] )
-    ; ( "4"
-      , [
-          deflate_with_level ~level:4 "corpus/pic"
-        ; deflate_with_level ~level:4 "corpus/book2"
-        ; deflate_with_level ~level:4 "corpus/news"
-        ] )
-    ; ( "9"
-      , [
-          deflate_with_level ~level:9 "corpus/pic"
-        ; deflate_with_level ~level:9 "corpus/book2"
-        ; deflate_with_level ~level:9 "corpus/news"
-        ] )
-    ; ( "1"
-      , [
-          deflate_with_level ~level:1 "corpus/pic"
-        ; deflate_with_level ~level:1 "corpus/book2"
-        ; deflate_with_level ~level:1 "corpus/news"
-        ] )
+      "1", List.map (deflate_with_level ~level:1) corpus
+    ; "2", List.map (deflate_with_level ~level:2) corpus
+    ; "3", List.map (deflate_with_level ~level:3) corpus
+    ; "4", List.map (deflate_with_level ~level:4) corpus
+    ; "5", List.map (deflate_with_level ~level:5) corpus
+    ; "6", List.map (deflate_with_level ~level:6) corpus
+    ; "7", List.map (deflate_with_level ~level:7) corpus
+    ; "8", List.map (deflate_with_level ~level:8) corpus
+    ; "9", List.map (deflate_with_level ~level:9) corpus
     ]
