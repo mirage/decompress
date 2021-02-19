@@ -885,35 +885,34 @@ module Def = struct
         , Checkseum.Crc32.digest_string x 0 (String.length x)
             Checkseum.Crc32.default )
       | `Manual | `Channel _ -> Optint.zero, Checkseum.Crc32.default in
-    if level < 0 || level > 3 then
-      invalid_arg "Invalid compression level %d (must be in the range 0...3)"
-        level
-    ; let xfl = match level with 0 | 1 -> 2 | 2 | 3 -> 4 | _ -> assert false in
-      let flg = flg ~ascii ~hcrc ~extra:None ~filename ~comment in
-      {
-        src
-      ; dst
-      ; i
-      ; i_pos
-      ; i_len
-      ; o
-      ; o_pos
-      ; o_len
-      ; rd
-      ; crc
-      ; e= De.Def.encoder `Manual ~q
-      ; s= De.Lz77.state `Manual ~q ~w
-      ; q
-      ; w
-      ; state= Hd
-      ; xfl
-      ; flg
-      ; mtime
-      ; os= os_to_int os
-      ; fname= filename
-      ; fcomment= comment
-      ; k= encode
-      }
+    let xfl =
+      match level with 0 | 1 -> 0 | 2 | 3 | 4 | 5 | 6 | 7 | 8 -> 0 | _ -> 2
+    in
+    let flg = flg ~ascii ~hcrc ~extra:None ~filename ~comment in
+    {
+      src
+    ; dst
+    ; i
+    ; i_pos
+    ; i_len
+    ; o
+    ; o_pos
+    ; o_len
+    ; rd
+    ; crc
+    ; e= De.Def.encoder `Manual ~q
+    ; s= De.Lz77.state ~level `Manual ~q ~w
+    ; q
+    ; w
+    ; state= Hd
+    ; xfl
+    ; flg
+    ; mtime
+    ; os= os_to_int os
+    ; fname= filename
+    ; fcomment= comment
+    ; k= encode
+    }
 
   let encode e = e.k e
 end
