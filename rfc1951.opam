@@ -22,4 +22,6 @@ depends: [
   "decompress" {= version}
   "bigarray-compat"
   "checkseum"
+  "optint"
+  "ctypes"     {with-test & >= "0.18.0"}
 ]

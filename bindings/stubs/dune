@@ -1,0 +1,31 @@
+(rule
+ (targets decompress_bindings.ml gen_decompress.c decompress.h)
+ (action
+  (run ../generator/generate.exe .)))
+
+(library
+ (name gen_decompress_bindings)
+ (modules gen_decompress_bindings)
+ (wrapped false)
+ (libraries bigarray-compat decompress.de decompress.zl ctypes.stubs))
+
+(executable
+ (name decompress)
+ (modules decompress apply_bindings decompress_bindings)
+ (forbidden_libraries unix)
+ (flags
+  (:standard -w -27))
+ (foreign_stubs
+  (language c)
+  (names init gen_decompress))
+ (ocamlopt_flags -ccopt -static)
+ (modes
+  (native object))
+ (libraries gen_decompress_bindings checkseum.c ctypes.stubs))
+
+(rule
+ (targets libdecompress.a)
+ (package decompress)
+ (deps %{exe:decompress.exe.o})
+ (action
+  (run ar r %{targets} decompress.exe.o)))

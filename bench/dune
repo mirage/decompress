@@ -6,12 +6,20 @@
   (names mclock bs))
  (preprocess
   (pps ppx_deriving_yojson))
- (libraries unix fmt decompress.zl cmdliner yojson ppx_deriving_yojson))
+ (libraries
+  bigarray-compat
+  unix
+  fmt
+  decompress.de
+  decompress.zl
+  cmdliner
+  yojson
+  ppx_deriving_yojson))
 
 (executable
  (name run)
  (modules run)
- (libraries cmdliner rresult bos))
+ (libraries cmdliner fpath rresult bos))
 
 (rule
  (targets zpipe)
@@ -35,7 +43,7 @@
  (name lz_landmarks)
  (optional)
  (modules lz_landmarks)
- (libraries landmarks de)
+ (libraries bigarray-compat checkseum optint landmarks de)
  (preprocess
   (pps landmarks.ppx --auto)))
 
@@ -48,4 +56,4 @@
 (executable
  (name lzld)
  (modules lzld)
- (libraries lz_landmarks))
+ (libraries decompress.de lz_landmarks))
