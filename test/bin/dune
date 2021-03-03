@@ -1,4 +1,5 @@
 (cram
+ (package decompress)
  (deps
   ../corpus/news
   ../../bindings/stubs/libdecompress.a
