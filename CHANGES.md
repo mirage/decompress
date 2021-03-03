@@ -1,3 +1,35 @@
+### v1.3.0 2020-03-03 Paris (France)
+
+- Add a little executable to benchmark inflation into the distribution (@dinosaure, #93)
+- Add instructions for running benchmark (@gs0510, #94)
+- Clarify the description (@XVilka, #96)
+- Improve the benchmark and outputs (@dinosaure, @gs0510, #95)
+- Avoid allocation of distance table (@Engil, @dinosaure, #97)
+- Swapping from arithmetic to logical bitshifts on `d.hold` (@clecat, #99)
+- Make the use of all `Higher.compress` arguments (@vect0r-vicall, #103)
+- Apply ocamlformat.0.16.0 (@dinosaure, #105, #107)
+- Improve Lz77 algorithms (@dinosaure, #108)
+  **breaking changes** the deflation expects a new window: `De.Lz77.make_window`
+  instead of `De.make_window` (which is twice larger to improve the compression
+  algorithm)
+
+  Depending on the level and your corpus, we did not observe performance
+  regression on deflation (and #97 improves a lot performances). An higher level
+  is slower (but the compression ratio is better). We advise, by default, to use
+  the level 6.
+
+  Note that the user is able to make its own compression algorithm according to
+  his corpus. An example of such implementation is available on the new
+  `decompress.lz` libraries which fills a queue and compress the input.
+
+  **breaking changes** decompress expects a level between 0 and 9 (inclusive)
+  (instead of 0 and 3).
+- Add tests about level compression (@dinosaure, #109)
+- Add level on GZip layer (@dinosaure, #110)
+- Provide a `ctypes` reverse binding (@dinosaure, #98)
+- Provide a binary `decompress.pipe` which can compress/uncompress with
+  deflate, zlib or gzip format.
+
 ### v1.2.0 2020-07-07 Paris (France)
 
 - add LZO support (@dinosaure, @cfcs, @XVilka, #82)
