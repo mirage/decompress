@@ -370,6 +370,19 @@ module Def : sig
      DEFLATE flow is not necessary aligned on bytes. The client can call
      [bits_rem] {b only} when he reachs [`End] case. Otherwise, we raises an
      [Invalid_argument]. *)
+
+  module Ns : sig
+    type error = Invalid_compression_level | Unexpected_end_of_output
+
+    val pp_error : Format.formatter -> error -> unit
+
+    type encoder
+
+    val encoder : int -> encoder
+    val deflate : encoder -> src:bigstring -> dst:bigstring -> int
+    val get_compression_level : encoder -> int
+    val compress_bound : int -> int
+  end
 end
 
 (** {2:compression LZ77 compression algorithm.}

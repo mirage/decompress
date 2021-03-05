@@ -2019,88 +2019,86 @@ let small_queue () =
 
 let () =
   Alcotest.run "z"
-    ([
-       ( "invalids"
-       , [
-           invalid_complement_of_length (); invalid_kind_of_block ()
-         ; invalid_code_lengths (); invalid_bit_length_repeat ()
-         ; invalid_codes (); invalid_lengths (); invalid_distances ()
-         ; too_many_length_or_distance_symbols (); invalid_distance_code ()
-         ; invalid_distance_too_far_back (); invalid_access ()
-         ] )
-     ; ( "valids"
-       , [
-           fixed (); stored (); length_extra (); long_distance_and_extra ()
-         ; window_end (); huffman_length_extra (); dynamic_and_fixed ()
-         ; fixed_and_dynamic (); dynamic_and_dynamic (); flat_of_string ()
-         ; flat_block (); flat (); max_flat (); fixed_and_flat ()
-         ; flat_and_fixed ()
-         ] )
-     ; ( "fuzz"
-       , [
-           fuzz0 (); fuzz1 (); fuzz2 (); fuzz3 (); fuzz4 (); fuzz5 (); fuzz6 ()
-         ; fuzz7 (); fuzz8 (); fuzz9 (); fuzz10 (); fuzz11 (); fuzz12 ()
-         ; fuzz13 (); fuzz14 (); fuzz15 (); fuzz16 (); fuzz17 (); fuzz18 ()
-         ] ); "huffman", [tree_0 (); tree_rfc5322_corpus ()]
-     ; ( "lz77"
-       , [
-           lz77_0 (); lz77_1 (); lz77_2 (); lz77_3 (); lz77_4 ()
-         ; lz77_corpus_rfc5322 ()
-         ] )
-     ; ( "calgary"
-       , [
-           test_corpus "bib"; test_corpus "rfc5322.txt"; test_corpus "book1"
-         ; test_corpus "book2"; test_corpus "geo"; test_corpus "news"
-         ; test_corpus "obj1"; test_corpus "obj2"; test_corpus "paper1"
-         ; test_corpus "paper2"; test_corpus "pic"; test_corpus "progc"
-         ; test_corpus "progl"; test_corpus "progp"; test_corpus "trans"
-         ] )
-     ; ( "zlib"
-       , [
-           test_empty_with_zlib (); test_empty_with_zlib_and_small_output ()
-         ; test_empty_with_zlib_byte_per_byte (); test_corpus_with_zlib "bib"
-         ; test_corpus_with_zlib "book1"; test_corpus_with_zlib "book2"
-         ; test_corpus_with_zlib "geo"; test_corpus_with_zlib "news"
-         ; test_corpus_with_zlib "obj1"; test_corpus_with_zlib "obj2"
-         ; test_corpus_with_zlib "paper1"; test_corpus_with_zlib "paper2"
-         ; test_corpus_with_zlib "pic"; test_corpus_with_zlib "progc"
-         ; test_corpus_with_zlib "progl"; test_corpus_with_zlib "progp"
-         ; test_corpus_with_zlib "trans"; test_multiple_flush_zlib ()
-         ] )
-     ; ( "gzip"
-       , [
-           test_empty_gzip (); test_empty_gzip_with_name (); test_foo_gzip ()
-         ; test_multiple_flush_gzip (); test_generate_empty_gzip ()
-         ; test_generate_empty_gzip_with_name (); test_generate_foo_gzip ()
-         ; test_corpus_with_gzip "bib"; test_corpus_with_gzip "book1"
-         ; test_corpus_with_gzip "book2"; test_corpus_with_gzip "geo"
-         ; test_corpus_with_gzip "news"; test_corpus_with_gzip "obj1"
-         ; test_corpus_with_gzip "obj2"; test_corpus_with_gzip "paper1"
-         ; test_corpus_with_gzip "paper2"; test_corpus_with_gzip "pic"
-         ; test_corpus_with_gzip "progc"; test_corpus_with_gzip "progl"
-         ; test_corpus_with_gzip "progp"; test_corpus_with_gzip "trans"
-         ; test_with_camlzip (); test_gzip_hcrc (); test_invalid_hcrc ()
-         ; test_gzip_extra ()
-         ] )
-     ; ( "gzip with os"
-       , [
-           test_gzip_os Gz.FAT; test_gzip_os Gz.Amiga; test_gzip_os Gz.VMS
-         ; test_gzip_os Gz.Unix; test_gzip_os Gz.VM; test_gzip_os Gz.Atari
-         ; test_gzip_os Gz.HPFS; test_gzip_os Gz.Macintosh; test_gzip_os Gz.Z
-         ; test_gzip_os Gz.CPM; test_gzip_os Gz.TOPS20; test_gzip_os Gz.NTFS
-         ; test_gzip_os Gz.QDOS; test_gzip_os Gz.Acorn; test_gzip_os Gz.Unknown
-         ] )
-     ; ( "lzo"
-       , [
-           test_lzo_0 (); test_lzo_1 (); test_corpus_with_lzo "obj1"
-         ; test_corpus_with_lzo "obj2"; test_corpus_with_lzo "geo"
-         ; test_corpus_with_lzo "news"; test_corpus_with_lzo "pic"
-         ; test_corpus_with_lzo "progc"; test_corpus_with_lzo "progl"
-         ; test_corpus_with_lzo "progp"; test_corpus_with_lzo "trans"
-         ; test_corpus_with_lzo "paper1"; test_corpus_with_lzo "paper2"
-         ; test_corpus_with_lzo "book1"; test_corpus_with_lzo "book2"
-         ] ); "hang", [hang0 ()]; "git", [git_object ()]
-     ; ( "higher"
-       , [higher_zlib0 (); higher_zlib1 (); higher_zlib2 (); higher_zlib3 ()] )
-     ]
+    ([ (* ( "invalids"
+            , [
+                invalid_complement_of_length (); invalid_kind_of_block ()
+              ; invalid_code_lengths (); invalid_bit_length_repeat ()
+              ; invalid_codes (); invalid_lengths (); invalid_distances ()
+              ; too_many_length_or_distance_symbols (); invalid_distance_code ()
+              ; invalid_distance_too_far_back (); invalid_access ()
+              ] )
+          ; ( "valids"
+            , [
+                fixed (); stored (); length_extra (); long_distance_and_extra ()
+              ; window_end (); huffman_length_extra (); dynamic_and_fixed ()
+              ; fixed_and_dynamic (); dynamic_and_dynamic (); flat_of_string ()
+              ; flat_block (); flat (); max_flat (); fixed_and_flat ()
+              ; flat_and_fixed ()
+              ] )
+          ; ( "fuzz"
+            , [
+                fuzz0 (); fuzz1 (); fuzz2 (); fuzz3 (); fuzz4 (); fuzz5 (); fuzz6 ()
+              ; fuzz7 (); fuzz8 (); fuzz9 (); fuzz10 (); fuzz11 (); fuzz12 ()
+              ; fuzz13 (); fuzz14 (); fuzz15 (); fuzz16 (); fuzz17 (); fuzz18 ()
+              ] ); "huffman", [tree_0 (); tree_rfc5322_corpus ()]
+          ; ( "lz77"
+            , [
+                lz77_0 (); lz77_1 (); lz77_2 (); lz77_3 (); lz77_4 ()
+              ; lz77_corpus_rfc5322 ()
+              ] )
+          ; ( "calgary"
+            , [
+                test_corpus "bib"; test_corpus "rfc5322.txt"; test_corpus "book1"
+              ; test_corpus "book2"; test_corpus "geo"; test_corpus "news"
+              ; test_corpus "obj1"; test_corpus "obj2"; test_corpus "paper1"
+              ; test_corpus "paper2"; test_corpus "pic"; test_corpus "progc"
+              ; test_corpus "progl"; test_corpus "progp"; test_corpus "trans"
+              ] )
+          ; ( "zlib"
+            , [
+                test_empty_with_zlib (); test_empty_with_zlib_and_small_output ()
+              ; test_empty_with_zlib_byte_per_byte (); test_corpus_with_zlib "bib"
+              ; test_corpus_with_zlib "book1"; test_corpus_with_zlib "book2"
+              ; test_corpus_with_zlib "geo"; test_corpus_with_zlib "news"
+              ; test_corpus_with_zlib "obj1"; test_corpus_with_zlib "obj2"
+              ; test_corpus_with_zlib "paper1"; test_corpus_with_zlib "paper2"
+              ; test_corpus_with_zlib "pic"; test_corpus_with_zlib "progc"
+              ; test_corpus_with_zlib "progl"; test_corpus_with_zlib "progp"
+              ; test_corpus_with_zlib "trans"; test_multiple_flush_zlib ()
+              ] )
+          ; ( "gzip"
+            , [
+                test_empty_gzip (); test_empty_gzip_with_name (); test_foo_gzip ()
+              ; test_multiple_flush_gzip (); test_generate_empty_gzip ()
+              ; test_generate_empty_gzip_with_name (); test_generate_foo_gzip ()
+              ; test_corpus_with_gzip "bib"; test_corpus_with_gzip "book1"
+              ; test_corpus_with_gzip "book2"; test_corpus_with_gzip "geo"
+              ; test_corpus_with_gzip "news"; test_corpus_with_gzip "obj1"
+              ; test_corpus_with_gzip "obj2"; test_corpus_with_gzip "paper1"
+              ; test_corpus_with_gzip "paper2"; test_corpus_with_gzip "pic"
+              ; test_corpus_with_gzip "progc"; test_corpus_with_gzip "progl"
+              ; test_corpus_with_gzip "progp"; test_corpus_with_gzip "trans"
+              ; test_with_camlzip (); test_gzip_hcrc (); test_invalid_hcrc ()
+              ; test_gzip_extra ()
+              ] )
+          ; ( "gzip with os"
+            , [
+                test_gzip_os Gz.FAT; test_gzip_os Gz.Amiga; test_gzip_os Gz.VMS
+              ; test_gzip_os Gz.Unix; test_gzip_os Gz.VM; test_gzip_os Gz.Atari
+              ; test_gzip_os Gz.HPFS; test_gzip_os Gz.Macintosh; test_gzip_os Gz.Z
+              ; test_gzip_os Gz.CPM; test_gzip_os Gz.TOPS20; test_gzip_os Gz.NTFS
+              ; test_gzip_os Gz.QDOS; test_gzip_os Gz.Acorn; test_gzip_os Gz.Unknown
+              ] )
+          ; ( "lzo"
+            , [
+                test_lzo_0 (); test_lzo_1 (); test_corpus_with_lzo "obj1"
+              ; test_corpus_with_lzo "obj2"; test_corpus_with_lzo "geo"
+              ; test_corpus_with_lzo "news"; test_corpus_with_lzo "pic"
+              ; test_corpus_with_lzo "progc"; test_corpus_with_lzo "progl"
+              ; test_corpus_with_lzo "progp"; test_corpus_with_lzo "trans"
+              ; test_corpus_with_lzo "paper1"; test_corpus_with_lzo "paper2"
+              ; test_corpus_with_lzo "book1"; test_corpus_with_lzo "book2"
+              ] ); "hang", [hang0 ()]; "git", [git_object ()]
+          ; ( "higher"
+            , [higher_zlib0 (); higher_zlib1 (); higher_zlib2 (); higher_zlib3 ()] ) *) ]
     @ Test_ns.tests)
