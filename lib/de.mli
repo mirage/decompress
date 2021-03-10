@@ -375,13 +375,8 @@ module Def : sig
     type error = Invalid_compression_level | Unexpected_end_of_output
 
     val pp_error : Format.formatter -> error -> unit
-
-    type encoder
-
-    val encoder : int -> encoder
-    val deflate : encoder -> src:bigstring -> dst:bigstring -> int
-    val get_compression_level : encoder -> int
     val compress_bound : int -> int
+    val deflate : ?level:int -> src:bigstring -> dst:bigstring -> int
   end
 end
 

@@ -2019,7 +2019,7 @@ let small_queue () =
 
 let () =
   Alcotest.run "z"
-    ([ (* ( "invalids"
+    ([ ( "invalids"
             , [
                 invalid_complement_of_length (); invalid_kind_of_block ()
               ; invalid_code_lengths (); invalid_bit_length_repeat ()
@@ -2100,5 +2100,5 @@ let () =
               ; test_corpus_with_lzo "book1"; test_corpus_with_lzo "book2"
               ] ); "hang", [hang0 ()]; "git", [git_object ()]
           ; ( "higher"
-            , [higher_zlib0 (); higher_zlib1 (); higher_zlib2 (); higher_zlib3 ()] ) *) ]
+            , [higher_zlib0 (); higher_zlib1 (); higher_zlib2 (); higher_zlib3 ()] ) ]
     @ Test_ns.tests)

@@ -1054,7 +1054,7 @@ let compress_and_uncompress ic =
     done
     ; let dst_def =
         bigstring_create (Def.Ns.compress_bound (in_channel_length ic)) in
-      let len = Def.Ns.deflate (Def.Ns.encoder 1) ~src:src_def ~dst:dst_def in
+      let len = Def.Ns.deflate ~level:1 ~src:src_def ~dst:dst_def in
       let oc = open_out "compress" in
       output_bytes oc
         (Bigstringaf.substring ~off:0 ~len dst_def |> Bytes.of_string)
@@ -1092,9 +1092,8 @@ let test_corpus filename =
 
 let encoder_0 () =
   Alcotest.test_case "encoder 0" `Quick @@ fun () ->
-  let encoder = Def.Ns.encoder 0 in
   let src = bigstring_of_string "\x00" in
-  let res = Def.Ns.deflate encoder ~src ~dst in
+  let res = Def.Ns.deflate ~level:0 ~src ~dst in
   let expected = "\x01\x01\x00\xfe\xff\x00" in
   Alcotest.(check int) "encoder 0" (String.length expected) res
   ; ( Bigstringaf.to_string dst |> fun s ->
@@ -1105,7 +1104,6 @@ let encoder_0 () =
 
 let encoder_1 () =
   Alcotest.test_case "encoder 1" `Quick @@ fun () ->
-  let encoder = Def.Ns.encoder 1 in
   let src =
     [
       "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
@@ -1116,7 +1114,7 @@ let encoder_1 () =
       (* ................ *); "\x00\x00\x00\x00\x00\x00\x00\x00" (* ........ *)
     ] in
   let src = bigstring_of_string (String.concat "" src) in
-  let res = Def.Ns.deflate encoder ~src ~dst in
+  let res = Def.Ns.deflate ~level:1 ~src ~dst in
   let expected = "\x63\x20\x13\x00\x00" in
   Alcotest.(check int) "encoder 1" (String.length expected) res
   ; ( Bigstringaf.to_string dst |> fun s ->
@@ -1126,89 +1124,40 @@ let encoder_1 () =
       "0x00" expected
       (Bigstringaf.substring dst ~off:0 ~len:res)
 
-let encoder_2 () =
-  Alcotest.test_case "encoder 2" `Quick @@ fun () ->
-  let _encoder = Def.Ns.encoder 2 in
-  ()
-
-let encoder_3 () =
-  Alcotest.test_case "encoder 3" `Quick @@ fun () ->
-  let _encoder = Def.Ns.encoder 3 in
-  ()
-
-let encoder_4 () =
-  Alcotest.test_case "encoder 4" `Quick @@ fun () ->
-  let _encoder = Def.Ns.encoder 4 in
-  ()
-
-let encoder_5 () =
-  Alcotest.test_case "encoder 5" `Quick @@ fun () ->
-  let _encoder = Def.Ns.encoder 5 in
-  ()
-
-let encoder_6 () =
-  Alcotest.test_case "encoder 6" `Quick @@ fun () ->
-  let _encoder = Def.Ns.encoder 6 in
-  ()
-
-let encoder_7 () =
-  Alcotest.test_case "encoder 7" `Quick @@ fun () ->
-  let _encoder = Def.Ns.encoder 7 in
-  ()
-
-let encoder_8 () =
-  Alcotest.test_case "encoder 8" `Quick @@ fun () ->
-  let _encoder = Def.Ns.encoder 8 in
-  ()
-
-let encoder_9 () =
-  Alcotest.test_case "encoder 9" `Quick @@ fun () ->
-  let _encoder = Def.Ns.encoder 9 in
-  ()
-
 let tests =
   [
-    (* "ns_encoder"
+    "ns_encoder"
        , [ encoder_0 ()
-         ; encoder_1 ()
-         ; encoder_2 ()
-         ; encoder_3 ()
-         ; encoder_4 ()
-         ; encoder_5 ()
-         ; encoder_6 ()
-         ; encoder_7 ()
-         ; encoder_8 ()
-         ; encoder_9 () ]
-         [
-         ( "ns_invalids"
+         ; encoder_1 () ];
+         "ns_invalids"
          , [
              invalid_complement_of_length (); invalid_kind_of_block ()
            ; invalid_code_lengths (); invalid_bit_length_repeat (); invalid_codes ()
            ; invalid_lengths (); invalid_distances ()
            ; too_many_length_or_distance_symbols (); invalid_distance_code ()
            ; invalid_distance_too_far_back ()
-           ] )
-       ; ( "ns_valids"
+           ]
+       ; "ns_valids"
          , [
              fixed (); stored (); length_extra (); long_distance_and_extra ()
            ; window_end (); huffman_length_extra (); dynamic_and_fixed ()
            ; fixed_and_dynamic (); dynamic_and_dynamic (); flat_of_string ()
            ; flat_block (); flat (); max_flat (); fixed_and_flat ()
            ; flat_and_fixed ()
-           ] )
-       ; ( "ns_fuzz"
+           ]
+       ; "ns_fuzz"
          , [
              fuzz0 (); fuzz1 (); fuzz2 (); fuzz3 (); fuzz4 (); fuzz5 (); fuzz6 ()
            ; fuzz7 (); fuzz8 (); fuzz9 (); fuzz10 (); fuzz11 (); fuzz12 (); fuzz13 ()
            ; fuzz14 (); fuzz15 (); fuzz16 (); fuzz17 (); fuzz18 ()
-           ] )
-       ; *)
-    ( "ns_calgary"
+           ]
+       ;
+    "ns_calgary"
     , [
         test_corpus "bib"; test_corpus "rfc5322.txt"; test_corpus "book1"
       ; test_corpus "book2"; test_corpus "geo"; test_corpus "news"
       ; test_corpus "obj1"; test_corpus "obj2"; test_corpus "paper1"
       ; test_corpus "paper2"; test_corpus "pic"; test_corpus "progc"
       ; test_corpus "progl"; test_corpus "progp"; test_corpus "trans"
-      ] )
+      ]
   ]
