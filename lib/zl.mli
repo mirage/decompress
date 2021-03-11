@@ -202,7 +202,15 @@ module Def : sig
       {- [`Flush e1] if [e0] has a [`Manual] destination and needs more output
      storage. The client must drain the buffer before resuming operation.}
       {- [`End e1] if [e1] encoded all input. Output buffer is possibly not
-     empty (it can be check with {!dst_rem}).}} *)
+     empty (it can be check with {!dst_rem}).}}
+
+      {b Limitation.}
+
+      The encoder must manipulate an output buffer of, at least, 2 bytes. If it's
+     not the case, [encode] does nothing - and it tells you nothing more than it
+     did nothing. Depending on what you do, a loop can infinitely call [encode]
+     without any updates until the given output still has less than 2 bytes.
+   *)
 end
 
 module Higher : sig
