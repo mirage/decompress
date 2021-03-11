@@ -11,7 +11,7 @@
 (** {2 Prelude.}
 
     [de] wants to be self-contained. By this constraint, it provides convenience
-   values to be used by others (like [zz]). The client should not use these
+   values to be used by others (like [zl]). The client should not use these
    functions even if they are available. Others libraries like [Bigstringaf]
    serve the same purpose of a much better way. *)
 
@@ -317,7 +317,15 @@ module Def : sig
       {b How to signal end of flow?}
 
       End of flow is characterized by a {!block} where [last = true]. Then, the
-     client must emit into the queue [q] {!Queue.eob}. *)
+     client must emit into the queue [q] {!Queue.eob}.
+
+      {b Limitation.}
+
+      The encoder must manipulate an output buffer of, at least, 2 bytes. If it's
+     not the case, [encode] does nothing - and it tells you nothing more than it
+     did nothing. Depending on what you do, a loop can infinitely call [encode]
+     without any updates until the given output still has less than 2 bytes.
+   *)
 
   val dst : encoder -> bigstring -> int -> int -> unit
   (** [dst e s j l] provides [e] with [l] bytes available to write, starting at
