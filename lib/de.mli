@@ -414,12 +414,12 @@ end
 
     [de] provides useful but complex API. This sub-module provides an easier way
    to compress/uncompress DEFLATE codec. Even if the client still can give some
-   details, we recommend to use {!M} and {!N} if you want a precise control
+   details, we recommend to use {!Inf} and {!Def} if you want a precise control
    about memory consumption. *)
 
 module Higher : sig
   val compress :
-       w:window
+       w:Lz77.window
     -> q:Queue.t
     -> refill:(bigstring -> int)
     -> flush:(bigstring -> int -> unit)
@@ -440,7 +440,43 @@ module Higher : sig
      of input.
 
       When [compress] has written output buffer, it calls [flush] with [o] and
-     how many bytes it wrote. *)
+     how many bytes it wrote. Bytes into [o] must be {b copied} and they will be
+     lost at the next call to [flush].
+
+      A simple example of how to use such interface is:
+      {[
+        let deflate_string str =
+          let i = De.bigstring_create De.io_buffer_size in
+          let o = De.bigstring_create De.io_buffer_size in
+          let w = De.Lz77.make_window ~bits:15 in
+          let q = De.Queue.create 0x1000 in
+          let r = Buffer.create 0x1000 in
+          let p = ref 0 in
+          let refill buf =
+            (* assert (buf == i); *)
+            let len = min (String.length str - !p) De.io_buffer_size in
+            Bigstringaf.blit_string str ~src_off:!p buf ~dst_off:0 ~len ;
+            p := !p + len ; len in
+          let flush buf len =
+            (* assert (buf == o); *)
+            let str = Bigstringaf.substring buf ~off:0 ~len in
+            Buffer.add_string r str in
+          De.Higher.compress ~w ~q ~refill ~flush i o ; Buffer.contents r
+      ]}
+
+      As you can see, we allocate several things such as input and output buffers.
+     Such choice should be decided by the end-user - and it's why we don't provide
+     such function. The speed or the compression ratio depends on the length of:
+      - [q] which is shared between the compression algorithm and the encoder
+      - [i] which is the input buffer (and allows a large {i lookup} or not)
+      - [o] which is the output buffer (it can be a bottle-neck for the throughput)
+      - [w] which is the {i lookup-window}
+      - [r] which is the data-structure to save the output (it can be a buffer,
+        a queue, a [out_channel], etc.)
+
+      As we said, several choices depends on what you want and your context. We
+     deliberately choose to be not responsible on these choices. It's why such
+     function exists only as an example - and it's not a part of the distribution. *)
 
   val uncompress :
        w:window
@@ -462,7 +498,38 @@ module Higher : sig
      of input.
 
       When [compress] has written output buffer, it calls [flush] with [o] and
-     how many bytes it wrote. *)
+     how many bytes it wrote. Bytes into [o] must be {b copied} and they will be
+     lost at the next call to [flush].
+
+      A simple example of how to use such interface is:
+      {[
+        let inflate_string str =
+          let i = De.bigstring_create De.io_buffer_size in
+          let o = De.bigstring_create De.io_buffer_size in
+          let w = De.make_window ~bits:15 in
+          let r = Buffer.create 0x1000 in
+          let p = ref 0 in
+          let refill buf =
+            let len = min (String.length str - !p) De.io_buffer_size in
+            Bigstringaf.blit_from_String str ~src_off:!p buf ~dst_off:0 ~len ;
+            p := !p + len ; len in
+          let flush buf len =
+            let str = Bigstringaf.substring buf ~off:0 ~len in
+            Buffer.add_string r buf in
+          match De.Higher.uncompress ~w ~refill ~flush i o with
+          | Ok () -> Ok (Buffer.contents r)
+          | Error _ as err -> err
+      ]}
+
+      As you can see, we allocate several things such as input and output buffers.
+     As {!compress}, these details should be decided by the end-user. The speed of
+     the decompression depends on the length of:
+      - [i] which is the input buffer (it can a bottle-neck for the throughput)
+      - [o] which is the output buffer (it can be a bottle-neck for the throughput)
+
+      The {i window} depends on how you deflated/compressed the input. Usually, we
+     allow a {i window} of 15 bits.
+  *)
 
   val of_string :
        o:bigstring
