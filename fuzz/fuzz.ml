@@ -303,7 +303,7 @@ let () =
         done
         ; payloads := rest
         ; String.length data in
-    Higher.compress ~w ~q ~refill ~flush i o
+    Higher.compress ~w:l ~q ~refill ~flush i o
 
     ; let splits = split (Buffer.contents res) in
       Buffer.clear res

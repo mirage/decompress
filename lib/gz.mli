@@ -49,10 +49,10 @@ val equal_os : os -> os -> bool
    decoder given {b to} {!Inf.decode}. A common use of [gz] is:
 
     {[
-let rec go d0 = match Inf.decode d0 with
-  | `Await d1 -> ... go d1
-  | `Flush d1 -> ... go d1
-  | _ -> .... in
+      let rec go d0 = match Inf.decode d0 with
+        | `Await d1 -> ... go d1
+        | `Flush d1 -> ... go d1
+        | _ -> .... in
     ]} *)
 
 module Inf : sig
@@ -288,6 +288,56 @@ module Higher : sig
     -> bigstring
     -> bigstring
     -> unit
+  (** [compress ?level ?filename ?comment ~w ~q ~refill ~flush time cfg i o] compresses
+     an input given by [refill] and outputs it via [flush]. It requires:
+      - a queue [q] which is shared between the compression algorithm and
+        the encoder. The length of it can be a bottleneck on the throughput
+      - a {i window} to be able to lookup repeated patterns
+      - a {i witness} required by the given [cfg]
+      - a {!configuration} value
+      - [i] is the input buffer
+      - [o] is the output buffer
+
+      When [compress] wants more input, it calls [refill] with [i]. The client
+     returns how many bytes he wrotes into [i]. If he returns 0, he signals end
+     of input.
+
+      When [compress] has written output buffer, it calls [flush] with [o] and
+     how many bytes it wrote. Bytes into [o] must be {b copied} and they will be
+     lost at the next call to [flush].
+
+      A simple example of how to use such interface (with [unix]) is:
+      {[
+        let time () = Int32.of_float (Unix.gettimeofday ())
+
+        let deflate_string ?(level= 4) str =
+          let i = De.bigstring_create De.io_buffer_size in
+          let o = De.bigstring_create De.io_buffer_size in
+          let w = De.Lz77.make_window ~bits:15 in
+          let q = De.Queue.create 0x1000 in
+          let r = Buffer.create 0x1000 in
+          let p = ref 0 in
+          let cfg = Gz.Higher.configuration Gz.Unix time in
+          let refill buf =
+            let len = min (String.length str - !p) De.io_buffer_size in
+            Bigstringaf.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len ;
+            p := !p + len ; len in
+          let flush buf len =
+            let str = Bigstringaf.substring buf ~off:0 ~len in
+            Buffer.add_string r str in
+          Gz.Higher.compress ~w ~q ~refill ~flush () cfg i o ; Buffer.contents r
+      ]}
+
+      As {!De.Higher.compress} or {!Zl.Higher.compress}, [decompress] don't want
+     to take the responsability of such function. It's why this function exists
+     only as an example. Especially since a GZip compression requires an Unix
+     {i syscall} (see [Unix.gettimeofday]) which does not exists on some contexts
+     such as MirageOS.
+
+      The speed and the compression ratio depends on the length of the given {i window}
+     and the given {!De.Queue.t}. They can be a serious bottleneck on the throughput.
+     Due to all of these choices, we show this function as an example - but it should
+     not be copied as is! *)
 
   type metadata = {
       filename: string option
@@ -303,4 +353,45 @@ module Higher : sig
     -> bigstring
     -> bigstring
     -> (metadata, [> `Msg of string ]) result
+  (** [uncompress ~refill ~flush i o] uncompresses an input given by [refill]
+     and outputs it via [flush]. It requires:
+      - [i] as the input buffer
+      - [o] as the output buffer
+
+      It returns then extracted {i metadata} from the given GZip flow.
+
+      When [uncompress] wants more input, it calls [refill] with [i]. The client
+     returns how many bytes he wrote into [i]. If he returns 0, he signals end
+     of input.
+
+      When [uncompress] has written output buffer, it calls [flush] with [o] and
+     how many bytes it wrote. Bytes into [o] must be {b copied} and tjey will be
+     lost at the next call to [flush].
+
+      A simple example of how to use such interface is:
+      {[
+        let inflate_string str =
+          let i = De.bigstring_create De.io_buffer_size in
+          let o = De.bigstring_create De.io_buffer_size in
+          let r = Buffer.create 0x1000 in
+          let p = ref 0 in
+          let refill buf =
+            let len = min (String.length str - !p) De.io_buffer_size in
+            Bigstringaf.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len ;
+            p := !p + len ; len in
+          let flush buf len =
+            let str = Bigstringaf.substring buf ~off:0 ~len in
+            Buffer.add_string r str in
+          match Gz.Higher.uncompress ~refill ~flush i o with
+          | Ok m -> Ok (m, Buffer.contents r)
+          | Error _ as err -> err
+      ]}
+
+      As {!De.Higher.uncompress} or {!Zl.Higher.uncompress}, [decompress] does not
+     want to take the responsability of such implementation when several choices was
+     made depending on the context. Indeed, [i] and [o] can be a serious bottleneck
+     on the throughput. The choice of [Buffer] can be replaced by something else such
+     as a queue or a {i ropes}. All of these choices should be made by the client.
+     It's why we provide such function only as an example.
+  *)
 end

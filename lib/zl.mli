@@ -24,10 +24,10 @@ val io_buffer_size : int
    [decoder] given {b to} {!Inf.decode}. A common use of [zl] is:
 
      {[
-let rec go d0 = match Inf.decode d0 with
-  | `Await d1 -> ... go d1
-  | `Flush d1 -> ... go d1
-  | _ -> ... in
+       let rec go d0 = match Inf.decode d0 with
+         | `Await d1 -> ... go d1
+         | `Flush d1 -> ... go d1
+         | _ -> ... in
      ]} *)
 
 module Inf : sig
@@ -238,7 +238,35 @@ module Higher : sig
      of input.
 
       When [compress] has written output buffer, it calls [flush] with [o] and
-     how many bytes it wrote. *)
+     how many bytes it wrote. Bytes into [o] must be {b copied} and they will be
+     lost at the next call to [flush].
+
+      A simple example of how to use such interface is:
+      {[
+        let deflate_string ?(level= 4) str =
+          let i = De.bigstring_create De.io_buffer_size in
+          let o = De.bigstring_create De.io_buffer_size in
+          let w = De.Lz77.make_window ~bits:15 in
+          let q = De.Queue.create 0x1000 in
+          let r = Buffer.create 0x1000 in
+          let p = ref 0 in
+          let refill buf =
+            let len = min (String.length str - !p) De.io_buffer_size in
+            Bigstringaf.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len ;
+            p := !p + len ; len in
+          let flush buf len =
+            let str = Bigstringaf.substring buf ~off:0 ~len in
+            Buffer.add_string r str in
+          Zl.Higher.compress ~level ~dynamic:true
+            ~w ~q ~refill ~flush i o ;
+          Buffer.contents r
+      ]}
+
+      As {!De.Higher.compress}, several choices was made in this code and
+     [decompress] don't want to be responsible of them. It's why such function
+     exists only as example when lengths of buffers (such as [i], [o] or [q])
+     changes the speed/compression ratio/memory consumption.
+  *)
 
   val uncompress :
        allocate:(int -> window)
@@ -255,10 +283,38 @@ module Higher : sig
       {- [i] is input buffer.}
       {- [o] is output buffer.}}
 
-      When [compress] wants more input, it calls [refill] with [i]. The client
+      When [uncompress] wants more input, it calls [refill] with [i]. The client
      returns how many bytes he wrote into [i]. If he returns 0, he signals end
      of input.
 
-      When [compress] has written output buffer, it calls [flush] with [o] and
-     how many bytes it wrote. *)
+      When [uncompress] has written output buffer, it calls [flush] with [o] and
+     how many bytes it wrote. Bytes into [o] must be {b copied} and they will be
+     lost at the next call to [flush].
+
+      A simple example of how to use such interface is:
+      {[
+        let inflate_string str =
+          let i = De.bigstring_create De.io_buffer_size in
+          let o = De.bigstring_create De.io_buffer_size in
+          let allocate bits = De.make_window ~bits in
+          let r = Buffer.create 0x1000 in
+          let p = ref 0 in
+          let refill buf =
+            let len = min (String.length str - !p) De.io_buffer_size in
+            Bigstringaf.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len ;
+            p := !p + len ; len in
+          let flush buf len =
+            let str = Bigstringaf.substring buf ~off:0 ~len in
+            Buffer.add_string r str in
+          match Zl.Higher.uncompress ~allocate ~refill ~flush i o with
+          | Ok () -> Ok (Buffer.contents r)
+          | Error _ as err -> err
+      ]}
+
+      As you can see, several allocations appear. As long as you want to
+     uncompress several contents for example, you can re-use the same {i window}
+     instead of an allocation of one per uncompression. Then, the throughput is
+     mostly limited by [i] and [o] (even bigger, even faster but it requires
+     memories). [decompress] don't want to be responsible about these choices,
+     it's why such function exists only as an example. *)
 end
