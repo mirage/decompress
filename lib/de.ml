@@ -224,20 +224,21 @@ let zigzag =
 
 let _length =
   [|
-     0; 1; 2; 3; 4; 5; 6; 7; 8; 8; 9; 9; 10; 10; 11; 11; 12; 12; 12; 12; 13; 13
-   ; 13; 13; 14; 14; 14; 14; 15; 15; 15; 15; 16; 16; 16; 16; 16; 16; 16; 16; 17
-   ; 17; 17; 17; 17; 17; 17; 17; 18; 18; 18; 18; 18; 18; 18; 18; 19; 19; 19; 19
-   ; 19; 19; 19; 19; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20
-   ; 20; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 22; 22
-   ; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 23; 23; 23; 23; 23
-   ; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 24; 24; 24; 24; 24; 24; 24; 24
-   ; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24
-   ; 24; 24; 24; 24; 24; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25
-   ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 26
-   ; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26
-   ; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 27; 27; 27; 27; 27; 27; 27
-   ; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27
-   ; 27; 27; 27; 27; 27; 28
+     0; 0; 0; 0; 1; 2; 3; 4; 5; 6; 7; 8; 8; 9; 9; 10; 10; 11; 11; 12; 12; 12
+   ; 12; 13; 13; 13; 13; 14; 14; 14; 14; 15; 15; 15; 15; 16; 16; 16; 16; 16
+   ; 16; 16; 16; 17; 17; 17; 17; 17; 17; 17; 17; 18; 18; 18; 18; 18; 18; 18
+   ; 18; 19; 19; 19; 19; 19; 19; 19; 19; 20; 20; 20; 20; 20; 20; 20; 20; 20
+   ; 20; 20; 20; 20; 20; 20; 20; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21
+   ; 21; 21; 21; 21; 21; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22
+   ; 22; 22; 22; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23
+   ; 23; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24
+   ; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 25; 25; 25
+   ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25
+   ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 26; 26; 26; 26; 26; 26; 26
+   ; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26
+   ; 26; 26; 26; 26; 26; 26; 26; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27
+   ; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27
+   ; 27; 27; 28
   |]
 
 let _distance =
@@ -2234,8 +2235,8 @@ let succ_literal literals chr =
 
 let succ_length literals length =
   assert (length >= 3 && length <= 255 + 3)
-  ; literals.(256 + 1 + _length.(length - 3)) <-
-      literals.(256 + 1 + _length.(length - 3)) + 1
+  ; literals.(256 + 1 + _length.(length)) <-
+      literals.(256 + 1 + _length.(length)) + 1
 
 let make_distances () = Array.make ((2 * _d_codes) + 1) 0
 
@@ -2315,7 +2316,7 @@ module Def = struct
     | `Copy (off, len), Dynamic dynamic ->
       (* assert (len >= 3 && len <= 255 + 3) ; *)
       (* assert (off >= 1 && off <= 32767 + 1) ; *)
-      dynamic.ltree.T.tree.Lookup.t.(256 + 1 + _length.(len - 3)) lsr _max_bits
+      dynamic.ltree.T.tree.Lookup.t.(256 + 1 + _length.(len)) lsr _max_bits
       > 0
       && dynamic.dtree.T.tree.Lookup.t.(_distance (pred off)) lsr _max_bits > 0
     | `End, (Fixed | Dynamic _) | `Literal _, (Flat _ | Fixed) | `Copy _, Fixed
@@ -2649,7 +2650,7 @@ module Def = struct
                [flush_bits] can be reached with [news] Calgary file. *)
             let off, len = cmd land 0xffff, (cmd lsr 16) land 0x1ff in
 
-            let code = _length.(len) in
+            let code = _length.(len + 3) in
             let len0, v0 = Lookup.get ltree (code + 256 + 1) in
             let len1, v1 =
               _extra_lbits.(code), len - _base_length.(code land 0x1f) in
@@ -3021,49 +3022,6 @@ module Def = struct
       ; bits= 0
       }
 
-    let length_slot_base =
-      [|
-         3; 4; 5; 6; 7; 8; 9; 10; 11; 13; 15; 17; 19; 23; 27; 31; 35; 43; 51; 59
-       ; 67; 83; 99; 115; 131; 163; 195; 227; 258
-      |]
-
-    let extra_length_bits =
-      [|
-         0; 0; 0; 0; 0; 0; 0; 0; 1; 1; 1; 1; 2; 2; 2; 2; 3; 3; 3; 3; 4; 4; 4; 4
-       ; 5; 5; 5; 5; 0
-      |]
-
-    let offset_slot_base =
-      [|
-         1; 2; 3; 4; 5; 7; 9; 13; 17; 25; 33; 49; 65; 97; 129; 193; 257; 385; 513
-       ; 769; 1025; 1537; 2049; 3073; 4097; 6145; 8193; 12289; 16385; 24577
-      |]
-
-    let extra_offset_bits =
-      [|
-         0; 0; 0; 0; 1; 1; 2; 2; 3; 3; 4; 4; 5; 5; 6; 6; 7; 7; 8; 8; 9; 9; 10; 10
-       ; 11; 11; 12; 12; 13; 13
-      |]
-
-    let length_slot =
-      [|
-         0; 0; 0; 0; 1; 2; 3; 4; 5; 6; 7; 8; 8; 9; 9; 10; 10; 11; 11; 12; 12; 12
-       ; 12; 13; 13; 13; 13; 14; 14; 14; 14; 15; 15; 15; 15; 16; 16; 16; 16; 16
-       ; 16; 16; 16; 17; 17; 17; 17; 17; 17; 17; 17; 18; 18; 18; 18; 18; 18; 18
-       ; 18; 19; 19; 19; 19; 19; 19; 19; 19; 20; 20; 20; 20; 20; 20; 20; 20; 20
-       ; 20; 20; 20; 20; 20; 20; 20; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21
-       ; 21; 21; 21; 21; 21; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22
-       ; 22; 22; 22; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23
-       ; 23; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24
-       ; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 25; 25; 25
-       ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25
-       ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 26; 26; 26; 26; 26; 26; 26
-       ; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26
-       ; 26; 26; 26; 26; 26; 26; 26; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27
-       ; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27
-       ; 27; 27; 28
-      |]
-
     let get_num_counter num_syms = (num_syms + (3 / 4) + 3) land lnot 3
 
     let sort_symbols num_syms freqs lens symout =
@@ -3241,9 +3199,9 @@ module Def = struct
       ; make_huffman_codes freqs static_codes
 
     let init_offset_slot_fast offset_slot_fast =
-      for offset_slot = 0 to Array.length offset_slot_base - 1 do
-        let offset = offset_slot_base.(offset_slot) in
-        let offset_end = offset + (1 lsl extra_offset_bits.(offset_slot)) in
+      for offset_slot = 0 to Array.length _base_dist - 3 do
+        let offset = _base_dist.(offset_slot) + 1 in
+        let offset_end = offset + (1 lsl _extra_dbits.(offset_slot)) in
         for i = offset to offset_end - 1 do
           offset_slot_fast.(i) <- offset_slot
         done
@@ -3317,12 +3275,8 @@ module Def = struct
       write_uncompressed_blocks os os.o_len true
       ; flush_output os
 
-    let precode_lens_permutation =
-      [|16; 17; 18; 0; 8; 7; 9; 6; 10; 5; 11; 4; 12; 3; 13; 2; 14; 1; 15|]
-
     let compute_precode_items lens num_lens precode_freqs precode_items =
       Array.fill precode_freqs 0 (Array.length precode_freqs) 0
-
       ; let itemptr = ref 0 in
         let run_start = ref 0 in
         let rec f () =
@@ -3404,7 +3358,7 @@ module Def = struct
         ; let rec h num_explicit_lens =
             if
               num_precode_syms < 5
-              || c.precode_lens.(precode_lens_permutation.(num_explicit_lens - 1))
+              || c.precode_lens.(zigzag.(num_explicit_lens - 1))
                  <> 0
             then c.num_explicit_lens <- num_explicit_lens
             else h (num_explicit_lens - 1) in
@@ -3430,7 +3384,7 @@ module Def = struct
       ; add_bits os (c.num_explicit_lens - 4) 4
       ; flush_bits os
       ; for i = 0 to c.num_explicit_lens - 1 do
-          add_bits os c.precode_lens.(precode_lens_permutation.(i)) 3
+          add_bits os c.precode_lens.(zigzag.(i)) 3
           ; flush_bits os
         done
       ; for i = 0 to c.num_precode_items - 1 do
@@ -3503,8 +3457,8 @@ module Def = struct
                 codes.codewords.litlen.(litlen_symbol)
                 codes.lens.litlen.(litlen_symbol)
               ; add_bits os
-                  (length - length_slot_base.(length_slot))
-                  extra_length_bits.(length_slot)
+                  (length - _base_length.(length_slot) - 3)
+                  _extra_lbits.(length_slot)
               ; if
                   max_litlen_codeword_len
                   + max_extra_length_bits
@@ -3519,8 +3473,8 @@ module Def = struct
                 ; if max_offset_codeword_len + max_extra_offset_bits <= 1 then
                     flush_bits os
                 ; add_bits os
-                    (sequences.(seq).offset - offset_slot_base.(offset_symbol))
-                    extra_offset_bits.(offset_symbol)
+                    (sequences.(seq).offset - _base_dist.(offset_symbol) - 1)
+                    _extra_dbits.(offset_symbol)
                 ; flush_bits os
                 ; f (seq + 1)) in
       f 0
@@ -3569,8 +3523,8 @@ module Def = struct
         done
       ; dynamic_cost := !dynamic_cost + c.codes.lens.litlen.(256)
       ; static_cost := !static_cost + 7
-      ; for sym = 257 to 257 + Array.length extra_length_bits - 1 do
-          let extra = extra_length_bits.(sym - 257) in
+      ; for sym = 257 to 257 + Array.length _extra_lbits - 3 do
+          let extra = _extra_lbits.(sym - 257) in
           dynamic_cost :=
             !dynamic_cost
             + (c.freqs.litlen.(sym) * (extra + c.codes.lens.litlen.(sym)))
@@ -3579,8 +3533,8 @@ module Def = struct
               + c.freqs.litlen.(sym)
                 * (extra + c.static_codes.lens.litlen.(sym))
         done
-      ; for sym = 0 to Array.length extra_offset_bits - 1 do
-          let extra = extra_offset_bits.(sym) in
+      ; for sym = 0 to Array.length _extra_dbits - 3 do
+          let extra = _extra_dbits.(sym) in
           dynamic_cost :=
             !dynamic_cost
             + (c.freqs.offset.(sym) * (extra + c.codes.lens.offset.(sym)))
@@ -3777,7 +3731,7 @@ module Def = struct
       ; incr litrunlen
 
     let choose_match c length offset litrunlen s =
-      let length_slot = length_slot.(length) in
+      let length_slot = _length.(length) in
       let offset_slot = c.offset_slot_fast.(offset) in
       c.freqs.litlen.(257 + length_slot) <-
         succ c.freqs.litlen.(257 + length_slot)
@@ -4123,8 +4077,8 @@ module Lz77 = struct
       ; res
 
   let succ_length literals length =
-    literals.(256 + 1 + _length.(length - 3)) <-
-      literals.(256 + 1 + _length.(length - 3)) + 1
+    literals.(256 + 1 + _length.(length)) <-
+      literals.(256 + 1 + _length.(length)) + 1
 
   let succ_distance distances distance =
     distances.(_distance (pred distance)) <-
