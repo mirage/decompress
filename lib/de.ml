@@ -2890,23 +2890,25 @@ module Def = struct
   let encode e = e.k e
 
   module Ns = struct
-    let min_block_length = 10000
-    let end_padding = 8
-    let max_match_offset = 32768
-    let max_max_codeword_len = 15
-    let num_litlen_syms = 288
-    let max_litlen_codeword_len = 14
-    let num_offset_syms = 32
-    let max_offset_codeword_len = 15
-    let max_num_syms = 288
-    let num_symbol_bits = 10
-    let symbol_mask = 0b1111111111
-    let min_match_len = 3
-    let max_match_len = 258
-    let soft_max_block_length = 300000
-    let num_precode_syms = 19
-    let end_of_block = 256
-    let max_pre_codeword_len = 7
+    let _min_block_length = 10000
+    let _end_padding = 8
+    let _max_match_offset = 32768
+    let _max_max_codeword_len = 15
+    let _num_litlen_syms = 288
+    let _max_litlen_codeword_len = 14
+    let _num_offset_syms = 32
+    let _max_offset_codeword_len = 15
+    let _max_num_syms = 288
+    let _num_symbol_bits = 10
+    let _symbol_mask = 0b1111111111
+    let _min_match_len = 3
+    let _max_match_len = 258
+    let _soft_max_block_length = 300000
+    let _num_precode_syms = 19
+    let _end_of_block = 256
+    let _max_pre_codeword_len = 7
+    let _max_extra_length_bits = 5
+    let _max_extra_offset_bits = 14
 
     type error = Invalid_compression_level | Unexpected_end_of_output
 
@@ -3017,7 +3019,7 @@ module Def = struct
       ; i_len= bigstring_length i
       ; o
       ; o_pos= 0
-      ; o_len= bigstring_length o - end_padding
+      ; o_len= bigstring_length o - _end_padding
       ; hold= 0
       ; bits= 0
       }
@@ -3025,7 +3027,7 @@ module Def = struct
     let get_num_counter num_syms = (num_syms + (3 / 4) + 3) land lnot 3
 
     let sort_symbols num_syms freqs lens symout =
-      let counters = Array.make (get_num_counter max_num_syms) 0 in
+      let counters = Array.make (get_num_counter _max_num_syms) 0 in
       let num_counters = get_num_counter num_syms in
       for sym = 0 to num_syms - 1 do
         let i = min freqs.(sym) (num_counters - 1) in
@@ -3041,7 +3043,7 @@ module Def = struct
             let freq = freqs.(sym) in
             if freq <> 0 then (
               let i = min freq (num_counters - 1) in
-              symout.(counters.(i)) <- sym lor (freq lsl num_symbol_bits)
+              symout.(counters.(i)) <- sym lor (freq lsl _num_symbol_bits)
               ; counters.(i) <- counters.(i) + 1)
             else lens.(sym) <- 0
           done
@@ -3064,7 +3066,7 @@ module Def = struct
         let m, n = ref 0, ref 0 in
         if
           !i <> sym_count
-          && (b = e || a.(!i) lsr num_symbol_bits <= a.(!b) lsr num_symbol_bits)
+          && (b = e || a.(!i) lsr _num_symbol_bits <= a.(!b) lsr _num_symbol_bits)
         then (
           m := !i
           ; incr i)
@@ -3074,7 +3076,7 @@ module Def = struct
         ; if
             !i <> sym_count
             && (b = e
-               || a.(!i) lsr num_symbol_bits <= a.(!b) lsr num_symbol_bits)
+               || a.(!i) lsr _num_symbol_bits <= a.(!b) lsr _num_symbol_bits)
           then (
             n := !i
             ; incr i)
@@ -3082,26 +3084,26 @@ module Def = struct
             n := !b
             ; incr b)
         ; let freq_shifted =
-            (a.(!m) land lnot symbol_mask) + (a.(!n) land lnot symbol_mask)
+            (a.(!m) land lnot _symbol_mask) + (a.(!n) land lnot _symbol_mask)
           in
-          a.(!m) <- a.(!m) land symbol_mask lor (!e lsl num_symbol_bits)
-          ; a.(!n) <- a.(!n) land symbol_mask lor (!e lsl num_symbol_bits)
-          ; a.(!e) <- a.(!e) land symbol_mask lor freq_shifted
+          a.(!m) <- a.(!m) land _symbol_mask lor (!e lsl _num_symbol_bits)
+          ; a.(!n) <- a.(!n) land _symbol_mask lor (!e lsl _num_symbol_bits)
+          ; a.(!e) <- a.(!e) land _symbol_mask lor freq_shifted
           ; incr e
       done
 
     let compute_length_counts a root_idx len_counts max_codeword =
       len_counts.(1) <- 2
-      ; a.(root_idx) <- a.(root_idx) land symbol_mask
+      ; a.(root_idx) <- a.(root_idx) land _symbol_mask
 
       ; let rec f = function
           | -1 -> ()
           | node ->
-            let parent = a.(node) lsr num_symbol_bits in
-            let parent_depth = a.(parent) lsr num_symbol_bits in
+            let parent = a.(node) lsr _num_symbol_bits in
+            let parent_depth = a.(parent) lsr _num_symbol_bits in
             let depth = parent_depth + 1 in
             let len = ref depth in
-            a.(node) <- a.(node) land symbol_mask lor (depth lsl num_symbol_bits)
+            a.(node) <- a.(node) land _symbol_mask lor (depth lsl _num_symbol_bits)
             ; if !len >= max_codeword then (
                 len := max_codeword - 1
                 ; while len_counts.(!len) == 0 do
@@ -3113,19 +3115,18 @@ module Def = struct
         f (root_idx - 1)
 
     let gen_codewords a lens len_counts max_codeword_len num_syms =
-      let next_codewords = Array.make (max_max_codeword_len + 1) 0 in
-      let rec f i len =
-        match len with
-        | 0 -> ()
-        | _ ->
-          let count = ref len_counts.(len) in
+      let next_codewords = Array.make (_max_max_codeword_len + 1) 0 in
+      let i = ref 0 in
+      let len = ref max_codeword_len in
+      while !len <> 0 do
+        let count = ref len_counts.(!len) in
           while !count <> 0 do
-            decr count
-            ; lens.(a.(!i) land symbol_mask) <- len
+          lens.(a.(!i) land _symbol_mask) <- !len
             ; incr i
+          ; decr count
           done
-          ; f i (len - 1) in
-      f (ref 0) max_codeword_len
+        ; decr len
+      done
       ; next_codewords.(0) <- 0
       ; next_codewords.(1) <- 0
       ; for len = 2 to max_codeword_len do
@@ -3144,7 +3145,7 @@ module Def = struct
       match num_used_syms with
       | 0 -> ()
       | 1 ->
-        let sym = codewords.(0) land symbol_mask in
+        let sym = codewords.(0) land _symbol_mask in
         let nonzero_idx = max sym 1 in
         codewords.(0) <- 0
         ; lens.(0) <- 1
@@ -3152,7 +3153,7 @@ module Def = struct
         ; lens.(nonzero_idx) <- 1
       | _ ->
         build_tree codewords num_used_syms
-        ; let len_counts = Array.make (max_max_codeword_len + 1) 0 in
+        ; let len_counts = Array.make (_max_max_codeword_len + 1) 0 in
           compute_length_counts codewords (num_used_syms - 2) len_counts
             max_codeword_len
           ; gen_codewords codewords lens len_counts max_codeword_len num_syms
@@ -3175,9 +3176,9 @@ module Def = struct
         done
 
     let make_huffman_codes freqs codes =
-      make_huffman_code num_litlen_syms max_litlen_codeword_len freqs.litlen
+      make_huffman_code _num_litlen_syms _max_litlen_codeword_len freqs.litlen
         codes.lens.litlen codes.codewords.litlen
-      ; make_huffman_code num_offset_syms max_offset_codeword_len freqs.offset
+      ; make_huffman_code _num_offset_syms _max_offset_codeword_len freqs.offset
           codes.lens.offset codes.codewords.offset
 
     let init_static_codes freqs static_codes =
@@ -3279,7 +3280,7 @@ module Def = struct
       Array.fill precode_freqs 0 (Array.length precode_freqs) 0
       ; let itemptr = ref 0 in
         let run_start = ref 0 in
-        let rec f () =
+        while !run_start <> num_lens do
           let len = lens.(!run_start) in
           let run_end = ref !run_start in
           while !run_end <> num_lens && len == lens.(!run_end) do
@@ -3318,8 +3319,8 @@ module Def = struct
               ; incr itemptr
               ; incr run_start
             done
-          ; if !run_start <> num_lens then f () else !itemptr in
-        f ()
+        done
+        ; !itemptr
 
     let precompute_huffman_header c =
       let rec f num_litlen_syms =
@@ -3328,17 +3329,17 @@ module Def = struct
           || c.codes.lens.litlen.(num_litlen_syms - 1) <> 0
         then c.num_litlen_syms <- num_litlen_syms
         else f (num_litlen_syms - 1) in
-      f num_litlen_syms
+      f _num_litlen_syms
       ; let rec g num_offset_syms =
           if
             num_offset_syms = 1
             || c.codes.lens.offset.(num_offset_syms - 1) <> 0
           then c.num_offset_syms <- num_offset_syms
           else g (num_offset_syms - 1) in
-        g num_offset_syms
-        ; if c.num_litlen_syms <> num_litlen_syms then (
+        g _num_offset_syms
+        ; if c.num_litlen_syms <> _num_litlen_syms then (
             let max1 =
-              min (c.num_litlen_syms + c.num_offset_syms) num_litlen_syms
+              min (c.num_litlen_syms + c.num_offset_syms) _num_litlen_syms
               - c.num_litlen_syms in
             let max2 = c.num_offset_syms - max1 in
             for i = 0 to max1 - 1 do
@@ -3353,20 +3354,20 @@ module Def = struct
               (Array.append c.codes.lens.litlen c.codes.lens.offset)
               (c.num_litlen_syms + c.num_offset_syms)
               c.precode_freqs c.precode_items
-        ; make_huffman_code num_precode_syms max_pre_codeword_len
+        ; make_huffman_code _num_precode_syms _max_pre_codeword_len
             c.precode_freqs c.precode_lens c.precode_codewords
         ; let rec h num_explicit_lens =
             if
-              num_precode_syms < 5
+              _num_precode_syms < 5
               || c.precode_lens.(zigzag.(num_explicit_lens - 1))
                  <> 0
             then c.num_explicit_lens <- num_explicit_lens
             else h (num_explicit_lens - 1) in
-          h num_precode_syms
+          h _num_precode_syms
 
-          ; if c.num_litlen_syms <> num_litlen_syms then (
+          ; if c.num_litlen_syms <> _num_litlen_syms then (
               let max1 =
-                min (num_litlen_syms - c.num_litlen_syms) c.num_offset_syms
+                min (_num_litlen_syms - c.num_litlen_syms) c.num_offset_syms
               in
               let max2 = max (c.num_offset_syms - max1) 0 in
               for i = 0 to max2 - 1 do
@@ -3400,9 +3401,6 @@ module Def = struct
           ; flush_bits os
         done
 
-    let max_extra_length_bits = 5
-    let max_extra_offset_bits = 14
-
     let write_sequences os codes sequences in_next in_next_i =
       let rec f seq =
         let litrunlen =
@@ -3415,11 +3413,11 @@ module Def = struct
             let lit2 = unsafe_get_uint8 in_next (!in_next_i + 2) in
             let lit3 = unsafe_get_uint8 in_next (!in_next_i + 3) in
             add_bits os codes.codewords.litlen.(lit0) codes.lens.litlen.(lit0)
-            ; if 2 * max_litlen_codeword_len > 1 then flush_bits os
+            ; if 2 * _max_litlen_codeword_len > 1 then flush_bits os
             ; add_bits os codes.codewords.litlen.(lit1) codes.lens.litlen.(lit1)
-            ; if 4 * max_litlen_codeword_len > 1 then flush_bits os
+            ; if 4 * _max_litlen_codeword_len > 1 then flush_bits os
             ; add_bits os codes.codewords.litlen.(lit2) codes.lens.litlen.(lit2)
-            ; if 2 * max_litlen_codeword_len > 1 then flush_bits os
+            ; if 2 * _max_litlen_codeword_len > 1 then flush_bits os
             ; add_bits os codes.codewords.litlen.(lit3) codes.lens.litlen.(lit3)
             ; flush_bits os
             ; in_next_i := !in_next_i + 4
@@ -3430,7 +3428,7 @@ module Def = struct
               ; add_bits os
                   codes.codewords.litlen.(unsafe_get_uint8 in_next !in_next_i)
                   codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
-              ; if 3 * max_litlen_codeword_len > 1 then flush_bits os
+              ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os
               ; incr in_next_i
               ; if !litrunlen <> 0 then (
                   decr litrunlen
@@ -3438,7 +3436,7 @@ module Def = struct
                       codes.codewords.litlen.(unsafe_get_uint8 in_next
                                                 !in_next_i)
                       codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
-                  ; if 3 * max_litlen_codeword_len > 1 then flush_bits os
+                  ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os
                   ; incr in_next_i
                   ; if !litrunlen <> 0 then (
                       decr litrunlen
@@ -3446,9 +3444,9 @@ module Def = struct
                           codes.codewords.litlen.(unsafe_get_uint8 in_next
                                                     !in_next_i)
                           codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
-                      ; if 3 * max_litlen_codeword_len > 1 then flush_bits os
+                      ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os
                       ; incr in_next_i))
-              ; if 3 * max_litlen_codeword_len > 1 then flush_bits os))
+              ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os))
         ; if length <> 0 then (
             in_next_i := !in_next_i + length
             ; let length_slot = sequences.(seq).length_slot in
@@ -3460,17 +3458,17 @@ module Def = struct
                   (length - _base_length.(length_slot) - 3)
                   _extra_lbits.(length_slot)
               ; if
-                  max_litlen_codeword_len
-                  + max_extra_length_bits
-                  + max_offset_codeword_len
-                  + max_extra_offset_bits
+                  _max_litlen_codeword_len
+                  + _max_extra_length_bits
+                  + _max_offset_codeword_len
+                  + _max_extra_offset_bits
                   <= 1
                 then flush_bits os
               ; let offset_symbol = sequences.(seq).offset_symbol in
                 add_bits os
                   codes.codewords.offset.(offset_symbol)
                   codes.lens.offset.(offset_symbol)
-                ; if max_offset_codeword_len + max_extra_offset_bits <= 1 then
+                ; if _max_offset_codeword_len + _max_extra_offset_bits <= 1 then
                     flush_bits os
                 ; add_bits os
                     (sequences.(seq).offset - _base_dist.(offset_symbol) - 1)
@@ -3481,8 +3479,8 @@ module Def = struct
 
     let write_end_of_block os codes =
       add_bits os
-        codes.codewords.litlen.(end_of_block)
-        codes.lens.litlen.(end_of_block)
+        codes.codewords.litlen.(_end_of_block)
+        codes.lens.litlen.(_end_of_block)
       ; flush_bits os
 
     let flush_block
@@ -3499,13 +3497,13 @@ module Def = struct
       let dynamic_cost = ref 0 in
       let static_cost = ref 0 in
       let uncompressed_cost = ref 0 in
-      c.freqs.litlen.(end_of_block) <- c.freqs.litlen.(end_of_block) + 1
+      c.freqs.litlen.(_end_of_block) <- c.freqs.litlen.(_end_of_block) + 1
       ; make_huffman_codes c.freqs c.codes
 
       ; precompute_huffman_header c
 
       ; dynamic_cost := !dynamic_cost + 5 + 5 + 4 + (3 * c.num_explicit_lens)
-      ; for sym = 0 to num_precode_syms - 1 do
+      ; for sym = 0 to _num_precode_syms - 1 do
           let extra = extra_precode_bits.(sym) in
           dynamic_cost :=
             !dynamic_cost
@@ -3613,8 +3611,8 @@ module Def = struct
     let should_end_block stats in_block_begin in_next in_end =
       if
         stats.num_new_observations < num_observations_per_block_check
-        || in_next - in_block_begin < min_block_length
-        || in_end - in_next < min_block_length
+        || in_next - in_block_begin < _min_block_length
+        || in_end - in_next < _min_block_length
       then false
       else do_end_block_check stats (in_next - in_block_begin)
 
@@ -3759,18 +3757,18 @@ module Def = struct
       let lens =
         {
           best= 0
-        ; nice= min c.nice_match_length max_match_len
-        ; max= max_match_len
+        ; nice= min c.nice_match_length _max_match_len
+        ; max= _max_match_len
         } in
       let next_hash = ref 0 in
       let hc_mf = hc_matchfinder_init () in
       let seq_len =
-        ((soft_max_block_length + min_match_len - 1) / min_match_len) + 1 in
+        ((_soft_max_block_length + _min_match_len - 1) / _min_match_len) + 1 in
       let s = {seqs= Array.init seq_len init_sequence; pos= 0} in
       while os.i_pos <> os.i_len do
         let in_block_begin = ref os.i_pos in
         let in_max_block_end =
-          ref (os.i_pos + min (os.i_len - os.i_pos) soft_max_block_length) in
+          ref (os.i_pos + min (os.i_len - os.i_pos) _soft_max_block_length) in
         let litrunlen = ref 0 in
         s.pos <- 0
         ; init_block_split_stats split_stats
@@ -3783,11 +3781,11 @@ module Def = struct
             if lens.max > os.i_len - os.i_pos then (
               lens.max <- os.i_len - os.i_pos
               ; lens.nice <- min lens.nice lens.max)
-            ; lens.best <- min_match_len - 1
+            ; lens.best <- _min_match_len - 1
             ; let offset =
                 hc_matchfinder_longest_match hc_mf os lens c.max_search_depth
                   next_hash in
-              if lens.best >= min_match_len then (
+              if lens.best >= _min_match_len then (
                 choose_match c lens.best offset litrunlen s
                 ; observe_match split_stats lens.best
                 ; os.i_pos <- succ os.i_pos
@@ -3823,31 +3821,31 @@ module Def = struct
           | 7 -> compress_lazy, 100, 130
           | 8 -> compress_lazy, 150, 200
           | _ -> compress_lazy, 200, 258 in
-        let offset_slot_fast = Array.make (max_match_offset + 1) 0 in
+        let offset_slot_fast = Array.make (_max_match_offset + 1) 0 in
         init_offset_slot_fast offset_slot_fast
-        ; let litlen = Array.make num_litlen_syms 0 in
-          let offset = Array.make num_offset_syms 0 in
+        ; let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
           let freqs = {litlen; offset} in
-          let litlen = Array.make num_litlen_syms 0 in
-          let offset = Array.make num_offset_syms 0 in
+          let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
           let lens = {litlen; offset} in
-          let litlen = Array.make num_litlen_syms 0 in
-          let offset = Array.make num_offset_syms 0 in
+          let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
           let codewords = {litlen; offset} in
           let codes = {lens; codewords} in
-          let litlen = Array.make num_litlen_syms 0 in
-          let offset = Array.make num_offset_syms 0 in
+          let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
           let lens = {litlen; offset} in
-          let litlen = Array.make num_litlen_syms 0 in
-          let offset = Array.make num_offset_syms 0 in
+          let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
           let codewords = {litlen; offset} in
           let static_codes = {lens; codewords} in
           init_static_codes freqs static_codes
-          ; let precode_freqs = Array.make num_precode_syms 0 in
-            let precode_lens = Array.make num_precode_syms 0 in
-            let precode_codewords = Array.make num_precode_syms 0 in
+          ; let precode_freqs = Array.make _num_precode_syms 0 in
+            let precode_lens = Array.make _num_precode_syms 0 in
+            let precode_codewords = Array.make _num_precode_syms 0 in
             let precode_items =
-              Array.make (num_litlen_syms + num_offset_syms) 0 in
+              Array.make (_num_litlen_syms + _num_offset_syms) 0 in
             let num_litlen_syms = 0 in
             let num_offset_syms = 0 in
             let num_explicit_lens = 0 in
@@ -3873,12 +3871,12 @@ module Def = struct
               } )
 
     let compress_bound len =
-      let max_blocks = max 1 ((len + min_block_length - 1) / min_block_length) in
-      (5 * max_blocks) + len + 1 + end_padding
+      let max_blocks = max 1 ((len + _min_block_length - 1) / _min_block_length) in
+      (5 * max_blocks) + len + 1 + _end_padding
 
     let deflate ?(level = 4) ~src ~dst =
       let impl, c = encoder level in
-      if bigstring_length dst < end_padding then 0
+      if bigstring_length dst < _end_padding then 0
       else if bigstring_length src < c.min_size_to_compress then (
         let os = init_output src dst in
         write_uncompressed_block os (os.i_len - os.i_pos) true
