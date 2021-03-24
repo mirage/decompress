@@ -1495,12 +1495,14 @@ module Inf = struct
       raise (Malformed Unexpected_end_of_output)
 
     let err_invalid_kind_of_block () = raise (Malformed Invalid_kind_of_block)
+
     let err_invalid_dictionary () = raise (Malformed Invalid_dictionary)
 
     let err_invalid_complement_of_length () =
       raise (Malformed Invalid_complement_of_length)
 
     let err_invalid_distance () = raise (Malformed Invalid_distance)
+
     let err_invalid_distance_code () = raise (Malformed Invalid_distance_code)
 
     (* remaining bytes to read [d.i]. *)
@@ -1523,16 +1525,18 @@ module Inf = struct
             ; d.i_pos <- d.i_pos + len)
 
     let _fill_bits d =
-      if i_rem d < 1 then err_unexpected_end_of_input ()
-      else if i_rem d <> 1 then (
+      let rem = i_rem d in
+      if rem > 1 then (
         d.hold <- d.hold lor (unsafe_get_uint16 d.i d.i_pos lsl d.bits)
         ; d.i_pos <- d.i_pos + 2
         ; d.bits <- d.bits + 16)
-      else (
-        d.hold <- d.hold lor (unsafe_get_uint8 d.i d.i_pos lsl d.bits)
-        ; d.i_pos <- d.i_pos + 1
-        ; d.bits <- d.bits + 8)
-      [@@inline]
+      else
+        if rem = 1 then (
+          d.hold <- d.hold lor (unsafe_get_uint8 d.i d.i_pos lsl d.bits)
+          ; d.i_pos <- d.i_pos + 1
+          ; d.bits <- d.bits + 8)
+        else err_unexpected_end_of_input ()
+          [@@inline]
 
     (* clecat: Removed the rec flag on fill_bits, as it was never called with
        d greater than 16. However, we should make sure that it is never done in
@@ -2117,24 +2121,24 @@ module Queue = struct
   exception Empty
 
   let push_exn t v =
-    if (full [@inlined]) t then raise Full
-    ; unsafe_set t.buf ((mask [@inlined]) t t.w) v
+    if (full) t then raise Full
+    ; unsafe_set t.buf ((mask) t t.w) v
     ; t.w <- t.w + 1
 
   let pop_exn t =
-    if (empty [@inlined]) t then raise Empty
-    ; let r = unsafe_get t.buf ((mask [@inlined]) t t.r) in
+    if (empty) t then raise Empty
+    ; let r = unsafe_get t.buf ((mask) t t.r) in
       t.r <- t.r + 1
       ; r
 
   let peek_exn t =
-    if (empty [@inlined]) t then raise Empty
-    ; unsafe_get t.buf ((mask [@inlined]) t t.r)
+    if (empty) t then raise Empty
+    ; unsafe_get t.buf ((mask) t t.r)
 
   let unsafe_junk t = t.r <- t.r + 1
 
   let junk_exn t n =
-    if (size [@inlined]) t < n then
+    if (size) t < n then
       invalid_arg "You want to junk more than what we have"
     ; t.r <- t.r + n
 
@@ -3120,11 +3124,11 @@ module Def = struct
       let len = ref max_codeword_len in
       while !len <> 0 do
         let count = ref len_counts.(!len) in
-          while !count <> 0 do
+        while !count <> 0 do
           lens.(a.(!i) land _symbol_mask) <- !len
-            ; incr i
+          ; incr i
           ; decr count
-          done
+        done
         ; decr len
       done
       ; next_codewords.(0) <- 0
