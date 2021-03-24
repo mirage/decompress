@@ -2121,24 +2121,24 @@ module Queue = struct
   exception Empty
 
   let push_exn t v =
-    if (full) t then raise Full
-    ; unsafe_set t.buf ((mask) t t.w) v
+    if (full [@inlined]) t then raise Full
+    ; unsafe_set t.buf ((mask [@inlined]) t t.w) v
     ; t.w <- t.w + 1
 
   let pop_exn t =
-    if (empty) t then raise Empty
-    ; let r = unsafe_get t.buf ((mask) t t.r) in
+    if (empty [@inlined]) t then raise Empty
+    ; let r = unsafe_get t.buf ((mask [@inlined]) t t.r) in
       t.r <- t.r + 1
       ; r
 
   let peek_exn t =
-    if (empty) t then raise Empty
-    ; unsafe_get t.buf ((mask) t t.r)
+    if (empty [@inlined]) t then raise Empty
+    ; unsafe_get t.buf ((mask [@inlined]) t t.r)
 
   let unsafe_junk t = t.r <- t.r + 1
 
   let junk_exn t n =
-    if (size) t < n then
+    if (size [@inlined]) t < n then
       invalid_arg "You want to junk more than what we have"
     ; t.r <- t.r + n
 
