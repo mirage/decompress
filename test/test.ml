@@ -2045,7 +2045,7 @@ let () =
      ; ( "lz77"
        , [
            lz77_0 (); lz77_1 (); lz77_2 (); lz77_3 (); lz77_4 ()
-         ; lz77_corpus_rfc5322 ()
+         ; lz77_corpus_rfc5322 (); small_queue ()
          ] )
      ; ( "calgary"
        , [
