@@ -1,3 +1,4 @@
+let () = Printexc.record_backtrace true
 let seed = "kle6/0eMVRsY+AlbHjLTMQ=="
 
 let () =
@@ -731,7 +732,7 @@ let lz77_0 () =
       let lst = Queue.to_list q in
       Alcotest.(check cmds)
         "result" lst
-        [`Literal 'a'; `Literal 'a'; `Copy (1, 3)]
+        [`Literal 'a'; `Literal 'a'; `Copy (1, 3); `End]
     | `Flush -> Alcotest.fail "Unexpected `Flush return"
     | `Await -> Alcotest.fail "Impossible `Await case"
 
@@ -744,7 +745,10 @@ let lz77_1 () =
       let lst = Queue.to_list q in
       Alcotest.(check cmds)
         "result" lst
-        [`Literal 'a'; `Literal 'b'; `Literal 'c'; `Literal 'd'; `Literal 'e']
+        [
+          `Literal 'a'; `Literal 'b'; `Literal 'c'; `Literal 'd'; `Literal 'e'
+        ; `End
+        ]
     | `Flush -> Alcotest.fail "Unexpected `Flush return"
     | `Await -> Alcotest.fail "Impossible `Await case"
 
@@ -1977,6 +1981,19 @@ let test_corpus_with_lzo filename =
         | Ok res' -> Alcotest.(check str) "contents" res res'
         | Error err -> Alcotest.failf "%a" Lzo.pp_error err
 
+let small_queue () =
+  Alcotest.test_case "small queue" `Quick @@ fun () ->
+  let q = Queue.create 2 in
+  let v = "abcdef" in
+  let pos = ref 0 in
+  let refill buf =
+    let len = min (Bigstringaf.length buf) (String.length v - !pos) in
+    Bigstringaf.blit_from_string v ~src_off:!pos buf ~dst_off:0 ~len
+    ; pos := !pos + len
+    ; len in
+  let _str = De.Higher.to_string ~w ~q ~refill i in
+  Alcotest.(check pass) "compressed" () ()
+
 let () =
   Alcotest.run "z"
     [
@@ -2005,7 +2022,7 @@ let () =
     ; ( "lz77"
       , [
           lz77_0 (); lz77_1 (); lz77_2 (); lz77_3 (); lz77_4 ()
-        ; lz77_corpus_rfc5322 ()
+        ; lz77_corpus_rfc5322 (); small_queue ()
         ] )
     ; ( "calgary"
       , [

@@ -478,9 +478,8 @@ module Def = struct
             {e with i_pos= e.i_pos + (i_rem e - De.Lz77.src_rem e.s)}
         | `Flush -> encode_deflate e (De.Def.encode e.e `Flush)
         | `End ->
-          De.Queue.push_exn e.q De.Queue.eob
-          ; let block = make_block ~last:true e in
-            trailing e (De.Def.encode e.e (`Block block))
+          let block = make_block ~last:true e in
+          trailing e (De.Def.encode e.e (`Block block))
       and encode_deflate e = function
         | `Partial ->
           let len = o_rem e - De.Def.dst_rem e.e in
