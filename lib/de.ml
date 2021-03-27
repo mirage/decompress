@@ -1,3 +1,5 @@
+let () = Printexc.record_backtrace true
+
 module Bigarray = Bigarray_compat (* XXX(dinosaure): MirageOS compatibility. *)
 
 type bigstring =
@@ -2827,11 +2829,14 @@ module Lz77 = struct
   (* XXX(dinosaure): it's possible that it remains one literal. *)
   let trailing s =
     if s.match_available then (
-      let _ = emit_literal s (unsafe_get_char s.w (s.strstart - 1)) in
+      let flush = emit_literal s (unsafe_get_char s.w (s.strstart - 1)) in
       s.insert <-
         (if s.strstart < _min_match - 1 then s.strstart else _min_match - 1)
+      ; if not flush then Queue.push_exn s.q Queue.eob
       ; `End)
-    else `End
+    else (
+      Queue.push_exn s.q Queue.eob
+      ; `End)
 
   let slide_hash s =
     let wsize = 1 lsl s.wbits in
@@ -3124,9 +3129,7 @@ module Higher = struct
         kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
         ; encode (Def.encode encoder (`Block {Def.kind= !kind; last= false}))
       | `End ->
-        Queue.push_exn q Queue.eob
-        ; pending
-            (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true}))
+        pending (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true}))
     and encode = function
       | `Partial ->
         let len = bigstring_length o - Def.dst_rem encoder in
@@ -3202,9 +3205,7 @@ module Higher = struct
         kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
         ; encode (Def.encode encoder (`Block {Def.kind= !kind; last= false}))
       | `End ->
-        Queue.push_exn q Queue.eob
-        ; pending
-            (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true}))
+        pending (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true}))
     and encode = function
       | `Partial -> assert false
       | `Ok -> compress ()
