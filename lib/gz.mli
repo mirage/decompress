@@ -325,7 +325,7 @@ module Higher : sig
           let flush buf len =
             let str = Bigstringaf.substring buf ~off:0 ~len in
             Buffer.add_string r str in
-          Gz.Higher.compress ~w ~q ~refill ~flush () cfg i o ; Buffer.contents r
+          Gz.Higher.compress ~w ~q ~level ~refill ~flush () cfg i o ; Buffer.contents r
       ]}
 
       As {!De.Higher.compress} or {!Zl.Higher.compress}, [decompress] don't want
