@@ -3001,17 +3001,12 @@ module Def = struct
       let next_tab = Array.make window_size 0 in
       {hash4_tab; next_tab}
 
-    type sequences = {seqs: sequence array; mutable pos: int}
-
-    and sequence = {
+    type sequence = {
         mutable litrunlen_and_length: int
       ; mutable offset: int
       ; mutable offset_symbol: int
       ; mutable length_slot: int
     }
-
-    let init_sequence _ =
-      {litrunlen_and_length= 0; offset= 0; offset_symbol= 0; length_slot= 0}
 
     let num_literal_observation_types = 8
     let num_match_observation_types = 2
@@ -3432,10 +3427,10 @@ module Def = struct
         done
 
     let write_sequences os codes sequences in_next in_next_i =
-      let rec f seq =
+      let f seq =
         let litrunlen =
-          ref (sequences.(seq).litrunlen_and_length land 0x7FFFFF) in
-        let length = sequences.(seq).litrunlen_and_length lsr 23 in
+          ref (seq.litrunlen_and_length land 0x7FFFFF) in
+        let length = seq.litrunlen_and_length lsr 23 in
         if !litrunlen <> 0 then (
           while !litrunlen >= 4 do
             let lit0 = unsafe_get_uint8 in_next (!in_next_i + 0) in
@@ -3453,12 +3448,12 @@ module Def = struct
             ; in_next_i := !in_next_i + 4
             ; litrunlen := !litrunlen - 4
           done
-          ; if !litrunlen <> 0 then (
+                      ; if !litrunlen <> 0 then (
               decr litrunlen
-              ; add_bits os
+                        ; add_bits os
                   codes.codewords.litlen.(unsafe_get_uint8 in_next !in_next_i)
                   codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
-              ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os
+                  ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os
               ; incr in_next_i
               ; if !litrunlen <> 0 then (
                   decr litrunlen
@@ -3477,9 +3472,9 @@ module Def = struct
                       ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os
                       ; incr in_next_i))
               ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os))
-        ; if length <> 0 then (
+          ; if length <> 0 then (
             in_next_i := !in_next_i + length
-            ; let length_slot = sequences.(seq).length_slot in
+            ; let length_slot = seq.length_slot in
               let litlen_symbol = 257 + length_slot in
               add_bits os
                 codes.codewords.litlen.(litlen_symbol)
@@ -3494,18 +3489,17 @@ module Def = struct
                   + _max_extra_offset_bits
                   <= 1
                 then flush_bits os
-              ; let offset_symbol = sequences.(seq).offset_symbol in
+              ; let offset_symbol = seq.offset_symbol in
                 add_bits os
                   codes.codewords.offset.(offset_symbol)
                   codes.lens.offset.(offset_symbol)
                 ; if _max_offset_codeword_len + _max_extra_offset_bits <= 1 then
                     flush_bits os
                 ; add_bits os
-                    (sequences.(seq).offset - _base_dist.(offset_symbol) - 1)
+                    (seq.offset - _base_dist.(offset_symbol) - 1)
                     _extra_dbits.(offset_symbol)
-                ; flush_bits os
-                ; f (seq + 1)) in
-      f 0
+                ; flush_bits os) in
+    List.iter f sequences
 
     let write_end_of_block os codes =
       add_bits os
@@ -3520,8 +3514,7 @@ module Def = struct
         block_begin
         block_length
         is_final_block
-        sequences
-        _use_item_list =
+        sequences =
       let extra_precode_bits =
         [|0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 2; 3; 7|] in
       let dynamic_cost = ref 0 in
@@ -3602,7 +3595,6 @@ module Def = struct
       Array.fill c.freqs.litlen 0 (Array.length c.freqs.litlen) 0
       ; Array.fill c.freqs.offset 0 (Array.length c.freqs.offset) 0
 
-    let finish_sequence seq litrunlen = seq.litrunlen_and_length <- litrunlen
     let num_observations_per_block_check = 512
 
     let do_end_block_check stats block_length =
@@ -3758,19 +3750,20 @@ module Def = struct
       c.freqs.litlen.(literal) <- succ c.freqs.litlen.(literal)
       ; incr litrunlen
 
-    let choose_match c length offset litrunlen s =
+    let choose_match c length offset litrunlen =
       let length_slot = _length.(length) in
       let offset_slot = c.offset_slot_fast.(offset) in
       c.freqs.litlen.(257 + length_slot) <-
         succ c.freqs.litlen.(257 + length_slot)
       ; c.freqs.offset.(offset_slot) <- succ c.freqs.offset.(offset_slot)
-      ; let seq = s.seqs.(s.pos) in
-        seq.litrunlen_and_length <- (length lsl 23) lor !litrunlen
-        ; seq.offset <- offset
-        ; seq.length_slot <- length_slot
-        ; seq.offset_symbol <- offset_slot
-        ; litrunlen := 0
-        ; s.pos <- s.pos + 1
+      ; let seq =
+          { litrunlen_and_length= (length lsl 23) lor !litrunlen
+          ; offset= offset
+          ; length_slot= length_slot
+          ; offset_symbol= offset_slot }
+        in
+      litrunlen := 0
+      ; seq
 
     let observe_match stats length =
       let i = num_literal_observation_types + Bool.to_int (length >= 9) in
@@ -3792,18 +3785,14 @@ module Def = struct
         } in
       let next_hash = ref 0 in
       let hc_mf = hc_matchfinder_init () in
-      let seq_len =
-        ((_soft_max_block_length + _min_match_len - 1) / _min_match_len) + 1
-      in
-      let s = {seqs= Array.init seq_len init_sequence; pos= 0} in
       while os.i_pos <> os.i_len do
         let in_block_begin = ref os.i_pos in
         let in_max_block_end =
           ref (os.i_pos + min (os.i_len - os.i_pos) _soft_max_block_length)
         in
         let litrunlen = ref 0 in
-        s.pos <- 0
-        ; init_block_split_stats split_stats
+        let seqs = ref [] in
+        init_block_split_stats split_stats
         ; reset_symbol_frequencies c
         ; while
             os.i_pos < !in_max_block_end
@@ -3818,7 +3807,7 @@ module Def = struct
                 hc_matchfinder_longest_match hc_mf os lens c.max_search_depth
                   next_hash in
               if lens.best >= _min_match_len then (
-                choose_match c lens.best offset litrunlen s
+                seqs := choose_match c lens.best offset litrunlen :: !seqs
                 ; observe_match split_stats lens.best
                 ; os.i_pos <- succ os.i_pos
                 ; next_hash :=
@@ -3829,10 +3818,10 @@ module Def = struct
                 ; observe_literal split_stats os.i_pos
                 ; os.i_pos <- succ os.i_pos)
           done
-        ; finish_sequence s.seqs.(s.pos) !litrunlen
+        ; seqs := List.rev @@ {litrunlen_and_length= !litrunlen; offset= 0; offset_symbol= 0; length_slot= 0} :: !seqs
         ; flush_block c os i in_block_begin
             (os.i_pos - !in_block_begin)
-            (os.i_pos = os.i_len) s.seqs false
+            (os.i_pos = os.i_len) !seqs
       done
       ; flush_output os
 
