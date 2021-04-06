@@ -3237,19 +3237,26 @@ module Def = struct
     let add_bits os bits num_bits =
       os.hold <- os.hold lor (bits lsl os.bits)
       ; os.bits <- os.bits + num_bits
+      ; if os.bits >= 16 then
+          begin
+            unsafe_set_uint16 os.o os.o_pos os.hold
+            ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 2
+            ; os.bits <- os.bits - 16
+            ; os.hold <- os.hold lsr 16
+          end
 
     let flush_bits os =
-      while os.bits >= 8 do
-        unsafe_set_uint8 os.o os.o_pos os.hold
-        ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 1
-        ; os.bits <- os.bits - 8
-        ; os.hold <- os.hold lsr 8
-      done
+      if os.bits >= 8 then
+        begin
+          unsafe_set_uint8 os.o os.o_pos os.hold
+          ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 1
+          ; os.bits <- os.bits - 8
+          ; os.hold <- os.hold lsr 8
+        end
 
     let write_block_header os is_final_block block_type =
       add_bits os (Bool.to_int is_final_block) 1
       ; add_bits os block_type 2
-      ; flush_bits os
 
     let align_bitstream os =
       os.bits <- os.bits + (-os.bits land 7)
@@ -3408,10 +3415,8 @@ module Def = struct
       add_bits os (c.num_litlen_syms - 257) 5
       ; add_bits os (c.num_offset_syms - 1) 5
       ; add_bits os (c.num_explicit_lens - 4) 4
-      ; flush_bits os
       ; for i = 0 to c.num_explicit_lens - 1 do
           add_bits os c.precode_lens.(zigzag.(i)) 3
-          ; flush_bits os
         done
       ; for i = 0 to c.num_precode_items - 1 do
           let precode_item = c.precode_items.(i) in
@@ -3423,7 +3428,6 @@ module Def = struct
               if precode_sym == 16 then add_bits os (precode_item lsr 5) 2
               else if precode_sym == 17 then add_bits os (precode_item lsr 5) 3
               else add_bits os (precode_item lsr 5) 7
-          ; flush_bits os
         done
 
     let write_sequences os codes sequences in_next in_next_i =
@@ -3438,13 +3442,9 @@ module Def = struct
             let lit2 = unsafe_get_uint8 in_next (!in_next_i + 2) in
             let lit3 = unsafe_get_uint8 in_next (!in_next_i + 3) in
             add_bits os codes.codewords.litlen.(lit0) codes.lens.litlen.(lit0)
-            ; if 2 * _max_litlen_codeword_len > 1 then flush_bits os
             ; add_bits os codes.codewords.litlen.(lit1) codes.lens.litlen.(lit1)
-            ; if 4 * _max_litlen_codeword_len > 1 then flush_bits os
             ; add_bits os codes.codewords.litlen.(lit2) codes.lens.litlen.(lit2)
-            ; if 2 * _max_litlen_codeword_len > 1 then flush_bits os
             ; add_bits os codes.codewords.litlen.(lit3) codes.lens.litlen.(lit3)
-            ; flush_bits os
             ; in_next_i := !in_next_i + 4
             ; litrunlen := !litrunlen - 4
           done
@@ -3453,7 +3453,6 @@ module Def = struct
                         ; add_bits os
                   codes.codewords.litlen.(unsafe_get_uint8 in_next !in_next_i)
                   codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
-                  ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os
               ; incr in_next_i
               ; if !litrunlen <> 0 then (
                   decr litrunlen
@@ -3461,7 +3460,6 @@ module Def = struct
                       codes.codewords.litlen.(unsafe_get_uint8 in_next
                                                 !in_next_i)
                       codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
-                  ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os
                   ; incr in_next_i
                   ; if !litrunlen <> 0 then (
                       decr litrunlen
@@ -3469,9 +3467,7 @@ module Def = struct
                           codes.codewords.litlen.(unsafe_get_uint8 in_next
                                                     !in_next_i)
                           codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
-                      ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os
-                      ; incr in_next_i))
-              ; if 3 * _max_litlen_codeword_len > 1 then flush_bits os))
+                      ; incr in_next_i))))
           ; if length <> 0 then (
             in_next_i := !in_next_i + length
             ; let length_slot = seq.length_slot in
@@ -3482,23 +3478,13 @@ module Def = struct
               ; add_bits os
                   (length - _base_length.(length_slot) - 3)
                   _extra_lbits.(length_slot)
-              ; if
-                  _max_litlen_codeword_len
-                  + _max_extra_length_bits
-                  + _max_offset_codeword_len
-                  + _max_extra_offset_bits
-                  <= 1
-                then flush_bits os
               ; let offset_symbol = seq.offset_symbol in
                 add_bits os
                   codes.codewords.offset.(offset_symbol)
                   codes.lens.offset.(offset_symbol)
-                ; if _max_offset_codeword_len + _max_extra_offset_bits <= 1 then
-                    flush_bits os
                 ; add_bits os
                     (seq.offset - _base_dist.(offset_symbol) - 1)
-                    _extra_dbits.(offset_symbol)
-                ; flush_bits os) in
+                    _extra_dbits.(offset_symbol)) in
     List.iter f sequences
 
     let write_end_of_block os codes =
