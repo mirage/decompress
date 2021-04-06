@@ -134,35 +134,34 @@ let invalid_complement_of_length () =
   let src = bigstring_of_string "\x00\x00\x00\x00\x00" in
   Alcotest.(check decode)
     "invalid complement of length" (Error Invalid_complement_of_length)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    (Inf.Ns.inflate ~src ~dst)
 
 let invalid_kind_of_block () =
   Alcotest.test_case "invalid kind of block" `Quick @@ fun () ->
   let src = bigstring_of_string "\x06" in
   Alcotest.(check decode)
     "invalid kind of block" (Error Invalid_kind_of_block)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    (Inf.Ns.inflate ~src ~dst)
 
 let invalid_code_lengths () =
   Alcotest.test_case "invalid code lengths" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\xfe\xff" in
   Alcotest.(check decode)
-    "invalid code lengths" (Error Invalid_dictionary)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    "invalid code lengths" (Error Invalid_dictionary) (Inf.Ns.inflate ~src ~dst)
 
 let invalid_bit_length_repeat () =
   Alcotest.test_case "invalid bit length repeat" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\x24\x49\x00" in
   Alcotest.(check decode)
     "invalid bit length repeat" (Error Invalid_dictionary)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    (Inf.Ns.inflate ~src ~dst)
 
 let invalid_codes () =
   Alcotest.test_case "invalid codes -- missing end-of-block" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\x24\xe9\xff\x6d" in
   Alcotest.(check decode)
     "invalid codes -- missing end-of-block" (Error Invalid_dictionary)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    (Inf.Ns.inflate ~src ~dst)
 
 let invalid_lengths () =
   Alcotest.test_case "invalid literals/lengths" `Quick @@ fun () ->
@@ -172,7 +171,7 @@ let invalid_lengths () =
   in
   Alcotest.(check decode)
     "invalid literals/lengths" (Error Invalid_dictionary)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    (Inf.Ns.inflate ~src ~dst)
 
 let invalid_distances () =
   Alcotest.test_case "invalid distances" `Quick @@ fun () ->
@@ -180,15 +179,14 @@ let invalid_distances () =
     bigstring_of_string
       "\x04\x80\x49\x92\x24\x49\x92\x24\x0f\xb4\xff\xff\xc3\x84" in
   Alcotest.(check decode)
-    "invalid distances" (Error Invalid_dictionary)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    "invalid distances" (Error Invalid_dictionary) (Inf.Ns.inflate ~src ~dst)
 
 let too_many_length_or_distance_symbols () =
   Alcotest.test_case "too many length of distance symbols" `Quick @@ fun () ->
   let src = bigstring_of_string "\xfc\x00\x00" in
   Alcotest.(check decode)
     "too many length of distance symbols" (Error Unexpected_end_of_input)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    (Inf.Ns.inflate ~src ~dst)
 
 (* XXX(dinosaure): error is not conform to what we expect (best will be [Invalid
    dictionary]), TODO! *)
@@ -198,7 +196,7 @@ let invalid_distance_code () =
   let src = bigstring_of_string "\x02\x7e\xff\xff" in
   Alcotest.(check decode)
     "invalid distance code" (Error Invalid_distance_code)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    (Inf.Ns.inflate ~src ~dst)
 
 (* XXX(dinosaure): see [Inf.base_dist]'s comment about this behavior. *)
 
@@ -209,12 +207,12 @@ let invalid_distance_too_far_back () =
   in
   Alcotest.(check decode)
     "invalid distance too far back" (Error Invalid_distance)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    (Inf.Ns.inflate ~src ~dst)
 
 let fixed () =
   Alcotest.test_case "fixed" `Quick @@ fun () ->
   let src = bigstring_of_string "\x03\x00" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "" in
   Alcotest.(check decode)
     "fixed"
@@ -227,7 +225,7 @@ let fixed () =
 let stored () =
   Alcotest.test_case "stored" `Quick @@ fun () ->
   let src = bigstring_of_string "\x01\x01\x00\xfe\xff\x00" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "\x00" in
   Alcotest.(check decode)
     "stored"
@@ -242,7 +240,7 @@ let length_extra () =
   let src =
     bigstring_of_string
       "\xed\xc0\x01\x01\x00\x00\x00\x40\x20\xff\x57\x1b\x42\x2c\x4f" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = String.make 516 '\x00' in
   Alcotest.(check decode)
     "length extra"
@@ -258,7 +256,7 @@ let long_distance_and_extra () =
     bigstring_of_string
       "\xed\xcf\xc1\xb1\x2c\x47\x10\xc4\x30\xfa\x6f\x35\x1d\x01\x82\x59\x3d\xfb\xbe\x2e\x2a\xfc\x0f\x0c"
   in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = String.make 518 '\x00' in
   Alcotest.(check decode)
     "long distance and extra"
@@ -274,7 +272,7 @@ let window_end () =
     bigstring_of_string
       "\xed\xc0\x81\x00\x00\x00\x00\x80\xa0\xfd\xa9\x17\xa9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06"
   in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = String.make 33025 '\x00' in
   Alcotest.(check decode)
     "window end"
@@ -287,7 +285,7 @@ let window_end () =
 let flat_of_string () =
   Alcotest.test_case "flat of string" `Quick @@ fun () ->
   let src = bigstring_of_string "\x01\x00\x00\xff\xff" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "" in
   Alcotest.(check decode)
     "flat of string"
@@ -300,7 +298,7 @@ let flat_of_string () =
 let flat_block () =
   Alcotest.test_case "flat block" `Quick @@ fun () ->
   let src = bigstring_of_string "\x01\x04\x00\xfb\xff\xde\xad\xbe\xef" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "\xde\xad\xbe\xef" in
   Alcotest.(check decode)
     "flat block"
@@ -331,7 +329,7 @@ let huffman_length_extra () =
         "encoding" res "\237\193\001\001\000\000\000@ \255W\027B\193\234\004"
 
       ; let src = bigstring_of_string res in
-        let res = Inf.Ns.inflate ~src ~dst ~w in
+        let res = Inf.Ns.inflate ~src ~dst in
         let expected = String.make (258 + 256 + 2) '\000' in
         Alcotest.(check decode)
           "huffman length extra"
@@ -373,7 +371,7 @@ let dynamic_and_fixed () =
       ; `Block {Def.kind= Def.Fixed; Def.last= true}; `Flush
       ]
     ; let src = bigstring_of_string (Buffer.contents res) in
-      let res = Inf.Ns.inflate ~src ~dst ~w in
+      let res = Inf.Ns.inflate ~src ~dst in
       let expected = "aaaabbbb" in
       Alcotest.(check decode)
         "dynamic+fixed"
@@ -413,7 +411,7 @@ let fixed_and_dynamic () =
       ]
     ; Fmt.epr "> %S.\n%!" (Buffer.contents res)
     ; let src = bigstring_of_string (Buffer.contents res) in
-      let res = Inf.Ns.inflate ~src ~dst ~w in
+      let res = Inf.Ns.inflate ~src ~dst in
       let expected = "aaaabbbb" in
       Alcotest.(check decode)
         "fixed+dynamic"
@@ -463,7 +461,7 @@ let dynamic_and_dynamic () =
 
       ; Fmt.epr "> %S.\n%!" (Buffer.contents res)
       ; let src = bigstring_of_string (Buffer.contents res) in
-        let res = Inf.Ns.inflate ~src ~dst ~w in
+        let res = Inf.Ns.inflate ~src ~dst in
         let expected = "aaaabbbb" in
         Alcotest.(check decode)
           "dynamic+dynamic"
@@ -482,7 +480,7 @@ let max_flat () =
   ; Bytes.set inputs 2 '\xff'
   ; (* len *)
     let src = bigstring_of_string (Bytes.unsafe_to_string inputs) in
-    let res = Inf.Ns.inflate ~src ~dst ~w in
+    let res = Inf.Ns.inflate ~src ~dst in
     let expected = String.make 0xffff '\x00' in
     Alcotest.(check decode)
       "biggest flat block"
@@ -508,7 +506,7 @@ let flat () =
   Alcotest.(check string)
     "deadbeef deflated" "\x01\x04\x00\xfb\xff\xde\xad\xbe\xef" res0
   ; let src = bigstring_of_string res0 in
-    let res = Inf.Ns.inflate ~src ~dst ~w in
+    let res = Inf.Ns.inflate ~src ~dst in
     let expected = "\xde\xad\xbe\xef" in
     Alcotest.(check decode)
       "encode flat"
@@ -538,7 +536,7 @@ let fixed_and_flat () =
            (`Block {Def.kind= Def.Flat (Queue.length q); last= true})) in
   let res0 = go (Def.encode encoder `Flush) in
   let src = bigstring_of_string res0 in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "aaaa\xde\xad\xbe\xef" in
   Alcotest.(check decode)
     "fixed+flat"
@@ -568,7 +566,7 @@ let flat_and_fixed () =
     go (Def.encode encoder (`Block {Def.kind= Def.Flat 4; last= false})) in
 
   let src = bigstring_of_string res0 in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "\xde\xad\xbe\xefaaaa" in
   Alcotest.(check decode)
     "flat+fixed"
@@ -586,7 +584,7 @@ let fuzz0 () =
       \ \
        s\017\027\211\\\006\211w\176`\142\2007\156oZBo\163\136\017\247\158\247\012e\241\234sn_$\210\223\017\213\138\147]\129M\137<\242\1867\021c\194\156\135\194\167-wo\006\200\198"
   in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "\xe3\x85" in
   Alcotest.(check decode) "fuzz0" (Ok (4, String.length expected)) res
   ; Alcotest.(check string)
@@ -596,7 +594,7 @@ let fuzz0 () =
 let fuzz1 () =
   Alcotest.test_case "fuzz1" `Quick @@ fun () ->
   let src = bigstring_of_string "\019\208nO\200\189r\020\176" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "\016+\135`m\212\197" in
   Alcotest.(check decode)
     "fuzz1"
@@ -610,7 +608,7 @@ let fuzz2 () =
   Alcotest.test_case "fuzz2" `Quick @@ fun () ->
   let src =
     bigstring_of_string "\x93\x3a\x55\x47\x12\x80\x51\x56\x3a\x01\x00\x00" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected =
     [
       "\x1a\xca\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e"
@@ -634,7 +632,7 @@ let fuzz3 () =
   Alcotest.test_case "fuzz3" `Quick @@ fun () ->
   let src =
     bigstring_of_string "\x93\x3a\x55\x47\x12\x3a\x51\x36\x0a\x01\x00\x00" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected =
     [
       "\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a"
@@ -689,7 +687,7 @@ let fuzz4 () =
   Alcotest.test_case "fuzz4" `Quick @@ fun () ->
   let src =
     bigstring_of_string "\x93\x3a\x55\x47\x12\x3a\x51\x56\x0a\x06\x80\x00" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected =
     [
       "\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a\xca\x7e\x1a"
@@ -716,7 +714,7 @@ let fuzz5 () =
       (* .:U............. *); "\x01\x01\x01\x01\x01\x00\x00" (* ....... *)
     ] in
   let src = bigstring_of_string (String.concat "" src) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected =
     [
       "\x1a\xca\x78\x78\x78\x78\x78\x78\x78\x50\x50\x37\x50\x50\x50\x50"
@@ -736,7 +734,7 @@ let fuzz6 () =
   Alcotest.test_case "fuzz6" `Quick @@ fun () ->
   let src =
     bigstring_of_string "\x93\x8c\x8c\x8c\x8c\x7b\x8c\x8c\x8c\x01\x00\x00" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected =
     [
       "\x19\x59\x59\x59\x5e\xe3\x59\x5e\xe3\x59\x5e\xe3\x59\x5e\xe3\x59"
@@ -755,7 +753,7 @@ let fuzz7 () =
   Alcotest.test_case "fuzz7" `Quick @@ fun () ->
   let src =
     bigstring_of_string "\x93\x3a\x55\x69\x12\x3a\x3f\x10\x08\x01\x00\x00" in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "\x1a\xca\x79\x34\x55\x9f\x51\x9f\x51\x9f" in
   Alcotest.(check decode)
     "fuzz7"
@@ -769,8 +767,7 @@ let fuzz8 () =
   Alcotest.test_case "fuzz8" `Quick @@ fun () ->
   let src = bigstring_of_string "\x7a\x37\x6d\x99\x13" in
   Alcotest.(check decode)
-    "fuzz8" (Error Unexpected_end_of_input)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    "fuzz8" (Error Unexpected_end_of_input) (Inf.Ns.inflate ~src ~dst)
 
 let fuzz9 () =
   Alcotest.test_case "fuzz9" `Quick @@ fun () ->
@@ -784,8 +781,7 @@ let fuzz9 () =
     ] in
   let src = bigstring_of_string (String.concat "" src) in
   Alcotest.(check decode)
-    "fuzz9" (Error Invalid_distance)
-    (Inf.Ns.inflate ~src ~dst ~w)
+    "fuzz9" (Error Invalid_distance) (Inf.Ns.inflate ~src ~dst)
 
 let fuzz10 () =
   Alcotest.test_case "fuzz10" `Quick @@ fun () ->
@@ -795,7 +791,7 @@ let fuzz10 () =
     ; `Copy (1, 19); `End
     ] in
   let src = bigstring_of_string (encode_dynamic lst) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   Alcotest.(check decode) "fuzz10" (Ok (De.bigstring_length src, 22)) res
 
 let fuzz11 () =
@@ -804,7 +800,7 @@ let fuzz11 () =
     [`Literal (Char.chr 228); `Literal (Char.chr 255); `Copy (1, 130); `End]
   in
   let src = bigstring_of_string (encode_dynamic lst) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "\228" ^ String.make 131 '\xff' in
   Alcotest.(check decode)
     "fuzz11"
@@ -822,7 +818,7 @@ let fuzz12 () =
     ; `Copy (2, 249); `End
     ] in
   let src = bigstring_of_string (encode_dynamic lst) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected =
     [
       "\x47\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00"
@@ -870,7 +866,7 @@ let fuzz13 () =
   Alcotest.test_case "fuzz13" `Quick @@ fun () ->
   let src = ["\x9b\x0e\x02\x00" (* .... *)] in
   let src = bigstring_of_string (String.concat "" src) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = "\x97\x97\x97\x97\x97" in
   Alcotest.(check decode)
     "fuzz13"
@@ -890,7 +886,7 @@ let fuzz14 () =
       (*  ..........d.... *); "\x8f\xcd\x0e\x02\x21\xff\xff\x80" (* ....!... *)
     ] in
   let src = bigstring_of_string (String.concat "" src) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected =
     [
       "\x57\xff\xc6\xff\xc6\xff\xc6\xff\xc6\x9b\x52\xc6\x9b\x52\xc6\xc6"
@@ -957,7 +953,7 @@ let fuzz15 () =
       (* ..]f..WW..[..s *)
     ] in
   let src = bigstring_of_string (String.concat "" src) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = ["\x78\x20\x5f\x74\x6c\x69\x63" (* x _tlic *)] in
   let expected = String.concat "" expected in
   Alcotest.(check decode) "fuzz15" (Ok (40, String.length expected)) res
@@ -973,7 +969,7 @@ let fuzz16 () =
     ; `Copy (527, 208); `Copy (129, 258); `End
     ] in
   let src = bigstring_of_string (encode_dynamic lst) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected = String.make 1068 '@' in
   Alcotest.(check decode)
     "fuzz16"
@@ -991,7 +987,7 @@ let fuzz17 () =
     ; `Literal (Char.chr 218); `Literal (Char.chr 0); `End
     ] in
   let src = bigstring_of_string (encode_dynamic lst) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected =
     [
       "\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda"
@@ -1021,7 +1017,7 @@ let fuzz18 () =
       (* ..LV..WW..[..`.. *)
     ] in
   let src = bigstring_of_string (String.concat "" src) in
-  let res = Inf.Ns.inflate ~src ~dst ~w in
+  let res = Inf.Ns.inflate ~src ~dst in
   let expected =
     [
       "\x75\x27\x5a\xfb\x64\x64\x2b\x63\x29\x67\x6e\x60\x20\x67\x6e\x60"
@@ -1061,7 +1057,7 @@ let compress_and_uncompress ic =
       ; (* ignore (assert false); *)
         let src_inf = Bigstringaf.sub dst_def ~off:0 ~len in
         let dst_inf = bigstring_create (in_channel_length ic) in
-        match Inf.Ns.inflate ~src:src_inf ~dst:dst_inf ~w:w1 with
+        match Inf.Ns.inflate ~src:src_inf ~dst:dst_inf with
         | Ok (_, len) ->
           Stdlib.seek_in ic 0
           ; Buffer.clear b

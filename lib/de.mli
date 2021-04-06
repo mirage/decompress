@@ -135,8 +135,7 @@ module Inf : sig
 
     val pp_error : Format.formatter -> error -> unit
 
-    val inflate :
-      src:bigstring -> dst:bigstring -> w:window -> (int * int, error) result
+    val inflate : src:bigstring -> dst:bigstring -> (int * int, error) result
     (** [inflate src dst w] inflate the content of src into dst using the window
       w.
 

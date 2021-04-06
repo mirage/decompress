@@ -51,8 +51,7 @@ let deflate i i_len o o_len level =
 let inflate_ns i i_len o o_len =
   let i = bigarray_of_ptr array1 i_len Bigarray.char i in
   let o = bigarray_of_ptr array1 o_len Bigarray.char o in
-  let w = De.make_window ~bits:15 in
-  let res = De.Inf.Ns.inflate ~src:i ~dst:o ~w in
+  let res = De.Inf.Ns.inflate ~src:i ~dst:o in
   match res with Ok (_, res) -> res | Error _ -> invalid_arg "broken"
 
 let deflate_ns i i_len o o_len level =

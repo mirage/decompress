@@ -224,21 +224,20 @@ let zigzag =
 
 let _length =
   [|
-     0; 0; 0; 0; 1; 2; 3; 4; 5; 6; 7; 8; 8; 9; 9; 10; 10; 11; 11; 12; 12; 12
-   ; 12; 13; 13; 13; 13; 14; 14; 14; 14; 15; 15; 15; 15; 16; 16; 16; 16; 16
-   ; 16; 16; 16; 17; 17; 17; 17; 17; 17; 17; 17; 18; 18; 18; 18; 18; 18; 18
-   ; 18; 19; 19; 19; 19; 19; 19; 19; 19; 20; 20; 20; 20; 20; 20; 20; 20; 20
-   ; 20; 20; 20; 20; 20; 20; 20; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21
-   ; 21; 21; 21; 21; 21; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22
-   ; 22; 22; 22; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23
-   ; 23; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24
-   ; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 25; 25; 25
-   ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25
-   ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 26; 26; 26; 26; 26; 26; 26
-   ; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26
-   ; 26; 26; 26; 26; 26; 26; 26; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27
-   ; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27
-   ; 27; 27; 28
+     0; 0; 0; 0; 1; 2; 3; 4; 5; 6; 7; 8; 8; 9; 9; 10; 10; 11; 11; 12; 12; 12; 12
+   ; 13; 13; 13; 13; 14; 14; 14; 14; 15; 15; 15; 15; 16; 16; 16; 16; 16; 16; 16
+   ; 16; 17; 17; 17; 17; 17; 17; 17; 17; 18; 18; 18; 18; 18; 18; 18; 18; 19; 19
+   ; 19; 19; 19; 19; 19; 19; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20
+   ; 20; 20; 20; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21
+   ; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 23; 23; 23
+   ; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 24; 24; 24; 24; 24; 24
+   ; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24
+   ; 24; 24; 24; 24; 24; 24; 24; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25
+   ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25
+   ; 25; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26
+   ; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 27; 27; 27; 27; 27
+   ; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27
+   ; 27; 27; 27; 27; 27; 27; 27; 28
   |]
 
 let _distance =
@@ -1460,7 +1459,6 @@ module Inf = struct
       ; o: bigstring
       ; mutable o_pos: int
       ; o_len: int
-      ; w: WInf.t
     }
 
     (* errors. *)
@@ -1495,18 +1493,59 @@ module Inf = struct
       raise (Malformed Unexpected_end_of_output)
 
     let err_invalid_kind_of_block () = raise (Malformed Invalid_kind_of_block)
-
     let err_invalid_dictionary () = raise (Malformed Invalid_dictionary)
 
     let err_invalid_complement_of_length () =
       raise (Malformed Invalid_complement_of_length)
 
     let err_invalid_distance () = raise (Malformed Invalid_distance)
-
     let err_invalid_distance_code () = raise (Malformed Invalid_distance_code)
 
     (* remaining bytes to read [d.i]. *)
     let i_rem d = d.i_len - d.i_pos [@@inline]
+
+    let _slow_blit src src_off dst dst_off len =
+      for i = 0 to len - 1 do
+        let v = unsafe_get_uint8 src (src_off + i) in
+        unsafe_set_uint8 dst (dst_off + i) v
+      done
+
+    let _blit src src_off dst dst_off len =
+      if dst_off - src_off < 4 then _slow_blit src src_off dst dst_off len
+      else
+        let len0 = len land 3 in
+        let len1 = len asr 2 in
+
+        for i = 0 to len1 - 1 do
+          let i = i * 4 in
+          let v = unsafe_get_uint32 src (src_off + i) in
+          unsafe_set_uint32 dst (dst_off + i) v
+        done
+
+        ; for i = 0 to len0 - 1 do
+            let i = (len1 * 4) + i in
+            let v = unsafe_get_uint8 src (src_off + i) in
+            unsafe_set_uint8 dst (dst_off + i) v
+          done
+
+    let _fill v dst dst_off len =
+      let len0 = len land 3 in
+      let len1 = len asr 2 in
+
+      let nv = Nativeint.of_int v in
+      let vv = Nativeint.(logor (shift_left nv 8) nv) in
+      let vvvv = Nativeint.(logor (shift_left vv 16) vv) in
+      let vvvv = Nativeint.to_int32 vvvv in
+
+      for i = 0 to len1 - 1 do
+        let i = i * 4 in
+        unsafe_set_uint32 dst (dst_off + i) vvvv
+      done
+
+      ; for i = 0 to len0 - 1 do
+          let i = (len1 * 4) + i in
+          unsafe_set_uint8 dst (dst_off + i) v
+        done
 
     let flat d =
       d.i_pos <- d.i_pos - (d.bits / 8)
@@ -1520,28 +1559,36 @@ module Inf = struct
           else (
             if len > i_rem d then err_unexpected_end_of_input ()
             ; if len > d.o_len - d.o_pos then err_unexpected_end_of_output ()
-            ; WInf.blit d.w d.i d.i_pos d.o d.o_pos len
+            ; _blit d.i d.i_pos d.o d.o_pos len
             ; d.o_pos <- d.o_pos + len
             ; d.i_pos <- d.i_pos + len)
 
-    let _fill_bits d =
-      let rem = i_rem d in
-      if rem > 1 then (
-        d.hold <- d.hold lor (unsafe_get_uint16 d.i d.i_pos lsl d.bits)
-        ; d.i_pos <- d.i_pos + 2
-        ; d.bits <- d.bits + 16)
-      else
-        if rem = 1 then (
+    let _fill_bits d n =
+      if d.bits < n then
+        let rem = i_rem d in
+        if rem > 1 then (
+          d.hold <- d.hold lor (unsafe_get_uint16 d.i d.i_pos lsl d.bits)
+          ; d.i_pos <- d.i_pos + 2
+          ; d.bits <- d.bits + 16)
+        else if rem = 1 then (
           d.hold <- d.hold lor (unsafe_get_uint8 d.i d.i_pos lsl d.bits)
           ; d.i_pos <- d.i_pos + 1
           ; d.bits <- d.bits + 8)
         else err_unexpected_end_of_input ()
-          [@@inline]
+      [@@inline]
 
-    (* clecat: Removed the rec flag on fill_bits, as it was never called with
-       d greater than 16. However, we should make sure that it is never done in
-       the future. *)
-    let fill_bits d n = if d.bits < n then _fill_bits d
+    let __fill_bits d n =
+      if d.bits < n then
+        let rem = i_rem d in
+        if rem > 1 then (
+          d.hold <- d.hold lor (unsafe_get_uint16 d.i d.i_pos lsl d.bits)
+          ; d.i_pos <- d.i_pos + 2
+          ; d.bits <- d.bits + 16)
+        else if rem = 1 then (
+          d.hold <- d.hold lor (unsafe_get_uint8 d.i d.i_pos lsl d.bits)
+          ; d.i_pos <- d.i_pos + 1
+          ; d.bits <- d.bits + 8)
+      [@@inline]
 
     let pop_bits d n =
       let v = d.hold land ((1 lsl n) - 1) in
@@ -1555,17 +1602,9 @@ module Inf = struct
     exception Invalid_distance_code
 
     let inflate lit dist d =
-      let fill_bits d lit n =
-        if
-          d.bits < n
-          && not
-               (lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask == 256
-               && lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 <= d.bits
-               && i_rem d < 1)
-        then _fill_bits d in
       try
-        let rec length () =
-          fill_bits d lit lit.Lookup.l
+        let rec inflate_loop () =
+          __fill_bits d lit.Lookup.l
           ; let value =
               lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask in
             let len = lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 in
@@ -1573,48 +1612,36 @@ module Inf = struct
             ; d.bits <- d.bits - len
             ; if value < 256 then (
                 unsafe_set_uint8 d.o d.o_pos value
-                ; WInf.add d.w value
                 ; d.o_pos <- d.o_pos + 1
-                ; length ())
+                ; inflate_loop ())
               else if value == 256 then raise_notrace End
-              else extra_length (value - 257)
-        and extra_length l =
-          let len = _extra_lbits.(l) in
-          fill_bits d lit len
-          ; let extra = pop_bits d len in
-            distance (_base_length.(l land 0x1f) + 3 + extra)
-        and distance l =
-          fill_bits d lit dist.Lookup.l
-          ; let value =
-              dist.Lookup.t.(d.hold land dist.Lookup.m) land Lookup.mask in
-            let len = dist.Lookup.t.(d.hold land dist.Lookup.m) lsr 15 in
-            d.hold <- d.hold lsr len
-            ; d.bits <- d.bits - len
-            ; extra_distance l value
-        and extra_distance l d_ =
-          let len = _extra_dbits.(d_ land 0x1f) in
-          fill_bits d lit len
-          ; let extra = pop_bits d len in
-            write l (_base_dist.(d_) + 1 + extra)
-        and write l d_ =
-          if d_ == 0 then raise_notrace Invalid_distance_code
-          ; if d_ > WInf.have d.w then raise_notrace Invalid_distance
-          ; let len = min l (d.o_len - d.o_pos) in
-            let off = WInf.mask (d.w.WInf.w - d_) in
-            (if d_ == 1 then
-             let v = unsafe_get_uint8 d.w.WInf.raw off in
-             WInf.fill d.w v d.o d.o_pos len
-            else
-              let off = WInf.mask (d.w.WInf.w - d_) in
-              let pre = WInf.max - off in
-              let rst = len - pre in
-              if rst > 0 then (
-                WInf.blit d.w d.w.WInf.raw off d.o d.o_pos pre
-                ; WInf.blit d.w d.w.WInf.raw 0 d.o (d.o_pos + pre) rst)
-              else WInf.blit d.w d.w.WInf.raw off d.o d.o_pos len)
-            ; d.o_pos <- d.o_pos + len
-              ; if l - len == 0 then length () in
-        length ()
+              else
+                let l = value - 257 in
+                let len = _extra_lbits.(l) in
+                __fill_bits d len
+                ; let extra = pop_bits d len in
+                  let l = _base_length.(l land 0x1f) + 3 + extra in
+                  __fill_bits d dist.Lookup.l
+                  ; let value =
+                      dist.Lookup.t.(d.hold land dist.Lookup.m) land Lookup.mask
+                    in
+                    let len = dist.Lookup.t.(d.hold land dist.Lookup.m) lsr 15 in
+                    d.hold <- d.hold lsr len
+                    ; d.bits <- d.bits - len
+                    ; let d_ = value in
+                      let len = _extra_dbits.(d_ land 0x1f) in
+                      __fill_bits d len
+                      ; let extra = pop_bits d len in
+                        let d_ = _base_dist.(d_) + 1 + extra in
+                        if d_ == 0 then raise_notrace Invalid_distance_code
+                        ; if d_ > min d.o_pos (1 lsl 15) then
+                            raise_notrace Invalid_distance
+                        ; let len = min l (d.o_len - d.o_pos) in
+                          let off = d.o_pos - d_ in
+                          _blit d.o off d.o d.o_pos len
+                          ; d.o_pos <- d.o_pos + len
+                          ; if l - len == 0 then inflate_loop () in
+        inflate_loop ()
       with
       | End -> ()
       | Invalid_distance -> err_invalid_distance ()
@@ -1643,13 +1670,13 @@ module Inf = struct
       let max_res = hlit + hdist in
       let mask = (1 lsl max_bits) - 1 in
       let get d =
-        fill_bits d max_bits
+        _fill_bits d max_bits
         ; let v = t.(d.hold land mask) land Lookup.mask in
           let len = t.(d.hold land mask) lsr 15 in
           d.hold <- d.hold lsr len
           ; d.bits <- d.bits - len
           ; v in
-      let get_bits d n = fill_bits d n ; pop_bits d n in
+      let get_bits d n = _fill_bits d n ; pop_bits d n in
       let ret r d = make_table r hlit hdist d in
       let rec record i copy len d =
         if i + copy > max_res then err_invalid_dictionary ()
@@ -1682,7 +1709,7 @@ module Inf = struct
       let res = Array.make 19 0 in
 
       while !i < hclen do
-        fill_bits d 3
+        _fill_bits d 3
         ; let code = pop_bits d 3 in
           res.(zigzag.(!i)) <- code
           ; incr i
@@ -1695,14 +1722,14 @@ module Inf = struct
         with Invalid_huffman -> err_invalid_dictionary ()
 
     let dynamic d =
-      fill_bits d 14
+      _fill_bits d 14
       ; let hlit = pop_bits d 5 + 257 in
         let hdist = pop_bits d 5 + 1 in
         let hclen = pop_bits d 4 + 4 in
         table d hlit hdist hclen
 
     let rec decode d =
-      fill_bits d 3
+      _fill_bits d 3
       ; let last = pop_bits d 1 == 1 in
         let block_type = pop_bits d 2 in
         (match block_type with
@@ -1711,9 +1738,9 @@ module Inf = struct
         | 2 -> dynamic d
         | 3 -> err_invalid_kind_of_block ()
         | _ -> assert false)
-        ; if last then WInf.tail d.w else decode d
+        ; if last then () else decode d
 
-    let inflate ~src ~dst ~w =
+    let inflate ~src ~dst =
       let d =
         {
           i= src
@@ -1724,7 +1751,6 @@ module Inf = struct
         ; o_len= bigstring_length dst
         ; hold= 0
         ; bits= 0
-        ; w= WInf.from w
         } in
       try
         decode d
@@ -2320,8 +2346,7 @@ module Def = struct
     | `Copy (off, len), Dynamic dynamic ->
       (* assert (len >= 3 && len <= 255 + 3) ; *)
       (* assert (off >= 1 && off <= 32767 + 1) ; *)
-      dynamic.ltree.T.tree.Lookup.t.(256 + 1 + _length.(len)) lsr _max_bits
-      > 0
+      dynamic.ltree.T.tree.Lookup.t.(256 + 1 + _length.(len)) lsr _max_bits > 0
       && dynamic.dtree.T.tree.Lookup.t.(_distance (pred off)) lsr _max_bits > 0
     | `End, (Fixed | Dynamic _) | `Literal _, (Flat _ | Fixed) | `Copy _, Fixed
       ->
@@ -3070,7 +3095,8 @@ module Def = struct
         let m, n = ref 0, ref 0 in
         if
           !i <> sym_count
-          && (b = e || a.(!i) lsr _num_symbol_bits <= a.(!b) lsr _num_symbol_bits)
+          && (b = e
+             || a.(!i) lsr _num_symbol_bits <= a.(!b) lsr _num_symbol_bits)
         then (
           m := !i
           ; incr i)
@@ -3107,7 +3133,8 @@ module Def = struct
             let parent_depth = a.(parent) lsr _num_symbol_bits in
             let depth = parent_depth + 1 in
             let len = ref depth in
-            a.(node) <- a.(node) land _symbol_mask lor (depth lsl _num_symbol_bits)
+            a.(node) <-
+              a.(node) land _symbol_mask lor (depth lsl _num_symbol_bits)
             ; if !len >= max_codeword then (
                 len := max_codeword - 1
                 ; while len_counts.(!len) == 0 do
@@ -3363,8 +3390,7 @@ module Def = struct
         ; let rec h num_explicit_lens =
             if
               _num_precode_syms < 5
-              || c.precode_lens.(zigzag.(num_explicit_lens - 1))
-                 <> 0
+              || c.precode_lens.(zigzag.(num_explicit_lens - 1)) <> 0
             then c.num_explicit_lens <- num_explicit_lens
             else h (num_explicit_lens - 1) in
           h _num_precode_syms
@@ -3767,12 +3793,14 @@ module Def = struct
       let next_hash = ref 0 in
       let hc_mf = hc_matchfinder_init () in
       let seq_len =
-        ((_soft_max_block_length + _min_match_len - 1) / _min_match_len) + 1 in
+        ((_soft_max_block_length + _min_match_len - 1) / _min_match_len) + 1
+      in
       let s = {seqs= Array.init seq_len init_sequence; pos= 0} in
       while os.i_pos <> os.i_len do
         let in_block_begin = ref os.i_pos in
         let in_max_block_end =
-          ref (os.i_pos + min (os.i_len - os.i_pos) _soft_max_block_length) in
+          ref (os.i_pos + min (os.i_len - os.i_pos) _soft_max_block_length)
+        in
         let litrunlen = ref 0 in
         s.pos <- 0
         ; init_block_split_stats split_stats
@@ -3875,7 +3903,8 @@ module Def = struct
               } )
 
     let compress_bound len =
-      let max_blocks = max 1 ((len + _min_block_length - 1) / _min_block_length) in
+      let max_blocks =
+        max 1 ((len + _min_block_length - 1) / _min_block_length) in
       (5 * max_blocks) + len + 1 + _end_padding
 
     let deflate ?(level = 4) ~src ~dst =
