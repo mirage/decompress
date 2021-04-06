@@ -167,9 +167,9 @@ module Def : sig
 
       {b Level.}
 
-      Current implementation of ZLIB does not handle any compression level.
-     However, the client must give a level between 0 and 9, inclusively.
-     Otherwise, we raise an [Invalid_argument]. *)
+      Zlib implements 10 levels (from 0 to 9). All of them use the dynamic &
+     canonic huffman if [dynamic] is [true] (default). Otherwise, we use the
+     static huffman. The higher the level, the better the ratio. *)
 
   val src_rem : encoder -> int
   (** [src_rem e] is how many bytes it remains in given input buffer. *)
@@ -224,8 +224,8 @@ module Higher : sig
     -> bigstring
     -> bigstring
     -> unit
-  (** [compress ?level ~w ~q ~refill ~flush i o] is [Zlib.compress] (with
-     [~header:true]) provided by [camlzip] package.
+  (** [compress ?level ?dynamic ~w ~q ~refill ~flush i o] is [Zlib.compress]
+     (with [~header:true]) provided by [camlzip] package.
 
       {ul
       {- [w] is the window used by LZ77 compression algorithm.}
