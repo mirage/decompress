@@ -3260,7 +3260,7 @@ module Def = struct
       end
 
     let write_block_header os is_final_block block_type =
-      add_bits os (Bool.to_int is_final_block) 1
+      add_bits os (if is_final_block then 1 else 0) 1
       ; add_bits os block_type 2
 
     let align_bitstream os =
@@ -3743,7 +3743,7 @@ module Def = struct
         ; seq
 
     let observe_match stats length =
-      let i = num_literal_observation_types + Bool.to_int (length >= 9) in
+      let i = num_literal_observation_types + (if length >= 9 then 1 else 0) in
       stats.new_observations.(i) <- succ stats.new_observations.(i)
       ; stats.num_new_observations <- succ stats.num_new_observations
 
