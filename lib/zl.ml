@@ -576,7 +576,8 @@ module Def = struct
     let header dst level =
       let window_bits = 15 in
       let header = (_deflated + ((window_bits - 8) lsl 4)) lsl 8 in
-      let level = match level with 0 | 1 -> 0 | 2 | 3 | 4 | 5 -> 1 | 6 -> 2 | _ -> 3 in
+      let level =
+        match level with 0 | 1 -> 0 | 2 | 3 | 4 | 5 -> 1 | 6 -> 2 | _ -> 3 in
       let header = header lor (level lsl 6) in
       let header = header + (31 - (header mod 31)) in
       unsafe_set_uint16_be dst 0 header
