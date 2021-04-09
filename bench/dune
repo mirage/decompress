@@ -63,7 +63,8 @@
  (optional)
  (modules de_landmarks)
  (libraries bigarray-compat checkseum optint landmarks de)
- (flags (:standard -w -55))
+ (flags
+  (:standard -w -55))
  (preprocess
   (pps landmarks.ppx --auto)))
 
