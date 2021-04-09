@@ -3083,8 +3083,7 @@ module Def = struct
             counters.(num_counters - 1) - counters.(num_counters - 2) in
           let to_sort = Array.sub symout counters_pos counters_len in
           Array.sort
-            (fun i j ->
-              match i, j with 0, _ -> 1 | _, 0 -> -1 | _ -> i - j)
+            (fun i j -> match i, j with 0, _ -> 1 | _, 0 -> -1 | _ -> i - j)
             to_sort
           ; Array.blit to_sort 0 symout counters_pos counters_len
           ; !num_used_syms
@@ -3551,22 +3550,24 @@ module Def = struct
           + 32
           + (40 * (((block_length + 65535 - 1) / 65535) - 1))
           + (8 * block_length)
-      ; let block_type, codes =
+      ; let block_type =
           if !dynamic_cost < min !static_cost !uncompressed_cost then
-            blocktype_dynamic_huffman, Some c.codes
+            blocktype_dynamic_huffman
           else if !static_cost < !uncompressed_cost then
-            blocktype_static_huffman, Some c.static_codes
-          else blocktype_uncompressed, None in
+            blocktype_static_huffman
+          else blocktype_uncompressed in
         if block_type = blocktype_uncompressed then begin
           os.i_pos <- !block_begin
           ; write_uncompressed_blocks os block_length is_final_block
         end
         else begin
           write_block_header os is_final_block block_type
-          ; if block_type = blocktype_dynamic_huffman then
-              write_huffman_header c os
-          ; write_sequences os (Option.get codes) sequences block block_begin
-          ; write_end_of_block os (Option.get codes)
+          ; let codes =
+              if block_type = blocktype_dynamic_huffman then (
+                write_huffman_header c os ; c.codes)
+              else c.static_codes in
+            write_sequences os codes sequences block block_begin
+            ; write_end_of_block os codes
         end
 
     let init_block_split_stats stats =
@@ -3743,7 +3744,7 @@ module Def = struct
         ; seq
 
     let observe_match stats length =
-      let i = num_literal_observation_types + (if length >= 9 then 1 else 0) in
+      let i = num_literal_observation_types + if length >= 9 then 1 else 0 in
       stats.new_observations.(i) <- succ stats.new_observations.(i)
       ; stats.num_new_observations <- succ stats.num_new_observations
 
