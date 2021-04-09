@@ -51,13 +51,13 @@ let deflate i i_len o o_len level =
 let inflate_ns i i_len o o_len =
   let i = bigarray_of_ptr array1 i_len Bigarray.char i in
   let o = bigarray_of_ptr array1 o_len Bigarray.char o in
-  let res = De.Inf.Ns.inflate ~src:i ~dst:o in
+  let res = De.Inf.Ns.inflate i o in
   match res with Ok (_, res) -> res | Error _ -> invalid_arg "broken"
 
 let deflate_ns i i_len o o_len level =
   let i = bigarray_of_ptr array1 i_len Bigarray.char i in
   let o = bigarray_of_ptr array1 o_len Bigarray.char o in
-  De.Def.Ns.deflate ~level ~src:i ~dst:o
+  De.Def.Ns.deflate ~level i o
 
 module Stubs (I : Cstubs_inverted.INTERNAL) = struct
   let () =

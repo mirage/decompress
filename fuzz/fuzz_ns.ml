@@ -54,9 +54,9 @@ let () =
   let len = String.length input in
   Bigstringaf.blit_from_string input ~src_off:0 i ~dst_off:0 ~len
   ; let src_def = Bigstringaf.sub i ~off:0 ~len in
-    let res = Def.Ns.deflate ~level:4 ~src:src_def ~dst:o in
+    let res = Def.Ns.deflate src_def o in
     let src_inf = Bigstringaf.sub o ~off:0 ~len:res in
-    let res = Inf.Ns.inflate ~src:src_inf ~dst:i ~w in
+    let res = Inf.Ns.inflate src_inf i in
     match res with
     | Ok (_, res) ->
       let output = Bigstringaf.sub i ~off:0 ~len:res in

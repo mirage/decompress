@@ -120,7 +120,7 @@ module Inf : sig
     val pp_error : Format.formatter -> error -> unit
 
     val inflate :
-      src:bigstring -> dst:bigstring -> (int * int, [> error ]) result
+      bigstring -> bigstring -> (int * int, [> error ]) result
     (** [inflate src dst w] inflate the content of src into dst using the window
     w.
 
@@ -234,7 +234,7 @@ module Def : sig
 
   module Ns : sig
     val compress_bound : int -> int
-    val deflate : ?level:int -> src:bigstring -> dst:bigstring -> int
+    val deflate : ?level:int -> bigstring -> bigstring -> int
   end
 end
 

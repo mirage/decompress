@@ -386,11 +386,11 @@ module Inf = struct
       let _flevel = (flg lsr 6) land 0b11 in
       (((cmf land 0xff) lsl 8) + (cmf lsr 8)) mod 31 != 0 || cm != _deflated
 
-    let inflate ~src ~dst =
+    let inflate src dst =
       if header src then Error `Invalid_header
       else
         let sub_src = bigstring_sub src 2 (bigstring_length src - 6) in
-        let res = De.Inf.Ns.inflate ~src:sub_src ~dst in
+        let res = De.Inf.Ns.inflate sub_src dst in
         match res with
         | Ok (i, o) ->
           let i_adl32 = unsafe_get_uint32_be src (i + 2) in
@@ -576,14 +576,15 @@ module Def = struct
     let header dst level =
       let window_bits = 15 in
       let header = (_deflated + ((window_bits - 8) lsl 4)) lsl 8 in
+      let level = match level with 0 | 1 -> 0 | 2 | 3 | 4 | 5 -> 1 | 6 -> 2 | _ -> 3 in
       let header = header lor (level lsl 6) in
       let header = header + (31 - (header mod 31)) in
       unsafe_set_uint16_be dst 0 header
 
-    let deflate ?(level = 4) ~src ~dst =
+    let deflate ?(level = 4) src dst =
       header dst level
       ; let sub_dst = bigstring_sub dst 2 (bigstring_length dst - 2) in
-        let res = De.Def.Ns.deflate ~level ~src ~dst:sub_dst in
+        let res = De.Def.Ns.deflate ~level src sub_dst in
         let adl32 =
           Checkseum.Adler32.(
             unsafe_digest_bigstring src 0 (bigstring_length src) default) in

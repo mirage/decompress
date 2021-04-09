@@ -1740,7 +1740,7 @@ module Inf = struct
         | _ -> assert false)
         ; if last then () else decode d
 
-    let inflate ~src ~dst =
+    let inflate src dst =
       let d =
         {
           i= src
@@ -3878,7 +3878,7 @@ module Def = struct
         max 1 ((len + _min_block_length - 1) / _min_block_length) in
       (5 * max_blocks) + len + 1 + _end_padding
 
-    let deflate ?(level = 4) ~src ~dst =
+    let deflate ?(level = 4) src dst =
       let impl, c = encoder level in
       if bigstring_length dst < _end_padding then 0
       else if bigstring_length src < c.min_size_to_compress then (
