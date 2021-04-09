@@ -144,7 +144,11 @@ module Inf : sig
       Ok result.
 
       In case of failure, it returns the error, the bytes read and the bytes
-      writen in an Error result. *)
+      writen in an Error result.
+
+      It seems that there is a bug if the input contains more than the encoded
+      parts, the number of read bytes indicated will be to high by 1.
+      Should be investigated ! *)
   end
 end
 
