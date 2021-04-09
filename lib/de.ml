@@ -3084,7 +3084,7 @@ module Def = struct
           let to_sort = Array.sub symout counters_pos counters_len in
           Array.sort
             (fun i j ->
-              match i, j with 0, _ -> 1 | _, 0 -> -1 | _ -> Int.compare i j)
+              match i, j with 0, _ -> 1 | _, 0 -> -1 | _ -> i - j)
             to_sort
           ; Array.blit to_sort 0 symout counters_pos counters_len
           ; !num_used_syms
