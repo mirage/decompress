@@ -137,14 +137,12 @@ module Inf : sig
     val pp_error : Format.formatter -> error -> unit
 
     val inflate : bigstring -> bigstring -> (int * int, error) result
-    (** [inflate src dst w] inflate the content of src into dst using the window
-      w.
+    (** [inflate src dst w] inflate the content of src into dst.
 
       In case of sucess, it returns the bytes read and the bytes writen in an
       Ok result.
 
-      In case of failure, it returns the error, the bytes read and the bytes
-      writen in an Error result.
+      In case of failure, it returns the error in an Error result.
 
       It seems that there is a bug if the input contains more than the encoded
       parts, the number of read bytes indicated will be to high by 1.
@@ -376,11 +374,16 @@ module Def : sig
      [Invalid_argument]. *)
 
   module Ns : sig
-    type error = Invalid_compression_level | Unexpected_end_of_output
+    type error = [ `Invalid_compression_level | `Unexpected_end_of_output ]
 
     val pp_error : Format.formatter -> error -> unit
     val compress_bound : int -> int
-    val deflate : ?level:int -> bigstring -> bigstring -> int
+    val deflate : ?level:int -> bigstring -> bigstring -> (int, error) result
+    (** [deflate ~level src dst] deflates the content of src into dst.
+
+      In case of sucess, it returns the bytes writen in an Ok result.
+
+      In case of failure, it returns the error in an Error result. *)
   end
 end
 

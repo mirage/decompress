@@ -2939,22 +2939,22 @@ module Def = struct
     let _max_extra_length_bits = 5
     let _max_extra_offset_bits = 14
 
-    type error = Invalid_compression_level | Unexpected_end_of_output
+    type error = [ `Invalid_compression_level | `Unexpected_end_of_output ]
 
     let pp_error ppf e =
       let s =
         match e with
-        | Invalid_compression_level -> "Invalid compression level"
-        | Unexpected_end_of_output -> "Unexpected end of output" in
+        | `Invalid_compression_level -> "Invalid compression level"
+        | `Unexpected_end_of_output -> "Unexpected end of output" in
       Format.fprintf ppf "%s" s
 
     exception Malformed of error
 
     let err_invalid_compression_level () =
-      raise (Malformed Invalid_compression_level)
+      raise (Malformed `Invalid_compression_level)
 
     let err_unexpected_end_of_output () =
-      raise (Malformed Unexpected_end_of_output)
+      raise (Malformed `Unexpected_end_of_output)
 
     type lit_off = {litlen: int array; offset: int array}
     type codes = {codewords: lit_off; lens: lit_off}
@@ -3880,14 +3880,20 @@ module Def = struct
       (5 * max_blocks) + len + 1 + _end_padding
 
     let deflate ?(level = 4) src dst =
-      let impl, c = encoder level in
-      if bigstring_length dst < _end_padding then 0
-      else if bigstring_length src < c.min_size_to_compress then (
-        let os = init_output src dst in
-        write_uncompressed_block os (os.i_len - os.i_pos) true
-        ; flush_output os)
-      else impl c src dst
-  end
+      try
+        let impl, c = encoder level in
+        let res =
+          if bigstring_length dst < _end_padding then 0
+          else if bigstring_length src < c.min_size_to_compress then (
+            let os = init_output src dst in
+            write_uncompressed_block os (os.i_len - os.i_pos) true
+            ; flush_output os)
+          else impl c src dst
+        in
+        Ok (res)
+      with Malformed e -> Error e
+
+    end
 end
 
 module Lz77 = struct

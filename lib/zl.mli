@@ -120,14 +120,6 @@ module Inf : sig
     val pp_error : Format.formatter -> error -> unit
 
     val inflate : bigstring -> bigstring -> (int * int, [> error ]) result
-    (** [inflate src dst w] inflate the content of src into dst using the window
-    w.
-
-    In case of sucess, it returns the bytes read and the bytes writen in an
-    Ok result.
-
-    In case of failure, it returns the error, the bytes read and the bytes
-    writen in an Error result. *)
   end
 end
 
@@ -232,8 +224,13 @@ module Def : sig
    *)
 
   module Ns : sig
+    type error = De.Def.Ns.error
+
+    val pp_error : Format.formatter -> error -> unit
+
     val compress_bound : int -> int
-    val deflate : ?level:int -> bigstring -> bigstring -> int
+
+    val deflate : ?level:int -> bigstring -> bigstring -> (int, [> error]) result
   end
 end
 

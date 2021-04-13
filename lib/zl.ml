@@ -571,6 +571,12 @@ module Def = struct
   let encode e = e.k e
 
   module Ns = struct
+    type error = De.Def.Ns.error
+
+    let pp_error ppf e =
+      match e with
+      | #De.Def.Ns.error as e -> De.Def.Ns.pp_error ppf e
+
     let compress_bound len = De.Def.Ns.compress_bound len + 6
 
     let header dst level =
@@ -586,11 +592,14 @@ module Def = struct
       header dst level
       ; let sub_dst = bigstring_sub dst 2 (bigstring_length dst - 2) in
         let res = De.Def.Ns.deflate ~level src sub_dst in
-        let adl32 =
-          Checkseum.Adler32.(
-            unsafe_digest_bigstring src 0 (bigstring_length src) default) in
-        unsafe_set_uint32_be sub_dst res (Optint.to_int32 adl32)
-        ; res + 6
+        match res with
+        | Ok res ->
+          let adl32 =
+            Checkseum.Adler32.(
+              unsafe_digest_bigstring src 0 (bigstring_length src) default) in
+          unsafe_set_uint32_be sub_dst res (Optint.to_int32 adl32)
+          ; Ok (res + 6)
+          | Error e -> Error (e : De.Def.Ns.error :> [> error ])
   end
 end
 
