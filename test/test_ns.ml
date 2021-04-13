@@ -99,7 +99,9 @@ let check_decode =
     | _ -> false in
   Alcotest.testable pp equal
 
-let check_decode_o = function Ok (_, v) -> v | Error _ -> raise Alcotest.Test_error
+let check_decode_o = function
+  | Ok (_, v) -> v
+  | Error _ -> raise Alcotest.Test_error
 
 let check_encode = function Ok v -> v | Error _ -> raise Alcotest.Test_error
 
@@ -1157,9 +1159,13 @@ let encoder_0 () =
   let src = bigstring_of_string "\x00" in
   let res = Def.Ns.deflate ~level:0 src dst in
   let expected = "\x01\x01\x00\xfe\xff\x00" in
-  Alcotest.(check (result int Alcotest.reject)) "encoder 0" (Ok (String.length expected)) res
+  Alcotest.(check (result int Alcotest.reject))
+    "encoder 0"
+    (Ok (String.length expected))
+    res
   ; ( Bigstringaf.to_string dst |> fun s ->
-      String.sub s 0 (check_encode res) |> String.iteri (fun i -> Fmt.pr "%d: %C\n%!" i) )
+      String.sub s 0 (check_encode res)
+      |> String.iteri (fun i -> Fmt.pr "%d: %C\n%!" i) )
   ; Alcotest.(check string)
       "0x00" expected
       (Bigstringaf.substring dst ~off:0 ~len:(check_encode res))
@@ -1178,7 +1184,10 @@ let encoder_1 () =
   let src = bigstring_of_string (String.concat "" src) in
   let res = Def.Ns.deflate ~level:1 src dst in
   let expected = "\x63\x20\x13\x00\x00" in
-  Alcotest.(check (result int Alcotest.reject)) "encoder 1" (Ok (String.length expected)) res
+  Alcotest.(check (result int Alcotest.reject))
+    "encoder 1"
+    (Ok (String.length expected))
+    res
   ; ( Bigstringaf.to_string dst |> fun s ->
       String.sub s 0 (check_encode res)
       |> String.iteri (fun i j -> Fmt.pr "%d: \\x%02x\n%!" i (Char.code j)) )

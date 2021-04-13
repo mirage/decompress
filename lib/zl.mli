@@ -118,7 +118,6 @@ module Inf : sig
     type error = [ `Invalid_header | `Invalid_checksum | De.Inf.Ns.error ]
 
     val pp_error : Format.formatter -> error -> unit
-
     val inflate : bigstring -> bigstring -> (int * int, [> error ]) result
   end
 end
@@ -227,10 +226,10 @@ module Def : sig
     type error = De.Def.Ns.error
 
     val pp_error : Format.formatter -> error -> unit
-
     val compress_bound : int -> int
 
-    val deflate : ?level:int -> bigstring -> bigstring -> (int, [> error]) result
+    val deflate :
+      ?level:int -> bigstring -> bigstring -> (int, [> error ]) result
   end
 end
 

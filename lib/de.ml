@@ -3887,12 +3887,10 @@ module Def = struct
             let os = init_output src dst in
             write_uncompressed_block os (os.i_len - os.i_pos) true
             ; flush_output os)
-          else impl c src dst
-        in
+          else impl c src dst in
         Ok res
       with Malformed e -> Error e
-
-    end
+  end
 end
 
 module Lz77 = struct

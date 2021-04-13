@@ -378,6 +378,7 @@ module Def : sig
 
     val pp_error : Format.formatter -> error -> unit
     val compress_bound : int -> int
+
     val deflate : ?level:int -> bigstring -> bigstring -> (int, error) result
     (** [deflate ~level src dst] deflates the content of src into dst.
 

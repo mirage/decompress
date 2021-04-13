@@ -574,8 +574,7 @@ module Def = struct
     type error = De.Def.Ns.error
 
     let pp_error ppf e =
-      match e with
-      | #De.Def.Ns.error as e -> De.Def.Ns.pp_error ppf e
+      match e with #De.Def.Ns.error as e -> De.Def.Ns.pp_error ppf e
 
     let compress_bound len = De.Def.Ns.compress_bound len + 6
 
@@ -596,10 +595,11 @@ module Def = struct
         | Ok res ->
           let adl32 =
             Checkseum.Adler32.(
-              unsafe_digest_bigstring src 0 (bigstring_length src) default) in
+              unsafe_digest_bigstring src 0 (bigstring_length src) default)
+          in
           unsafe_set_uint32_be sub_dst res (Optint.to_int32 adl32)
           ; Ok (res + 6)
-          | Error e -> Error (e : De.Def.Ns.error :> [> error ])
+        | Error e -> Error (e : De.Def.Ns.error :> [> error ])
   end
 end
 
