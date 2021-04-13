@@ -387,17 +387,22 @@ module Inf = struct
       (((cmf land 0xff) lsl 8) + (cmf lsr 8)) mod 31 != 0 || cm != _deflated
 
     let inflate src dst =
-      if header src then Error `Invalid_header
+      let src_len = bigstring_length src in
+      if src_len < 2 then Error `Unexpected_end_of_input
+      else if header src then Error `Invalid_header
       else
         let sub_src = bigstring_sub src 2 (bigstring_length src - 6) in
         let res = De.Inf.Ns.inflate sub_src dst in
         match res with
         | Ok (i, o) ->
-          let i_adl32 = unsafe_get_uint32_be src (i + 2) in
-          let o_adl32 =
-            Optint.to_int32
-              Checkseum.Adler32.(unsafe_digest_bigstring dst 0 o default) in
-          if i_adl32 <> o_adl32 then Error `Invalid_checksum else Ok (i + 6, o)
+          if src_len < i + 6 then Error `Unexpected_end_of_input
+          else
+            let i_adl32 = unsafe_get_uint32_be src (i + 2) in
+            let o_adl32 =
+              Optint.to_int32
+                Checkseum.Adler32.(unsafe_digest_bigstring dst 0 o default)
+            in
+            if i_adl32 <> o_adl32 then Error `Invalid_checksum else Ok (i + 6, o)
         | Error e -> Error (e : De.Inf.Ns.error :> [> error ])
   end
 end
