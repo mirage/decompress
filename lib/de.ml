@@ -1738,7 +1738,7 @@ module Inf = struct
         | 2 -> dynamic d
         | 3 -> err_invalid_kind_of_block ()
         | _ -> assert false)
-        ; if last then () else decode d
+        ; if last then d.i_pos <- d.i_pos - (d.bits lsr 3) else decode d
 
     let inflate src dst =
       let d =

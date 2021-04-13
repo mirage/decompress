@@ -635,9 +635,10 @@ let fuzz2 () =
       (* ~~~~~~~~:,P *)
     ] in
   let expected = String.concat "" expected in
+  (* All of src is not used (last byte is useless) *)
   Alcotest.(check check_decode)
     "fuzz2"
-    (Ok (De.bigstring_length src, String.length expected))
+    (Ok (De.bigstring_length src - 1, String.length expected))
     res
   ; Alcotest.(check string)
       "fuzz2" expected
@@ -690,9 +691,10 @@ let fuzz3 () =
       (* .v.v.v.v.v.v.v.v *); "\xc8\x76\xc8\x76" (* .v.v *)
     ] in
   let expected = String.concat "" expected in
+  (* All of src is not used (last byte is useless) *)
   Alcotest.(check check_decode)
     "fuzz3"
-    (Ok (De.bigstring_length src, String.length expected))
+    (Ok (De.bigstring_length src - 2, String.length expected))
     res
   ; Alcotest.(check string)
       "fuzz3" expected
@@ -713,9 +715,10 @@ let fuzz4 () =
       (* ~..~..~..~..~..~ *); "\xc8\x76\x75\x75\x75\x75\x75\x75" (* .vuuuuuu *)
     ] in
   let expected = String.concat "" expected in
+  (* All of src is not used (last byte is useless) *)
   Alcotest.(check check_decode)
     "fuzz4"
-    (Ok (De.bigstring_length src, String.length expected))
+    (Ok (De.bigstring_length src - 1, String.length expected))
     res
   ; Alcotest.(check string)
       "fuzz4" expected
@@ -737,9 +740,10 @@ let fuzz5 () =
       (* PPPPPPPPP *)
     ] in
   let expected = String.concat "" expected in
+  (* All of src is not used (last byte is useless) *)
   Alcotest.(check check_decode)
     "fuzz5"
-    (Ok (De.bigstring_length src, String.length expected))
+    (Ok (De.bigstring_length src - 1, String.length expected))
     res
   ; Alcotest.(check string)
       "fuzz5" expected
@@ -756,9 +760,10 @@ let fuzz6 () =
       (* .YYY^.Y^.Y^.Y^.Y *); "\x5e\xe3\x33" (* ^.3 *)
     ] in
   let expected = String.concat "" expected in
+  (* All of src is not used (last 2 bytes are useless) *)
   Alcotest.(check check_decode)
     "fuzz6"
-    (Ok (De.bigstring_length src, String.length expected))
+    (Ok (De.bigstring_length src - 2, String.length expected))
     res
   ; Alcotest.(check string)
       "fuzz6" expected
@@ -770,9 +775,10 @@ let fuzz7 () =
     bigstring_of_string "\x93\x3a\x55\x69\x12\x3a\x3f\x10\x08\x01\x00\x00" in
   let res = Inf.Ns.inflate src dst in
   let expected = "\x1a\xca\x79\x34\x55\x9f\x51\x9f\x51\x9f" in
+  (* All of src is not used (last 2 bytes is useless) *)
   Alcotest.(check check_decode)
     "fuzz7"
-    (Ok (De.bigstring_length src, String.length expected))
+    (Ok (De.bigstring_length src - 2, String.length expected))
     res
   ; Alcotest.(check string)
       "fuzz7" expected
@@ -975,7 +981,8 @@ let fuzz15 () =
   let res = Inf.Ns.inflate src dst in
   let expected = ["\x78\x20\x5f\x74\x6c\x69\x63" (* x _tlic *)] in
   let expected = String.concat "" expected in
-  Alcotest.(check check_decode) "fuzz15" (Ok (40, String.length expected)) res
+  (* All of src is not used (last byte is useless) *)
+  Alcotest.(check check_decode) "fuzz15" (Ok (39, String.length expected)) res
   ; Alcotest.(check string)
       "fuzz15" expected
       (Bigstringaf.substring dst ~off:0 ~len:(check_decode_o res))
@@ -1047,7 +1054,8 @@ let fuzz18 () =
       (* gn` gnc)gn` gs`i *); "\x63" (* c *)
     ] in
   let expected = String.concat "" expected in
-  Alcotest.(check check_decode) "fuzz18" (Ok (60, String.length expected)) res
+  (* All of src is not used (last byte is useless) *)
+  Alcotest.(check check_decode) "fuzz18" (Ok (59, String.length expected)) res
   ; Alcotest.(check string)
       "fuzz18" expected
       (Bigstringaf.substring dst ~off:0 ~len:(check_decode_o res))
@@ -1071,9 +1079,8 @@ let compress_and_uncompress ic =
     ; let dst_def = bigstring_create (Def.Ns.compress_bound in_len) in
       match Def.Ns.deflate src_def dst_def with
       | Ok len -> (
-        let src_inf = Bigstringaf.sub dst_def ~off:0 ~len in
         let dst_inf = bigstring_create in_len in
-        match Inf.Ns.inflate src_inf dst_inf with
+        match Inf.Ns.inflate dst_def dst_inf with
         | Ok (i_len, o_len) ->
           Alcotest.(check int) "inflate same len" len i_len
           ; Alcotest.(check int) "keep good length" in_len o_len
@@ -1113,9 +1120,8 @@ let zlib_compress_and_uncompress ic =
     ; let dst_def = bigstring_create (Zl.Def.Ns.compress_bound in_len) in
       match Zl.Def.Ns.deflate src_def dst_def with
       | Ok len -> (
-        let src_inf = Bigstringaf.sub dst_def ~off:0 ~len in
         let dst_inf = bigstring_create in_len in
-        match Zl.Inf.Ns.inflate src_inf dst_inf with
+        match Zl.Inf.Ns.inflate dst_def dst_inf with
         | Ok (i_len, o_len) ->
           Alcotest.(check int) "inflate same len" len i_len
           ; Alcotest.(check int) "keep good length" in_len o_len
