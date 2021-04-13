@@ -1099,7 +1099,7 @@ let compress_and_uncompress ic =
       | Error err ->
         Alcotest.failf "Error when inflating: %a" Def.Ns.pp_error err
 
-        let zlib_compress_and_uncompress ic =
+let zlib_compress_and_uncompress ic =
   Buffer.clear b
   ; Queue.reset q
   ; let in_len = in_channel_length ic in
@@ -1221,8 +1221,6 @@ let tests =
       ] )
   ; ( "ns_zlib"
     , [
-        (* test_empty_with_zlib (); test_empty_with_zlib_and_small_output ()
-           ; test_empty_with_zlib_byte_per_byte () *)
         test_corpus_with_zlib "bib"; test_corpus_with_zlib "book1"
       ; test_corpus_with_zlib "book2"; test_corpus_with_zlib "geo"
       ; test_corpus_with_zlib "news"; test_corpus_with_zlib "obj1"
@@ -1230,6 +1228,5 @@ let tests =
       ; test_corpus_with_zlib "paper2"; test_corpus_with_zlib "pic"
       ; test_corpus_with_zlib "progc"; test_corpus_with_zlib "progl"
       ; test_corpus_with_zlib "progp"; test_corpus_with_zlib "trans"
-        (* ; test_multiple_flush_zlib () *)
       ] )
   ]

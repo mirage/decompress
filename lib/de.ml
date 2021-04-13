@@ -3271,6 +3271,7 @@ module Def = struct
       ; unsafe_set_uint8 os.o (os.o_pos + 1) ((v lsr 8) land 0xff)
       ; os.o_pos <- os.o_pos + 2
 
+    (* clecat: Should be rewritten with uint32 writes *)
     let memcpy os len =
       let i = ref 0 in
       while !i < len do
@@ -3436,8 +3437,8 @@ module Def = struct
 
     let write_sequences os codes sequences in_next in_next_i =
       let f seq =
-        let litrunlen = ref (seq.litrunlen_and_length land 0x7FFFFF) in
-        let length = seq.litrunlen_and_length lsr 23 in
+        let litrunlen = ref (seq.litrunlen_and_length land 0x7FFF) in
+        let length = seq.litrunlen_and_length lsr 15 in
         if !litrunlen <> 0 then (
           while !litrunlen >= 4 do
             let lit0 = unsafe_get_uint8 in_next (!in_next_i + 0) in
@@ -3733,15 +3734,12 @@ module Def = struct
       c.freqs.litlen.(257 + length_slot) <-
         succ c.freqs.litlen.(257 + length_slot)
       ; c.freqs.offset.(offset_slot) <- succ c.freqs.offset.(offset_slot)
-      ; let seq =
-          {
-            litrunlen_and_length= (length lsl 23) lor !litrunlen
-          ; offset
-          ; length_slot
-          ; offset_symbol= offset_slot
-          } in
-        litrunlen := 0
-        ; seq
+      ; {
+          litrunlen_and_length= (length lsl 15) lor litrunlen
+        ; offset
+        ; length_slot
+        ; offset_symbol= offset_slot
+        }
 
     let observe_match stats length =
       let i = num_literal_observation_types + if length >= 9 then 1 else 0 in
@@ -3784,7 +3782,8 @@ module Def = struct
                 hc_matchfinder_longest_match hc_mf os lens c.max_search_depth
               in
               if lens.best >= _min_match_len then (
-                seqs := choose_match c lens.best offset litrunlen :: !seqs
+                seqs := choose_match c lens.best offset !litrunlen :: !seqs
+                ; litrunlen := 0
                 ; observe_match split_stats lens.best
                 ; os.i_pos <- succ os.i_pos
                 ; hc_matchfinder_skip_positions hc_mf os (lens.best - 1))
@@ -3890,7 +3889,7 @@ module Def = struct
             ; flush_output os)
           else impl c src dst
         in
-        Ok (res)
+        Ok res
       with Malformed e -> Error e
 
     end
