@@ -1755,7 +1755,7 @@ module Inf = struct
       try
         decode d
         ; Ok (d.i_pos, d.o_pos)
-      with Malformed e -> Error e
+      with Malformed e -> Error (e : error :> [> error ])
   end
 end
 
@@ -3889,7 +3889,7 @@ module Def = struct
             ; flush_output os)
           else impl c src dst in
         Ok res
-      with Malformed e -> Error e
+      with Malformed e -> Error (e : error :> [> error ])
   end
 end
 
