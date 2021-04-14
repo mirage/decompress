@@ -2990,24 +2990,19 @@ module Def = struct
     }
 
     type hc_matchfinder = {
-        hash3_tab: int array
-      ; hash4_tab: int array
-      ; mutable next_hash3: int
+        hash4_tab: int array
       ; mutable next_hash4: int
       ; next_tab: int array
     }
 
-    let hc_matchfinder_hash3_order = 15
     let hc_matchfinder_hash4_order = 16
     let window_size = 1 lsl 15
 
     let hc_matchfinder_init () =
-      let hash3_tab =
-        Array.make (1 lsl hc_matchfinder_hash3_order) (-window_size) in
       let hash4_tab =
         Array.make (1 lsl hc_matchfinder_hash4_order) (-window_size) in
       let next_tab = Array.make window_size 0 in
-      {hash3_tab; next_hash3= 0; hash4_tab; next_hash4= 0; next_tab}
+      {hash4_tab; next_hash4= 0; next_tab}
 
     type sequence = {
         mutable litrunlen_and_length: int
@@ -3692,10 +3687,8 @@ module Def = struct
       ; let cutoff = cur_pos - window_size in
         if lens.max < 5 then os.i_pos - best_matchptr
         else
-          let _cur_node3 = mf.hash3_tab.(mf.next_hash3) in
           let cur_node4 = mf.hash4_tab.(mf.next_hash4) in
-          mf.hash3_tab.(mf.next_hash3) <- cur_pos
-          ; mf.hash4_tab.(mf.next_hash4) <- cur_pos
+          mf.hash4_tab.(mf.next_hash4) <- cur_pos
           ; mf.next_tab.(cur_pos) <- cur_node4
           ; mf.next_hash4 <-
               lz_hash os.i (os.i_pos + 1) hc_matchfinder_hash4_order
@@ -3713,7 +3706,6 @@ module Def = struct
       | remaining ->
         let cur_pos = os.i_pos land (window_size - 1) in
         if cur_pos = 0 && os.i_pos <> 0 then hc_matchfinder_slide_window mf
-        ; mf.hash3_tab.(mf.next_hash3) <- cur_pos
         ; mf.next_tab.(cur_pos) <- mf.hash4_tab.(mf.next_hash4)
         ; mf.hash4_tab.(mf.next_hash4) <- cur_pos
         ; os.i_pos <- os.i_pos + 1
