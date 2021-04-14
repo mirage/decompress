@@ -3636,12 +3636,12 @@ module Def = struct
       else _lz_extend i start_pos match_pos len max_len
 
     let hc_matchfinder_slide_window mf =
-      Array.iteri
-        (fun i v -> mf.hash4_tab.(i) <- v - (window_size land 0xFFFF))
-        mf.hash4_tab
-      ; Array.iteri
-          (fun i v -> mf.next_tab.(i) <- v - (window_size land 0xFFFF))
-          mf.next_tab
+      for i = 0 to Array.length mf.hash4_tab - 1 do
+        mf.hash4_tab.(i) <- mf.hash4_tab.(i) - window_size
+      done
+      ; for i = 0 to Array.length mf.next_tab - 1 do
+          mf.next_tab.(i) <- mf.next_tab.(i) - window_size
+        done
 
     let lz_hash i pos num_bits =
       let v = unsafe_get_uint32 i pos in
