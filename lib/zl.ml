@@ -166,7 +166,7 @@ module Inf = struct
 
   let err_invalid_checksum has expect _ =
     malformedf "Invalid checksum (expect:%04lx, has:%04lx)" expect
-      (Optint.to_int32 has)
+      (Optint.to_unsigned_int32 has)
 
   let err_invalid_header _ = malformedf "Invalid Zlib header"
 
@@ -224,7 +224,7 @@ module Inf = struct
         let b = unsafe_get_uint32_be d.t 0 in
 
         if
-          Optint.to_int32 a = b
+          Optint.to_unsigned_int32 a = b
           (* FIXME: Optint.equal a (Optint.of_int32 b) bugs! *)
         then `End d
         else err_invalid_checksum a b d
