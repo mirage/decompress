@@ -712,7 +712,6 @@ module Def = struct
     | `Manual -> `Flush {e with k}
 
   let identity e = `End e
-
   let imax = Optint.of_string "0xffffffff"
 
   let rec checksum e =
