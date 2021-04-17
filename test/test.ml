@@ -1899,6 +1899,29 @@ let test_gzip_extra () =
         (Some "ubuntu")
   | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
+let test_gzip_huge () =
+  Alcotest.test_case "GZip with huge file" `Slow @@ fun () ->
+  let zero =
+    Bigstringaf.of_string ~off:0 ~len:De.io_buffer_size
+      (String.make De.io_buffer_size '\000') in
+  let rec go count encoder =
+    match Gz.Def.encode encoder with
+    | `Await encoder when count < 4_000_000_000L ->
+      let encoder = Gz.Def.src encoder zero 0 (Bigstringaf.length zero) in
+      go (Int64.add count (Int64.of_int (Bigstringaf.length zero))) encoder
+    | `Await encoder ->
+      let encoder = Gz.Def.src encoder zero 0 0 in
+      go count encoder
+    | `Flush encoder ->
+      let encoder = Gz.Def.dst encoder o 0 (Bigstringaf.length o) in
+      go count encoder
+    | `End _ -> () in
+  let w = De.Lz77.make_window ~bits:15 in
+  let encoder =
+    Gz.Def.encoder `Manual `Manual ~mtime:0l Gz.Unix ~q ~w ~level:4 in
+  go 0L encoder
+  ; Alcotest.(check pass) "huge file" () ()
+
 let invalid_access () =
   Alcotest.test_case "Invalid array access" `Quick @@ fun () ->
   let decoder =
@@ -2057,7 +2080,7 @@ let () =
         ; test_corpus_with_gzip "progc"; test_corpus_with_gzip "progl"
         ; test_corpus_with_gzip "progp"; test_corpus_with_gzip "trans"
         ; test_with_camlzip (); test_gzip_hcrc (); test_invalid_hcrc ()
-        ; test_gzip_extra ()
+        ; test_gzip_extra (); test_gzip_huge ()
         ] )
     ; ( "gzip with os"
       , [
