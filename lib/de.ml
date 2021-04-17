@@ -1,4 +1,4 @@
-let () = Printexc.record_backtrace true
+[@@@landmark "auto"]
 
 module Bigarray = Bigarray_compat (* XXX(dinosaure): MirageOS compatibility. *)
 
@@ -203,6 +203,7 @@ let ( < ) (x : int) y = x < y [@@inline]
 let ( <= ) (x : int) y = x <= y [@@inline]
 let ( >= ) (x : int) y = x >= y [@@inline]
 let min (a : int) b = if a <= b then a else b [@@inline]
+let max (a : int) b = if a >= b then a else b [@@inline]
 
 (* XXX(dinosaure): Constants. *)
 
@@ -223,20 +224,20 @@ let zigzag =
 
 let _length =
   [|
-     0; 1; 2; 3; 4; 5; 6; 7; 8; 8; 9; 9; 10; 10; 11; 11; 12; 12; 12; 12; 13; 13
-   ; 13; 13; 14; 14; 14; 14; 15; 15; 15; 15; 16; 16; 16; 16; 16; 16; 16; 16; 17
-   ; 17; 17; 17; 17; 17; 17; 17; 18; 18; 18; 18; 18; 18; 18; 18; 19; 19; 19; 19
-   ; 19; 19; 19; 19; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20
-   ; 20; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 22; 22
-   ; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 23; 23; 23; 23; 23
-   ; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 24; 24; 24; 24; 24; 24; 24; 24
+     0; 0; 0; 0; 1; 2; 3; 4; 5; 6; 7; 8; 8; 9; 9; 10; 10; 11; 11; 12; 12; 12; 12
+   ; 13; 13; 13; 13; 14; 14; 14; 14; 15; 15; 15; 15; 16; 16; 16; 16; 16; 16; 16
+   ; 16; 17; 17; 17; 17; 17; 17; 17; 17; 18; 18; 18; 18; 18; 18; 18; 18; 19; 19
+   ; 19; 19; 19; 19; 19; 19; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20; 20
+   ; 20; 20; 20; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21; 21
+   ; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 22; 23; 23; 23
+   ; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 23; 24; 24; 24; 24; 24; 24
    ; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24; 24
-   ; 24; 24; 24; 24; 24; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25
-   ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 26
-   ; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26
-   ; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 27; 27; 27; 27; 27; 27; 27
+   ; 24; 24; 24; 24; 24; 24; 24; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25
+   ; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25; 25
+   ; 25; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26
+   ; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 26; 27; 27; 27; 27; 27
    ; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27; 27
-   ; 27; 27; 27; 27; 27; 28
+   ; 27; 27; 27; 27; 27; 27; 27; 28
   |]
 
 let _distance =
@@ -1447,6 +1448,315 @@ module Inf = struct
     ; d.s <- Header
     ; d.k <- decode_k
     ; WInf.reset d.w
+
+  module Ns = struct
+    type decoder = {
+        i: bigstring
+      ; mutable i_pos: int
+      ; i_len: int
+      ; mutable hold: int
+      ; mutable bits: int
+      ; o: bigstring
+      ; mutable o_pos: int
+      ; o_len: int
+    }
+
+    (* errors. *)
+
+    type error =
+      [ `Unexpected_end_of_input
+      | `Unexpected_end_of_output
+      | `Invalid_kind_of_block
+      | `Invalid_dictionary
+      | `Invalid_complement_of_length
+      | `Invalid_distance
+      | `Invalid_distance_code ]
+
+    let pp_error ppf e =
+      let s =
+        match e with
+        | `Unexpected_end_of_input -> "Unexpected end of input"
+        | `Unexpected_end_of_output -> "Unexpected end of output"
+        | `Invalid_kind_of_block -> "Invalid kind of block"
+        | `Invalid_dictionary -> "Invalid dictionary"
+        | `Invalid_complement_of_length -> "Invalid complement of length"
+        | `Invalid_distance -> "Invalid distance"
+        | `Invalid_distance_code -> "Invalid distance code" in
+      Format.fprintf ppf "%s" s
+
+    exception Malformed of error
+
+    let err_unexpected_end_of_input () =
+      raise (Malformed `Unexpected_end_of_input)
+
+    let err_unexpected_end_of_output () =
+      raise (Malformed `Unexpected_end_of_output)
+
+    let err_invalid_kind_of_block () = raise (Malformed `Invalid_kind_of_block)
+    let err_invalid_dictionary () = raise (Malformed `Invalid_dictionary)
+
+    let err_invalid_complement_of_length () =
+      raise (Malformed `Invalid_complement_of_length)
+
+    let err_invalid_distance () = raise (Malformed `Invalid_distance)
+    let err_invalid_distance_code () = raise (Malformed `Invalid_distance_code)
+
+    (* remaining bytes to read [d.i]. *)
+    let i_rem d = d.i_len - d.i_pos [@@inline]
+
+    let _slow_blit src src_off dst dst_off len =
+      for i = 0 to len - 1 do
+        let v = unsafe_get_uint8 src (src_off + i) in
+        unsafe_set_uint8 dst (dst_off + i) v
+      done
+
+    let _blit src src_off dst dst_off len =
+      if dst_off - src_off < 4 then _slow_blit src src_off dst dst_off len
+      else
+        let len0 = len land 3 in
+        let len1 = len asr 2 in
+
+        for i = 0 to len1 - 1 do
+          let i = i * 4 in
+          let v = unsafe_get_uint32 src (src_off + i) in
+          unsafe_set_uint32 dst (dst_off + i) v
+        done
+
+        ; for i = 0 to len0 - 1 do
+            let i = (len1 * 4) + i in
+            let v = unsafe_get_uint8 src (src_off + i) in
+            unsafe_set_uint8 dst (dst_off + i) v
+          done
+
+    let _fill v dst dst_off len =
+      let len0 = len land 3 in
+      let len1 = len asr 2 in
+
+      let nv = Nativeint.of_int v in
+      let vv = Nativeint.(logor (shift_left nv 8) nv) in
+      let vvvv = Nativeint.(logor (shift_left vv 16) vv) in
+      let vvvv = Nativeint.to_int32 vvvv in
+
+      for i = 0 to len1 - 1 do
+        let i = i * 4 in
+        unsafe_set_uint32 dst (dst_off + i) vvvv
+      done
+
+      ; for i = 0 to len0 - 1 do
+          let i = (len1 * 4) + i in
+          unsafe_set_uint8 dst (dst_off + i) v
+        done
+
+    let flat d =
+      d.i_pos <- d.i_pos - (d.bits / 8)
+      ; d.hold <- 0
+      ; d.bits <- 0
+      ; if i_rem d < 4 then err_unexpected_end_of_input ()
+      ; let len = unsafe_get_uint16 d.i d.i_pos in
+        let nlen = unsafe_get_uint16 d.i (d.i_pos + 2) in
+        d.i_pos <- d.i_pos + 4
+        ; if nlen != 0xffff - len then err_invalid_complement_of_length ()
+          else (
+            if len > i_rem d then err_unexpected_end_of_input ()
+            ; if len > d.o_len - d.o_pos then err_unexpected_end_of_output ()
+            ; _blit d.i d.i_pos d.o d.o_pos len
+            ; d.o_pos <- d.o_pos + len
+            ; d.i_pos <- d.i_pos + len)
+
+    let _fill_bits d n =
+      if d.bits < n then
+        let rem = i_rem d in
+        if rem > 1 then (
+          d.hold <- d.hold lor (unsafe_get_uint16 d.i d.i_pos lsl d.bits)
+          ; d.i_pos <- d.i_pos + 2
+          ; d.bits <- d.bits + 16)
+        else if rem = 1 then (
+          d.hold <- d.hold lor (unsafe_get_uint8 d.i d.i_pos lsl d.bits)
+          ; d.i_pos <- d.i_pos + 1
+          ; d.bits <- d.bits + 8)
+        else err_unexpected_end_of_input ()
+      [@@inline]
+
+    let __fill_bits d n =
+      if d.bits < n then
+        let rem = i_rem d in
+        if rem > 1 then (
+          d.hold <- d.hold lor (unsafe_get_uint16 d.i d.i_pos lsl d.bits)
+          ; d.i_pos <- d.i_pos + 2
+          ; d.bits <- d.bits + 16)
+        else if rem = 1 then (
+          d.hold <- d.hold lor (unsafe_get_uint8 d.i d.i_pos lsl d.bits)
+          ; d.i_pos <- d.i_pos + 1
+          ; d.bits <- d.bits + 8)
+      [@@inline]
+
+    let pop_bits d n =
+      let v = d.hold land ((1 lsl n) - 1) in
+      d.hold <- d.hold lsr n
+      ; d.bits <- d.bits - n
+      ; v
+      [@@inline]
+
+    exception End
+    exception Invalid_distance
+    exception Invalid_distance_code
+
+    let inflate lit dist d =
+      try
+        let rec inflate_loop () =
+          __fill_bits d lit.Lookup.l
+          ; let value =
+              lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask in
+            let len = lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 in
+            d.hold <- d.hold lsr len
+            ; d.bits <- d.bits - len
+            ; if value < 256 then (
+                unsafe_set_uint8 d.o d.o_pos value
+                ; d.o_pos <- d.o_pos + 1
+                ; inflate_loop ())
+              else if value == 256 then raise_notrace End
+              else
+                let l = value - 257 in
+                let len = _extra_lbits.(l) in
+                __fill_bits d len
+                ; let extra = pop_bits d len in
+                  let l = _base_length.(l land 0x1f) + 3 + extra in
+                  __fill_bits d dist.Lookup.l
+                  ; let value =
+                      dist.Lookup.t.(d.hold land dist.Lookup.m) land Lookup.mask
+                    in
+                    let len = dist.Lookup.t.(d.hold land dist.Lookup.m) lsr 15 in
+                    d.hold <- d.hold lsr len
+                    ; d.bits <- d.bits - len
+                    ; let d_ = value in
+                      let len = _extra_dbits.(d_ land 0x1f) in
+                      __fill_bits d len
+                      ; let extra = pop_bits d len in
+                        let d_ = _base_dist.(d_) + 1 + extra in
+                        if d_ == 0 then raise_notrace Invalid_distance_code
+                        ; if d_ > min d.o_pos (1 lsl 15) then
+                            raise_notrace Invalid_distance
+                        ; let len = min l (d.o_len - d.o_pos) in
+                          let off = d.o_pos - d_ in
+                          _blit d.o off d.o d.o_pos len
+                          ; d.o_pos <- d.o_pos + len
+                          ; if l - len == 0 then inflate_loop () in
+        inflate_loop ()
+      with
+      | End -> ()
+      | Invalid_distance -> err_invalid_distance ()
+      | Invalid_distance_code -> err_invalid_distance_code ()
+
+    let fixed d = inflate fixed_lit fixed_dist d
+
+    (* XXX(clecat): The table functions are almost a copy of the stream implementation, by
+       adapting their code, they should be easily merged *)
+    let make_table t hlit hdist d =
+      try
+        if t.(256) == 0 then raise_notrace Invalid_huffman
+
+        ; (* XXX(dinosaure): an huffman tree MUST have at least an End-Of-Block
+             symbol. *)
+          let t_lit, l_lit = huffman LENS t 0 hlit in
+          let t_dist, l_dist = huffman DISTS t hlit hdist in
+
+          let lit = Lookup.make t_lit l_lit in
+          let dist = Lookup.make t_dist l_dist in
+
+          inflate lit dist d
+      with Invalid_huffman -> err_invalid_dictionary ()
+
+    let inflate_table d t max_bits res (hlit, hdist, _) =
+      let max_res = hlit + hdist in
+      let mask = (1 lsl max_bits) - 1 in
+      let get d =
+        _fill_bits d max_bits
+        ; let v = t.(d.hold land mask) land Lookup.mask in
+          let len = t.(d.hold land mask) lsr 15 in
+          d.hold <- d.hold lsr len
+          ; d.bits <- d.bits - len
+          ; v in
+      let get_bits d n = _fill_bits d n ; pop_bits d n in
+      let ret r d = make_table r hlit hdist d in
+      let rec record i copy len d =
+        if i + copy > max_res then err_invalid_dictionary ()
+        else (
+          for x = 0 to copy - 1 do
+            res.(i + x) <- len
+          done
+          ; if i + copy < max_res then go (i + copy) (get d) d else ret res d)
+      and go i v d =
+        if v < 16 then (
+          res.(i) <- v
+          ; if succ i < max_res then go (succ i) (get d) d else ret res d)
+        else if v == 16 then
+          if i == 0 then err_invalid_dictionary ()
+          else
+            let v = get_bits d 2 in
+            record i (v + 3) res.(i - 1) d
+        else if v == 17 then
+          let v = get_bits d 3 in
+          record i (v + 3) 0 d
+        else if v == 18 then
+          let v = get_bits d 7 in
+          record i (v + 11) 0 d
+        else assert false
+        (* TODO: really never occur? *) in
+      go 0 (get d) d
+
+    let table d hlit hdist hclen =
+      let i = ref 0 in
+      let res = Array.make 19 0 in
+
+      while !i < hclen do
+        _fill_bits d 3
+        ; let code = pop_bits d 3 in
+          res.(zigzag.(!i)) <- code
+          ; incr i
+      done
+      ; try
+          let t, l = huffman CODES res 0 19 in
+          let r = Array.make (hlit + hdist) 0 in
+          let h = hlit, hdist, hclen in
+          inflate_table d t l r h
+        with Invalid_huffman -> err_invalid_dictionary ()
+
+    let dynamic d =
+      _fill_bits d 14
+      ; let hlit = pop_bits d 5 + 257 in
+        let hdist = pop_bits d 5 + 1 in
+        let hclen = pop_bits d 4 + 4 in
+        table d hlit hdist hclen
+
+    let rec decode d =
+      _fill_bits d 3
+      ; let last = pop_bits d 1 == 1 in
+        let block_type = pop_bits d 2 in
+        (match block_type with
+        | 0 -> flat d
+        | 1 -> fixed d
+        | 2 -> dynamic d
+        | 3 -> err_invalid_kind_of_block ()
+        | _ -> assert false)
+        ; if last then d.i_pos <- d.i_pos - (d.bits lsr 3) else decode d
+
+    let inflate src dst =
+      let d =
+        {
+          i= src
+        ; i_pos= 0
+        ; i_len= bigstring_length src
+        ; o= dst
+        ; o_pos= 0
+        ; o_len= bigstring_length dst
+        ; hold= 0
+        ; bits= 0
+        } in
+      try
+        decode d
+        ; Ok (d.i_pos, d.o_pos)
+      with Malformed e -> Error (e : error :> [> error ])
+  end
 end
 
 let unsafe_set_cursor d c = d.Inf.w.WInf.w <- c
@@ -1955,8 +2265,8 @@ let succ_literal literals chr =
 
 let succ_length literals length =
   assert (length >= 3 && length <= 255 + 3)
-  ; literals.(256 + 1 + _length.(length - 3)) <-
-      literals.(256 + 1 + _length.(length - 3)) + 1
+  ; literals.(256 + 1 + _length.(length)) <-
+      literals.(256 + 1 + _length.(length)) + 1
 
 let make_distances () = Array.make ((2 * _d_codes) + 1) 0
 
@@ -1965,6 +2275,7 @@ let succ_distance distances distance =
   ; distances.(_distance (pred distance)) <-
       distances.(_distance (pred distance)) + 1
 
+(* XXX placeholder for me to find myself XXX*)
 module Def = struct
   type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
 
@@ -2035,8 +2346,7 @@ module Def = struct
     | `Copy (off, len), Dynamic dynamic ->
       (* assert (len >= 3 && len <= 255 + 3) ; *)
       (* assert (off >= 1 && off <= 32767 + 1) ; *)
-      dynamic.ltree.T.tree.Lookup.t.(256 + 1 + _length.(len - 3)) lsr _max_bits
-      > 0
+      dynamic.ltree.T.tree.Lookup.t.(256 + 1 + _length.(len)) lsr _max_bits > 0
       && dynamic.dtree.T.tree.Lookup.t.(_distance (pred off)) lsr _max_bits > 0
     | `End, (Fixed | Dynamic _) | `Literal _, (Flat _ | Fixed) | `Copy _, Fixed
       ->
@@ -2369,7 +2679,7 @@ module Def = struct
                [flush_bits] can be reached with [news] Calgary file. *)
             let off, len = cmd land 0xffff, (cmd lsr 16) land 0x1ff in
 
-            let code = _length.(len) in
+            let code = _length.(len + 3) in
             let len0, v0 = Lookup.get ltree (code + 256 + 1) in
             let len1, v1 =
               _extra_lbits.(code), len - _base_length.(code land 0x1f) in
@@ -2607,6 +2917,972 @@ module Def = struct
     }
 
   let encode e = e.k e
+
+  module Ns = struct
+    let _min_block_length = 10000
+    let _end_padding = 8
+    let _max_match_offset = 32768
+    let _max_max_codeword_len = 15
+    let _num_litlen_syms = 288
+    let _max_litlen_codeword_len = 14
+    let _num_offset_syms = 32
+    let _max_offset_codeword_len = 15
+    let _max_num_syms = 288
+    let _num_symbol_bits = 10
+    let _symbol_mask = 0b1111111111
+    let _min_match_len = 3
+    let _max_match_len = 258
+    let _soft_max_block_length = 300000
+    let _num_precode_syms = 19
+    let _end_of_block = 256
+    let _max_pre_codeword_len = 7
+    let _max_extra_length_bits = 5
+    let _max_extra_offset_bits = 14
+
+    type error = [ `Invalid_compression_level | `Unexpected_end_of_output ]
+
+    let pp_error ppf e =
+      let s =
+        match e with
+        | `Invalid_compression_level -> "Invalid compression level"
+        | `Unexpected_end_of_output -> "Unexpected end of output" in
+      Format.fprintf ppf "%s" s
+
+    exception Malformed of error
+
+    let err_invalid_compression_level () =
+      raise (Malformed `Invalid_compression_level)
+
+    let err_unexpected_end_of_output () =
+      raise (Malformed `Unexpected_end_of_output)
+
+    type lit_off = {litlen: int array; offset: int array}
+    type codes = {codewords: lit_off; lens: lit_off}
+
+    type encoder = {
+        level: int
+      ; min_size_to_compress: int
+      ; max_search_depth: int
+      ; nice_match_length: int
+      ; offset_slot_fast: int array
+      ; freqs: lit_off
+      ; codes: codes
+      ; static_codes: codes
+      ; precode_freqs: int array
+      ; precode_lens: int array
+      ; precode_codewords: int array
+      ; precode_items: int array
+      ; mutable num_litlen_syms: int
+      ; mutable num_offset_syms: int
+      ; mutable num_explicit_lens: int
+      ; mutable num_precode_items: int
+    }
+
+    type output_bitstream = {
+        i: bigstring
+      ; mutable i_pos: int
+      ; i_len: int
+      ; o: bigstring
+      ; mutable o_pos: int
+      ; o_len: int
+      ; mutable hold: int
+      ; mutable bits: int
+    }
+
+    type hc_matchfinder = {
+        hash4_tab: int array
+      ; mutable next_hash4: int
+      ; next_tab: int array
+    }
+
+    let hc_matchfinder_hash4_order = 16
+    let window_size = 1 lsl 15
+
+    let hc_matchfinder_init () =
+      let hash4_tab =
+        Array.make (1 lsl hc_matchfinder_hash4_order) (-window_size) in
+      let next_tab = Array.make window_size 0 in
+      {hash4_tab; next_hash4= 0; next_tab}
+
+    type sequence = {
+        mutable litrunlen_and_length: int
+      ; mutable offset: int
+      ; mutable offset_symbol: int
+      ; mutable length_slot: int
+    }
+
+    let num_literal_observation_types = 8
+    let num_match_observation_types = 2
+
+    let num_observation_types =
+      num_literal_observation_types + num_match_observation_types
+
+    type block_split_stats = {
+        new_observations: int array
+      ; observations: int array
+      ; mutable num_new_observations: int
+      ; mutable num_observations: int
+    }
+
+    let split_stats =
+      {
+        new_observations= Array.make num_observation_types 0
+      ; observations= Array.make num_observation_types 0
+      ; num_new_observations= 0
+      ; num_observations= 0
+      }
+
+    type lens = {mutable best: int; mutable nice: int; mutable max: int}
+
+    let blocktype_uncompressed = 0
+    let blocktype_static_huffman = 1
+    let blocktype_dynamic_huffman = 2
+
+    let init_output i o =
+      {
+        i
+      ; i_pos= 0
+      ; i_len= bigstring_length i
+      ; o
+      ; o_pos= 0
+      ; o_len= bigstring_length o - _end_padding
+      ; hold= 0
+      ; bits= 0
+      }
+
+    let get_num_counter num_syms = (num_syms + (3 / 4) + 3) land lnot 3
+
+    let sort_symbols num_syms freqs lens symout =
+      let counters = Array.make (get_num_counter _max_num_syms) 0 in
+      let num_counters = get_num_counter num_syms in
+      for sym = 0 to num_syms - 1 do
+        let i = min freqs.(sym) (num_counters - 1) in
+        counters.(i) <- counters.(i) + 1
+      done
+      ; let num_used_syms = ref 0 in
+        for i = 1 to num_counters - 1 do
+          let count = counters.(i) in
+          counters.(i) <- !num_used_syms
+          ; num_used_syms := !num_used_syms + count
+        done
+        ; for sym = 0 to num_syms - 1 do
+            let freq = freqs.(sym) in
+            if freq <> 0 then (
+              let i = min freq (num_counters - 1) in
+              symout.(counters.(i)) <- sym lor (freq lsl _num_symbol_bits)
+              ; counters.(i) <- counters.(i) + 1)
+            else lens.(sym) <- 0
+          done
+        ; let counters_pos = counters.(num_counters - 2) in
+          let counters_len =
+            counters.(num_counters - 1) - counters.(num_counters - 2) in
+          let to_sort = Array.sub symout counters_pos counters_len in
+          Array.sort
+            (fun i j -> match i, j with 0, _ -> 1 | _, 0 -> -1 | _ -> i - j)
+            to_sort
+          ; Array.blit to_sort 0 symout counters_pos counters_len
+          ; !num_used_syms
+
+    let build_tree a sym_count =
+      let i = ref 0 in
+      let b = ref 0 in
+      let e = ref 0 in
+      while sym_count - !e > 1 do
+        let m, n = ref 0, ref 0 in
+        if
+          !i <> sym_count
+          && (b = e
+             || a.(!i) lsr _num_symbol_bits <= a.(!b) lsr _num_symbol_bits)
+        then (
+          m := !i
+          ; incr i)
+        else (
+          m := !b
+          ; incr b)
+        ; if
+            !i <> sym_count
+            && (b = e
+               || a.(!i) lsr _num_symbol_bits <= a.(!b) lsr _num_symbol_bits)
+          then (
+            n := !i
+            ; incr i)
+          else (
+            n := !b
+            ; incr b)
+        ; let freq_shifted =
+            (a.(!m) land lnot _symbol_mask) + (a.(!n) land lnot _symbol_mask)
+          in
+          a.(!m) <- a.(!m) land _symbol_mask lor (!e lsl _num_symbol_bits)
+          ; a.(!n) <- a.(!n) land _symbol_mask lor (!e lsl _num_symbol_bits)
+          ; a.(!e) <- a.(!e) land _symbol_mask lor freq_shifted
+          ; incr e
+      done
+
+    let compute_length_counts a root_idx len_counts max_codeword =
+      len_counts.(1) <- 2
+      ; a.(root_idx) <- a.(root_idx) land _symbol_mask
+
+      ; let rec f = function
+          | -1 -> ()
+          | node ->
+            let parent = a.(node) lsr _num_symbol_bits in
+            let parent_depth = a.(parent) lsr _num_symbol_bits in
+            let depth = parent_depth + 1 in
+            let len = ref depth in
+            a.(node) <-
+              a.(node) land _symbol_mask lor (depth lsl _num_symbol_bits)
+            ; if !len >= max_codeword then (
+                len := max_codeword - 1
+                ; while len_counts.(!len) == 0 do
+                    decr len
+                  done)
+            ; len_counts.(!len) <- len_counts.(!len) - 1
+            ; len_counts.(!len + 1) <- len_counts.(!len + 1) + 2
+            ; f (node - 1) in
+        f (root_idx - 1)
+
+    let gen_codewords a lens len_counts max_codeword_len num_syms =
+      let next_codewords = Array.make (_max_max_codeword_len + 1) 0 in
+      let i = ref 0 in
+      let len = ref max_codeword_len in
+      while !len <> 0 do
+        let count = ref len_counts.(!len) in
+        while !count <> 0 do
+          lens.(a.(!i) land _symbol_mask) <- !len
+          ; incr i
+          ; decr count
+        done
+        ; decr len
+      done
+      ; next_codewords.(0) <- 0
+      ; next_codewords.(1) <- 0
+      ; for len = 2 to max_codeword_len do
+          next_codewords.(len) <-
+            (next_codewords.(len - 1) + len_counts.(len - 1)) lsl 1
+        done
+      ; for sym = 0 to num_syms - 1 do
+          let i = lens.(sym) in
+          a.(sym) <- next_codewords.(i)
+          ; next_codewords.(i) <- next_codewords.(i) + 1
+        done
+
+    let make_canonical_huffman_code
+        num_syms max_codeword_len freqs lens codewords =
+      let num_used_syms = sort_symbols num_syms freqs lens codewords in
+      match num_used_syms with
+      | 0 -> ()
+      | 1 ->
+        let sym = codewords.(0) land _symbol_mask in
+        let nonzero_idx = max sym 1 in
+        codewords.(0) <- 0
+        ; lens.(0) <- 1
+        ; codewords.(nonzero_idx) <- 1
+        ; lens.(nonzero_idx) <- 1
+      | _ ->
+        build_tree codewords num_used_syms
+        ; let len_counts = Array.make (_max_max_codeword_len + 1) 0 in
+          compute_length_counts codewords (num_used_syms - 2) len_counts
+            max_codeword_len
+          ; gen_codewords codewords lens len_counts max_codeword_len num_syms
+
+    let reverse_codeword codeword len =
+      let codeword =
+        ((codeword land 0x5555) lsl 1) lor ((codeword land 0xAAAA) lsr 1) in
+      let codeword =
+        ((codeword land 0x3333) lsl 2) lor ((codeword land 0xCCCC) lsr 2) in
+      let codeword =
+        ((codeword land 0x0F0F) lsl 4) lor ((codeword land 0xF0F0) lsr 4) in
+      let codeword =
+        ((codeword land 0x00FF) lsl 8) lor ((codeword land 0xFF00) lsr 8) in
+      codeword lsr (16 - len)
+
+    let make_huffman_code num_syms max_codeword_len freqs lens codewords =
+      make_canonical_huffman_code num_syms max_codeword_len freqs lens codewords
+      ; for sym = 0 to num_syms - 1 do
+          codewords.(sym) <- reverse_codeword codewords.(sym) lens.(sym)
+        done
+
+    let make_huffman_codes freqs codes =
+      make_huffman_code _num_litlen_syms _max_litlen_codeword_len freqs.litlen
+        codes.lens.litlen codes.codewords.litlen
+      ; make_huffman_code _num_offset_syms _max_offset_codeword_len freqs.offset
+          codes.lens.offset codes.codewords.offset
+
+    let init_static_codes freqs static_codes =
+      for i = 0 to 143 do
+        freqs.litlen.(i) <- 1 lsl (9 - 8)
+      done
+      ; for i = 144 to 255 do
+          freqs.litlen.(i) <- 1 lsl (9 - 9)
+        done
+      ; for i = 256 to 279 do
+          freqs.litlen.(i) <- 1 lsl (9 - 7)
+        done
+      ; for i = 280 to 287 do
+          freqs.litlen.(i) <- 1 lsl (9 - 8)
+        done
+      ; for i = 0 to 31 do
+          freqs.offset.(i) <- 1 lsl (5 - 5)
+        done
+      ; make_huffman_codes freqs static_codes
+
+    let init_offset_slot_fast offset_slot_fast =
+      for offset_slot = 0 to Array.length _base_dist - 3 do
+        let offset = _base_dist.(offset_slot) + 1 in
+        let offset_end = offset + (1 lsl _extra_dbits.(offset_slot)) in
+        for i = offset to offset_end - 1 do
+          offset_slot_fast.(i) <- offset_slot
+        done
+      done
+
+    let add_bits os bits num_bits =
+      os.hold <- os.hold lor (bits lsl os.bits)
+      ; os.bits <- os.bits + num_bits
+      ; if os.bits >= 16 then begin
+          unsafe_set_uint16 os.o os.o_pos os.hold
+          ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 2
+          ; os.bits <- os.bits - 16
+          ; os.hold <- os.hold lsr 16
+        end
+
+    let flush_bits os =
+      if os.bits >= 8 then begin
+        unsafe_set_uint8 os.o os.o_pos os.hold
+        ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 1
+        ; os.bits <- os.bits - 8
+        ; os.hold <- os.hold lsr 8
+      end
+
+    let write_block_header os is_final_block block_type =
+      add_bits os (if is_final_block then 1 else 0) 1
+      ; add_bits os block_type 2
+
+    let align_bitstream os =
+      os.bits <- os.bits + (-os.bits land 7)
+      ; flush_bits os
+
+    let put_unaligned_le16 os v =
+      unsafe_set_uint8 os.o os.o_pos (v land 0xff)
+      ; unsafe_set_uint8 os.o (os.o_pos + 1) ((v lsr 8) land 0xff)
+      ; os.o_pos <- os.o_pos + 2
+
+    (* clecat: Should be rewritten with uint32 writes *)
+    let memcpy os len =
+      let i = ref 0 in
+      while !i < len do
+        let v = unsafe_get_uint8 os.i (os.i_pos + !i) in
+        unsafe_set_uint8 os.o os.o_pos v
+        ; incr i
+        ; os.o_pos <- os.o_pos + 1
+      done
+      ; os.i_pos <- os.i_pos + !i
+
+    let write_uncompressed_block os len is_final_block =
+      write_block_header os is_final_block blocktype_uncompressed
+      ; align_bitstream os
+      ; if 4 + len >= os.o_len - os.o_pos then err_unexpected_end_of_output ()
+      ; put_unaligned_le16 os len
+      ; put_unaligned_le16 os (lnot len)
+      ; memcpy os len
+
+    let rec write_uncompressed_blocks os block_length is_final_block =
+      match os.i_len - os.i_pos with
+      | 0 -> ()
+      | _ ->
+        let len = min block_length 65535 in
+        write_uncompressed_block os len
+          (is_final_block && os.i_pos + len == os.i_len)
+        ; write_uncompressed_blocks os block_length is_final_block
+
+    let flush_output os =
+      if os.o_pos == os.o_len then err_unexpected_end_of_output ()
+      ; while os.bits > 0 do
+          unsafe_set_uint8 os.o os.o_pos os.hold
+          ; os.o_pos <- os.o_pos + 1
+          ; os.bits <- os.bits - 8
+          ; os.hold <- os.hold lsr 8
+        done
+      ; os.o_pos
+
+    let compress_none _c i o =
+      let os = init_output i o in
+      write_uncompressed_blocks os os.o_len true
+      ; flush_output os
+
+    let compute_precode_items lens num_lens precode_freqs precode_items =
+      Array.fill precode_freqs 0 (Array.length precode_freqs) 0
+      ; let itemptr = ref 0 in
+        let run_start = ref 0 in
+        while !run_start <> num_lens do
+          let len = lens.(!run_start) in
+          let run_end = ref !run_start in
+          while !run_end <> num_lens && len == lens.(!run_end) do
+            incr run_end
+          done
+          ; if len == 0 then begin
+              while !run_end - !run_start >= 11 do
+                let extra_bits = min (!run_end - !run_start - 11) 0x7F in
+                precode_freqs.(18) <- precode_freqs.(18) + 1
+                ; precode_items.(!itemptr) <- 18 lor (extra_bits lsl 5)
+                ; incr itemptr
+                ; run_start := !run_start + 11 + extra_bits
+              done
+              ; if !run_end - !run_start >= 3 then (
+                  let extra_bits = min (!run_end - !run_start - 3) 0x7 in
+                  precode_freqs.(17) <- precode_freqs.(17) + 1
+                  ; precode_items.(!itemptr) <- 17 lor (extra_bits lsl 5)
+                  ; incr itemptr
+                  ; run_start := !run_start + 3 + extra_bits)
+            end
+            else if !run_end - !run_start >= 4 then (
+              precode_freqs.(len) <- precode_freqs.(len) + 1
+              ; precode_items.(!itemptr) <- len
+              ; incr itemptr
+              ; incr run_start
+              ; while !run_end - !run_start >= 3 do
+                  let extra_bits = min (!run_end - !run_start - 3) 0x3 in
+                  precode_freqs.(16) <- precode_freqs.(16) + 1
+                  ; precode_items.(!itemptr) <- 16 lor (extra_bits lsl 5)
+                  ; incr itemptr
+                  ; run_start := !run_start + 3 + extra_bits
+                done)
+          ; while !run_start <> !run_end do
+              precode_freqs.(len) <- precode_freqs.(len) + 1
+              ; precode_items.(!itemptr) <- len
+              ; incr itemptr
+              ; incr run_start
+            done
+        done
+        ; !itemptr
+
+    let precompute_huffman_header c =
+      let rec f num_litlen_syms =
+        if
+          num_litlen_syms = 257
+          || c.codes.lens.litlen.(num_litlen_syms - 1) <> 0
+        then c.num_litlen_syms <- num_litlen_syms
+        else f (num_litlen_syms - 1) in
+      f _num_litlen_syms
+      ; let rec g num_offset_syms =
+          if
+            num_offset_syms = 1
+            || c.codes.lens.offset.(num_offset_syms - 1) <> 0
+          then c.num_offset_syms <- num_offset_syms
+          else g (num_offset_syms - 1) in
+        g _num_offset_syms
+        ; if c.num_litlen_syms <> _num_litlen_syms then (
+            let max1 =
+              min (c.num_litlen_syms + c.num_offset_syms) _num_litlen_syms
+              - c.num_litlen_syms in
+            let max2 = c.num_offset_syms - max1 in
+            for i = 0 to max1 - 1 do
+              c.codes.lens.litlen.(c.num_litlen_syms + i) <-
+                c.codes.lens.offset.(i)
+            done
+            ; for i = 0 to max2 - 1 do
+                c.codes.lens.offset.(i) <- c.codes.lens.offset.(max1 + i)
+              done)
+        ; c.num_precode_items <-
+            compute_precode_items
+              (Array.append c.codes.lens.litlen c.codes.lens.offset)
+              (c.num_litlen_syms + c.num_offset_syms)
+              c.precode_freqs c.precode_items
+        ; make_huffman_code _num_precode_syms _max_pre_codeword_len
+            c.precode_freqs c.precode_lens c.precode_codewords
+        ; let rec h num_explicit_lens =
+            if
+              _num_precode_syms < 5
+              || c.precode_lens.(zigzag.(num_explicit_lens - 1)) <> 0
+            then c.num_explicit_lens <- num_explicit_lens
+            else h (num_explicit_lens - 1) in
+          h _num_precode_syms
+
+          ; if c.num_litlen_syms <> _num_litlen_syms then (
+              let max1 =
+                min (_num_litlen_syms - c.num_litlen_syms) c.num_offset_syms
+              in
+              let max2 = max (c.num_offset_syms - max1) 0 in
+              for i = 0 to max2 - 1 do
+                c.codes.lens.offset.(max1 + max2 - 1 - i) <-
+                  c.codes.lens.offset.(max2 - 1 - i)
+              done
+              ; for i = 0 to max1 - 1 do
+                  c.codes.lens.offset.(i) <-
+                    c.codes.lens.litlen.(c.num_litlen_syms + i)
+                done)
+
+    let write_huffman_header c os =
+      add_bits os (c.num_litlen_syms - 257) 5
+      ; add_bits os (c.num_offset_syms - 1) 5
+      ; add_bits os (c.num_explicit_lens - 4) 4
+      ; for i = 0 to c.num_explicit_lens - 1 do
+          add_bits os c.precode_lens.(zigzag.(i)) 3
+        done
+      ; for i = 0 to c.num_precode_items - 1 do
+          let precode_item = c.precode_items.(i) in
+          let precode_sym = precode_item land 0x1F in
+          add_bits os
+            c.precode_codewords.(precode_sym)
+            c.precode_lens.(precode_sym)
+          ; if precode_sym >= 16 then
+              if precode_sym == 16 then add_bits os (precode_item lsr 5) 2
+              else if precode_sym == 17 then add_bits os (precode_item lsr 5) 3
+              else add_bits os (precode_item lsr 5) 7
+        done
+
+    let write_sequences os codes sequences in_next in_next_i =
+      let f seq =
+        let litrunlen = ref (seq.litrunlen_and_length land 0x7FFF) in
+        let length = seq.litrunlen_and_length lsr 15 in
+        if !litrunlen <> 0 then (
+          while !litrunlen >= 4 do
+            let lit0 = unsafe_get_uint8 in_next (!in_next_i + 0) in
+            let lit1 = unsafe_get_uint8 in_next (!in_next_i + 1) in
+            let lit2 = unsafe_get_uint8 in_next (!in_next_i + 2) in
+            let lit3 = unsafe_get_uint8 in_next (!in_next_i + 3) in
+            add_bits os codes.codewords.litlen.(lit0) codes.lens.litlen.(lit0)
+            ; add_bits os codes.codewords.litlen.(lit1) codes.lens.litlen.(lit1)
+            ; add_bits os codes.codewords.litlen.(lit2) codes.lens.litlen.(lit2)
+            ; add_bits os codes.codewords.litlen.(lit3) codes.lens.litlen.(lit3)
+            ; in_next_i := !in_next_i + 4
+            ; litrunlen := !litrunlen - 4
+          done
+          ; if !litrunlen <> 0 then (
+              decr litrunlen
+              ; add_bits os
+                  codes.codewords.litlen.(unsafe_get_uint8 in_next !in_next_i)
+                  codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
+              ; incr in_next_i
+              ; if !litrunlen <> 0 then (
+                  decr litrunlen
+                  ; add_bits os
+                      codes.codewords.litlen.(unsafe_get_uint8 in_next
+                                                !in_next_i)
+                      codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
+                  ; incr in_next_i
+                  ; if !litrunlen <> 0 then (
+                      decr litrunlen
+                      ; add_bits os
+                          codes.codewords.litlen.(unsafe_get_uint8 in_next
+                                                    !in_next_i)
+                          codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
+                      ; incr in_next_i))))
+        ; if length <> 0 then (
+            in_next_i := !in_next_i + length
+            ; let length_slot = seq.length_slot in
+              let litlen_symbol = 257 + length_slot in
+              add_bits os
+                codes.codewords.litlen.(litlen_symbol)
+                codes.lens.litlen.(litlen_symbol)
+              ; add_bits os
+                  (length - _base_length.(length_slot) - 3)
+                  _extra_lbits.(length_slot)
+              ; let offset_symbol = seq.offset_symbol in
+                add_bits os
+                  codes.codewords.offset.(offset_symbol)
+                  codes.lens.offset.(offset_symbol)
+                ; add_bits os
+                    (seq.offset - _base_dist.(offset_symbol) - 1)
+                    _extra_dbits.(offset_symbol)) in
+      List.iter f sequences
+
+    let write_end_of_block os codes =
+      add_bits os
+        codes.codewords.litlen.(_end_of_block)
+        codes.lens.litlen.(_end_of_block)
+      ; flush_bits os
+
+    let flush_block c os block block_begin block_length is_final_block sequences
+        =
+      let extra_precode_bits =
+        [|0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 2; 3; 7|] in
+      let dynamic_cost = ref 0 in
+      let static_cost = ref 0 in
+      let uncompressed_cost = ref 0 in
+      c.freqs.litlen.(_end_of_block) <- c.freqs.litlen.(_end_of_block) + 1
+      ; make_huffman_codes c.freqs c.codes
+
+      ; precompute_huffman_header c
+
+      ; dynamic_cost := !dynamic_cost + 5 + 5 + 4 + (3 * c.num_explicit_lens)
+      ; for sym = 0 to _num_precode_syms - 1 do
+          let extra = extra_precode_bits.(sym) in
+          dynamic_cost :=
+            !dynamic_cost
+            + (c.precode_freqs.(sym) * (extra + c.precode_lens.(sym)))
+        done
+      ; for sym = 0 to 255 do
+          dynamic_cost :=
+            !dynamic_cost + (c.freqs.litlen.(sym) * c.codes.lens.litlen.(sym))
+        done
+      ; for sym = 0 to 143 do
+          static_cost := !static_cost + (c.freqs.litlen.(sym) * 8)
+        done
+      ; for sym = 144 to 255 do
+          static_cost := !static_cost + (c.freqs.litlen.(sym) * 9)
+        done
+      ; dynamic_cost := !dynamic_cost + c.codes.lens.litlen.(256)
+      ; static_cost := !static_cost + 7
+      ; for sym = 257 to 257 + Array.length _extra_lbits - 3 do
+          let extra = _extra_lbits.(sym - 257) in
+          dynamic_cost :=
+            !dynamic_cost
+            + (c.freqs.litlen.(sym) * (extra + c.codes.lens.litlen.(sym)))
+          ; static_cost :=
+              !static_cost
+              + c.freqs.litlen.(sym)
+                * (extra + c.static_codes.lens.litlen.(sym))
+        done
+      ; for sym = 0 to Array.length _extra_dbits - 3 do
+          let extra = _extra_dbits.(sym) in
+          dynamic_cost :=
+            !dynamic_cost
+            + (c.freqs.offset.(sym) * (extra + c.codes.lens.offset.(sym)))
+          ; static_cost := !static_cost + (c.freqs.offset.(sym) * (extra + 5))
+        done
+      ; uncompressed_cost :=
+          !uncompressed_cost
+          + (-(os.bits + 3) land 7)
+          + 32
+          + (40 * (((block_length + 65535 - 1) / 65535) - 1))
+          + (8 * block_length)
+      ; let block_type =
+          if !dynamic_cost < min !static_cost !uncompressed_cost then
+            blocktype_dynamic_huffman
+          else if !static_cost < !uncompressed_cost then
+            blocktype_static_huffman
+          else blocktype_uncompressed in
+        if block_type = blocktype_uncompressed then begin
+          os.i_pos <- !block_begin
+          ; write_uncompressed_blocks os block_length is_final_block
+        end
+        else begin
+          write_block_header os is_final_block block_type
+          ; let codes =
+              if block_type = blocktype_dynamic_huffman then (
+                write_huffman_header c os ; c.codes)
+              else c.static_codes in
+            write_sequences os codes sequences block block_begin
+            ; write_end_of_block os codes
+        end
+
+    let init_block_split_stats stats =
+      Array.fill stats.new_observations 0 num_observation_types 0
+      ; Array.fill stats.observations 0 num_observation_types 0
+      ; stats.num_new_observations <- 0
+      ; stats.num_observations <- 0
+
+    let reset_symbol_frequencies c =
+      Array.fill c.freqs.litlen 0 (Array.length c.freqs.litlen) 0
+      ; Array.fill c.freqs.offset 0 (Array.length c.freqs.offset) 0
+
+    let num_observations_per_block_check = 512
+
+    let do_end_block_check stats block_length =
+      let f () =
+        if stats.num_observations > 0 then (
+          let total_delta = ref 0 in
+          for i = 0 to num_observation_types - 1 do
+            let expected = stats.observations.(i) * stats.num_new_observations in
+            let actual = stats.new_observations.(i) * stats.num_observations in
+            let delta =
+              if actual > expected then actual - expected else expected - actual
+            in
+            total_delta := !total_delta + delta
+          done
+          ; if
+              !total_delta + (block_length / 4096 * stats.num_observations)
+              >= num_observations_per_block_check
+                 * 200
+                 / 512
+                 * stats.num_observations
+            then true
+            else false)
+        else false in
+      if f () then true
+      else (
+        for i = 0 to num_observation_types - 1 do
+          stats.num_observations <-
+            stats.num_observations + stats.new_observations.(i)
+          ; stats.observations.(i) <-
+              stats.observations.(i) + stats.new_observations.(i)
+          ; stats.new_observations.(i) <- 0
+        done
+        ; stats.num_new_observations <- 0
+        ; false)
+
+    let should_end_block stats in_block_begin in_next in_end =
+      if
+        stats.num_new_observations < num_observations_per_block_check
+        || in_next - in_block_begin < _min_block_length
+        || in_end - in_next < _min_block_length
+      then false
+      else do_end_block_check stats (in_next - in_block_begin)
+
+    let rec _lz_extend i start_pos match_pos len max_len =
+      if
+        len < max_len
+        && unsafe_get_uint8 i (match_pos + len)
+           = unsafe_get_uint8 i (start_pos + len)
+      then _lz_extend i start_pos match_pos (len + 1) max_len
+      else len
+
+    let rec lz_extend i start_pos match_pos len max_len =
+      if
+        max_len - len >= 4
+        && unsafe_get_uint32 i (match_pos + len)
+           = unsafe_get_uint32 i (start_pos + len)
+      then lz_extend i start_pos match_pos (len + 4) max_len
+      else _lz_extend i start_pos match_pos len max_len
+
+    let hc_matchfinder_slide_window mf =
+      for i = 0 to Array.length mf.hash4_tab - 1 do
+        mf.hash4_tab.(i) <- mf.hash4_tab.(i) - window_size
+      done
+      ; for i = 0 to Array.length mf.next_tab - 1 do
+          mf.next_tab.(i) <- mf.next_tab.(i) - window_size
+        done
+
+    let lz_hash i pos num_bits =
+      let v = unsafe_get_uint32 i pos in
+      Int32.(to_int (shift_right_logical (mul v 0x1E35A7BDl) (32 - num_bits)))
+
+    let rec _matchfinder_longest_rec
+        cur_node best_matchptr os lens mf depth_remaining cutoff =
+      let matchptr = (os.i_pos land lnot (window_size - 1)) + cur_node in
+      if
+        unsafe_get_uint8 os.i (matchptr + lens.best)
+        <> unsafe_get_uint8 os.i (os.i_pos + lens.best)
+      then
+        let cur_node = mf.next_tab.(cur_node land (window_size - 1)) in
+        let depth_remaining = depth_remaining - 1 in
+        if cur_node <= cutoff || depth_remaining = 0 then best_matchptr
+        else
+          _matchfinder_longest_rec cur_node best_matchptr os lens mf
+            depth_remaining cutoff
+      else
+        let len = lz_extend os.i os.i_pos matchptr 0 lens.max in
+        if len >= lens.nice then begin
+          lens.best <- len
+          ; matchptr
+        end
+        else
+          let best_matchptr =
+            if len > lens.best then begin
+              lens.best <- len
+              ; matchptr
+            end
+            else best_matchptr in
+          let cur_node = mf.next_tab.(cur_node land (window_size - 1)) in
+          let depth_remaining = depth_remaining - 1 in
+          if cur_node <= cutoff || depth_remaining = 0 then best_matchptr
+          else
+            _matchfinder_longest_rec cur_node best_matchptr os lens mf
+              depth_remaining cutoff
+
+    let hc_matchfinder_longest_match mf os lens max_search_depth =
+      let best_matchptr = os.i_pos in
+      let cur_pos = os.i_pos land (window_size - 1) in
+      if cur_pos = 0 && os.i_pos <> 0 then hc_matchfinder_slide_window mf
+      ; let cutoff = cur_pos - window_size in
+        if lens.max < 5 then os.i_pos - best_matchptr
+        else
+          let cur_node4 = mf.hash4_tab.(mf.next_hash4) in
+          mf.hash4_tab.(mf.next_hash4) <- cur_pos
+          ; mf.next_tab.(cur_pos) <- cur_node4
+          ; mf.next_hash4 <-
+              lz_hash os.i (os.i_pos + 1) hc_matchfinder_hash4_order
+          ; if cur_node4 <= cutoff || lens.best >= lens.nice then
+              os.i_pos - best_matchptr
+            else
+              let best_matchptr =
+                _matchfinder_longest_rec cur_node4 best_matchptr os lens mf
+                  max_search_depth cutoff in
+              os.i_pos - best_matchptr
+
+    let rec _matchfinder_skip_rec os mf remaining =
+      match remaining with
+      | 0 -> ()
+      | remaining ->
+        let cur_pos = os.i_pos land (window_size - 1) in
+        if cur_pos = 0 && os.i_pos <> 0 then hc_matchfinder_slide_window mf
+        ; mf.next_tab.(cur_pos) <- mf.hash4_tab.(mf.next_hash4)
+        ; mf.hash4_tab.(mf.next_hash4) <- cur_pos
+        ; os.i_pos <- os.i_pos + 1
+        ; mf.next_hash4 <- lz_hash os.i os.i_pos hc_matchfinder_hash4_order
+        ; _matchfinder_skip_rec os mf (remaining - 1)
+
+    let hc_matchfinder_skip_positions mf os count =
+      if count + 5 > os.i_len - os.i_pos then os.i_pos <- os.i_pos + count
+      else _matchfinder_skip_rec os mf count
+
+    let choose_literal c literal litrunlen =
+      c.freqs.litlen.(literal) <- succ c.freqs.litlen.(literal)
+      ; incr litrunlen
+
+    let choose_match c length offset litrunlen =
+      let length_slot = _length.(length) in
+      let offset_slot = c.offset_slot_fast.(offset) in
+      c.freqs.litlen.(257 + length_slot) <-
+        succ c.freqs.litlen.(257 + length_slot)
+      ; c.freqs.offset.(offset_slot) <- succ c.freqs.offset.(offset_slot)
+      ; {
+          litrunlen_and_length= (length lsl 15) lor litrunlen
+        ; offset
+        ; length_slot
+        ; offset_symbol= offset_slot
+        }
+
+    let observe_match stats length =
+      let i = num_literal_observation_types + if length >= 9 then 1 else 0 in
+      stats.new_observations.(i) <- succ stats.new_observations.(i)
+      ; stats.num_new_observations <- succ stats.num_new_observations
+
+    let observe_literal stats lit =
+      let i = (lit lsl 5) land 0x6 lor (lit land 1) in
+      stats.new_observations.(i) <- succ stats.new_observations.(i)
+      ; stats.num_new_observations <- succ stats.num_new_observations
+
+    let compress_greedy c i o =
+      let os = init_output i o in
+      let lens =
+        {
+          best= 0
+        ; nice= min c.nice_match_length _max_match_len
+        ; max= _max_match_len
+        } in
+      let hc_mf = hc_matchfinder_init () in
+      while os.i_pos <> os.i_len do
+        let in_block_begin = ref os.i_pos in
+        let in_max_block_end =
+          ref (os.i_pos + min (os.i_len - os.i_pos) _soft_max_block_length)
+        in
+        let litrunlen = ref 0 in
+        let seqs = ref [] in
+        init_block_split_stats split_stats
+        ; reset_symbol_frequencies c
+        ; while
+            os.i_pos < !in_max_block_end
+            && not
+                 (should_end_block split_stats !in_block_begin os.i_pos os.i_len)
+          do
+            if lens.max > os.i_len - os.i_pos then (
+              lens.max <- os.i_len - os.i_pos
+              ; lens.nice <- min lens.nice lens.max)
+            ; lens.best <- _min_match_len - 1
+            ; let offset =
+                hc_matchfinder_longest_match hc_mf os lens c.max_search_depth
+              in
+              if lens.best >= _min_match_len then (
+                seqs := choose_match c lens.best offset !litrunlen :: !seqs
+                ; litrunlen := 0
+                ; observe_match split_stats lens.best
+                ; os.i_pos <- succ os.i_pos
+                ; hc_matchfinder_skip_positions hc_mf os (lens.best - 1))
+              else (
+                choose_literal c (unsafe_get_uint8 os.i os.i_pos) litrunlen
+                ; observe_literal split_stats os.i_pos
+                ; os.i_pos <- succ os.i_pos)
+          done
+        ; seqs :=
+            List.rev
+            @@ {
+                 litrunlen_and_length= !litrunlen
+               ; offset= 0
+               ; offset_symbol= 0
+               ; length_slot= 0
+               }
+               :: !seqs
+        ; flush_block c os i in_block_begin
+            (os.i_pos - !in_block_begin)
+            (os.i_pos = os.i_len) !seqs
+      done
+      ; flush_output os
+
+    let compress_lazy _ _ _ = 0 (* clecat: TO DO *)
+
+    let encoder level =
+      if level < 0 || level > 12 then err_invalid_compression_level ()
+      ; let min_size_to_compress = 56 - (level * 4) in
+        let impl, max_search_depth, nice_match_length =
+          match level with
+          | 0 -> compress_none, 0, 0
+          | 1 -> compress_greedy, 2, 8
+          | 2 -> compress_greedy, 6, 10
+          | 3 -> compress_greedy, 12, 14
+          | 4 -> compress_greedy, 24, 24
+          | 5 -> compress_lazy, 20, 30
+          | 6 -> compress_lazy, 40, 65
+          | 7 -> compress_lazy, 100, 130
+          | 8 -> compress_lazy, 150, 200
+          | _ -> compress_lazy, 200, 258 in
+        let offset_slot_fast = Array.make (_max_match_offset + 1) 0 in
+        init_offset_slot_fast offset_slot_fast
+        ; let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
+          let freqs = {litlen; offset} in
+          let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
+          let lens = {litlen; offset} in
+          let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
+          let codewords = {litlen; offset} in
+          let codes = {lens; codewords} in
+          let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
+          let lens = {litlen; offset} in
+          let litlen = Array.make _num_litlen_syms 0 in
+          let offset = Array.make _num_offset_syms 0 in
+          let codewords = {litlen; offset} in
+          let static_codes = {lens; codewords} in
+          init_static_codes freqs static_codes
+          ; let precode_freqs = Array.make _num_precode_syms 0 in
+            let precode_lens = Array.make _num_precode_syms 0 in
+            let precode_codewords = Array.make _num_precode_syms 0 in
+            let precode_items =
+              Array.make (_num_litlen_syms + _num_offset_syms) 0 in
+            let num_litlen_syms = 0 in
+            let num_offset_syms = 0 in
+            let num_explicit_lens = 0 in
+            let num_precode_items = 0 in
+            ( impl
+            , {
+                level
+              ; min_size_to_compress
+              ; max_search_depth
+              ; nice_match_length
+              ; offset_slot_fast
+              ; freqs
+              ; codes
+              ; static_codes
+              ; precode_freqs
+              ; precode_lens
+              ; precode_codewords
+              ; precode_items
+              ; num_litlen_syms
+              ; num_offset_syms
+              ; num_explicit_lens
+              ; num_precode_items
+              } )
+
+    let compress_bound len =
+      let max_blocks =
+        max 1 ((len + _min_block_length - 1) / _min_block_length) in
+      (5 * max_blocks) + len + 1 + _end_padding
+
+    let deflate ?(level = 4) src dst =
+      try
+        let impl, c = encoder level in
+        let res =
+          if bigstring_length dst < _end_padding then 0
+          else if bigstring_length src < c.min_size_to_compress then (
+            let os = init_output src dst in
+            write_uncompressed_block os (os.i_len - os.i_pos) true
+            ; flush_output os)
+          else impl c src dst in
+        Ok res
+      with Malformed e -> Error (e : error :> [> error ])
+  end
 end
 
 module Lz77 = struct
@@ -2799,8 +4075,8 @@ module Lz77 = struct
       ; res
 
   let succ_length literals length =
-    literals.(256 + 1 + _length.(length - 3)) <-
-      literals.(256 + 1 + _length.(length - 3)) + 1
+    literals.(256 + 1 + _length.(length)) <-
+      literals.(256 + 1 + _length.(length)) + 1
 
   let succ_distance distances distance =
     distances.(_distance (pred distance)) <-

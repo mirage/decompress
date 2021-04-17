@@ -110,6 +110,24 @@ module Inf : sig
   val flush : decoder -> decoder
   (** [flush d] is a decoder where internal output buffer [o] is {b completely}
      free to store bytes. *)
+
+  module Ns : sig
+    (** A non-streamable implementation of the RFC 1950. It considers the input
+        to be whole and is therefore able to save some time *)
+
+    type error = [ `Invalid_header | `Invalid_checksum | De.Inf.Ns.error ]
+    (** The type for inflation errors. *)
+
+    val pp_error : Format.formatter -> error -> unit
+    (** Pretty-printer of {!error}. *)
+
+    val inflate : bigstring -> bigstring -> (int * int, [> error ]) result
+    (** [inflate src dst] inflates the content of [src] into [dst].
+
+        In case of success, it returns the bytes read and bytes writen in an
+       [Ok] result. In case of failure, it returns the error in a [Error]
+       result. *)
+  end
 end
 
 (** {2:encode ZLIB Encoder.}
@@ -211,6 +229,37 @@ module Def : sig
      did nothing. Depending on what you do, a loop can infinitely call [encode]
      without any updates until the given output still has less than 2 bytes.
    *)
+
+  module Ns : sig
+    type error = De.Def.Ns.error
+    (** The type for deflation errors. *)
+
+    val pp_error : Format.formatter -> error -> unit
+    (** Pretty-printer for {!error}. *)
+
+    val compress_bound : int -> int
+    (** [compress_bound len] returns a {i clue} about how many bytes we need
+       to store the result of the deflation of [len] bytes. It's a
+       pessimistic calculation. *)
+
+    val deflate :
+      ?level:int -> bigstring -> bigstring -> (int, [> error ]) result
+    (** [deflate ~level src dst] deflates the content of [src] into [dst].
+
+        In case of success, it returns the bytes writen in an [Ok] result. In case
+       of failure, it returns the error in an [Error] result. {!compress_bound}
+       can be used to {i determine} how many bytes the user needs to allocate
+       as the destination buffer when he wants to compress [N] bytes.
+
+        Here is an example of how to compress any inputs:
+        {[
+          val input : bigstring
+
+          let len = Zl.Def.Ns.compress_bound (De.bigstring_length input) in
+          let dst = De.bigstring_create len in
+          Zl.Def.Ns.deflate ~level:4 input dst
+        ]} *)
+  end
 end
 
 module Higher : sig

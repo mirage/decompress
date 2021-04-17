@@ -119,6 +119,35 @@ module Inf : sig
 
   val checksum : decoder -> optint
   (** [checkseum d] is ADLER-32 checksum of consumed inputs. *)
+
+  module Ns : sig
+    (** A non-streamable implementation of the RFC 1951. It considers the input
+      to be whole and is therefore able to save some time *)
+
+    type error =
+      [ `Unexpected_end_of_input
+      | `Unexpected_end_of_output
+      | `Invalid_kind_of_block
+      | `Invalid_dictionary
+      | `Invalid_complement_of_length
+      | `Invalid_distance
+      | `Invalid_distance_code ]
+    (** The type for inflation errors. *)
+
+    val pp_error : Format.formatter -> error -> unit
+    (** Pretty-printer of {!error}. *)
+
+    val inflate : bigstring -> bigstring -> (int * int, [> error ]) result
+    (** [inflate src dst w] inflates the content of [src] into [dst].
+
+        In case of sucess, it returns the bytes read and the bytes writen in an
+       [Ok] result. In case of failure, it returns the error in an [Error]
+       result. We assume that [src] is well formed and [dst] is enough larger
+       to store the result of the inflation. The usual worst case is when
+       [dst] must be equal (in size) or larger than [src]. Such case appears
+       for really small objects and in that case, we returns
+       [Error `Unexpected_end_of_output]. *)
+  end
 end
 
 (** {2 Queue.}
@@ -343,6 +372,37 @@ module Def : sig
      DEFLATE flow is not necessary aligned on bytes. The client can call
      [bits_rem] {b only} when he reachs [`End] case. Otherwise, we raises an
      [Invalid_argument]. *)
+
+  module Ns : sig
+    type error = [ `Invalid_compression_level | `Unexpected_end_of_output ]
+    (** The type for deflation errors. *)
+
+    val pp_error : Format.formatter -> error -> unit
+    (** Pretty-printer for {!error}. *)
+
+    val compress_bound : int -> int
+    (** [compress_bound len] returns a {i clue} about how many bytes we need
+       to store the result of the deflation of [len] bytes. It's a 
+       pessimistic calculation. *)
+
+    val deflate :
+      ?level:int -> bigstring -> bigstring -> (int, [> error ]) result
+    (** [deflate ~level src dst] deflates the content of src into dst.
+
+        In case of sucess, it returns the bytes writen in an [Ok] result. In case
+       of failure, it returns the error in an [Error] result. {!compress_bound}
+       can be used to {i determine} how many bytes the user needs to allocate
+       as the destination buffer when he wants to compress [N] bytes.
+
+        Here is an example of how to compress any inputs:
+        {[
+          val input : bigstring
+
+          let len = De.Def.Ns.compress_bound (De.bigstring_length input) in
+          let dst = De.bigstring_create len in
+          De.Def.Ns.deflate ~level:4 input dst
+        ]} *)
+  end
 end
 
 (** {2:compression LZ77 compression algorithm.}

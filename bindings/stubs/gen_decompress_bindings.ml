@@ -48,6 +48,18 @@ let deflate i i_len o o_len level =
   let encoder = Zl.Def.dst encoder o 0 o_len in
   go encoder
 
+let inflate_ns i i_len o o_len =
+  let i = bigarray_of_ptr array1 i_len Bigarray.char i in
+  let o = bigarray_of_ptr array1 o_len Bigarray.char o in
+  let res = De.Inf.Ns.inflate i o in
+  match res with Ok (_, res) -> res | Error _ -> invalid_arg "broken"
+
+let deflate_ns i i_len o o_len level =
+  let i = bigarray_of_ptr array1 i_len Bigarray.char i in
+  let o = bigarray_of_ptr array1 o_len Bigarray.char o in
+  let res = De.Def.Ns.deflate ~level i o in
+  match res with Ok res -> res | Error _ -> invalid_arg "broken"
+
 module Stubs (I : Cstubs_inverted.INTERNAL) = struct
   let () =
     I.internal "decompress_inflate"
@@ -58,4 +70,14 @@ module Stubs (I : Cstubs_inverted.INTERNAL) = struct
     I.internal "decompress_deflate"
       (ptr char @-> int @-> ptr char @-> int @-> int @-> returning int)
       deflate
+
+  let () =
+    I.internal "decompress_ns_inflate"
+      (ptr char @-> int @-> ptr char @-> int @-> returning int)
+      inflate_ns
+
+  let () =
+    I.internal "decompress_ns_deflate"
+      (ptr char @-> int @-> ptr char @-> int @-> int @-> returning int)
+      deflate_ns
 end

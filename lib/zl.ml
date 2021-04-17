@@ -14,6 +14,7 @@ let bigstring_create l =
 
 let bigstring_empty = Bigarray.Array1.create Bigarray.char Bigarray.c_layout 0
 let bigstring_length x = Bigarray.Array1.dim x [@@inline]
+let bigstring_sub x = Bigarray.Array1.sub x [@@inline]
 
 external unsafe_get_uint8 : bigstring -> int -> int = "%caml_ba_ref_1"
 external unsafe_get_uint16 : bigstring -> int -> int = "%caml_bigstring_get16"
@@ -366,6 +367,44 @@ module Inf = struct
     }
 
   let decode d = d.k d
+
+  module Ns = struct
+    type error = [ `Invalid_header | `Invalid_checksum | De.Inf.Ns.error ]
+
+    let pp_error ppf e =
+      match e with
+      | `Invalid_header -> Format.fprintf ppf "Invalid header"
+      | `Invalid_checksum -> Format.fprintf ppf "Invalid checksum"
+      | #De.Inf.Ns.error as e -> De.Inf.Ns.pp_error ppf e
+
+    let header src =
+      let cmf = unsafe_get_uint16 src 0 in
+      let cm = cmf land 0b1111 in
+      let _cinfo = (cmf lsr 4) land 0b1111 in
+      let flg = cmf lsr 8 in
+      let _fdict = (flg lsr 5) land 0b1 in
+      let _flevel = (flg lsr 6) land 0b11 in
+      (((cmf land 0xff) lsl 8) + (cmf lsr 8)) mod 31 != 0 || cm != _deflated
+
+    let inflate src dst =
+      let src_len = bigstring_length src in
+      if src_len < 2 then Error `Unexpected_end_of_input
+      else if header src then Error `Invalid_header
+      else
+        let sub_src = bigstring_sub src 2 (bigstring_length src - 6) in
+        let res = De.Inf.Ns.inflate sub_src dst in
+        match res with
+        | Ok (i, o) ->
+          if src_len < i + 6 then Error `Unexpected_end_of_input
+          else
+            let i_adl32 = unsafe_get_uint32_be src (i + 2) in
+            let o_adl32 =
+              Optint.to_int32
+                Checkseum.Adler32.(unsafe_digest_bigstring dst 0 o default)
+            in
+            if i_adl32 <> o_adl32 then Error `Invalid_checksum else Ok (i + 6, o)
+        | Error e -> Error (e : De.Inf.Ns.error :> [> error ])
+  end
 end
 
 module Def = struct
@@ -535,6 +574,38 @@ module Def = struct
     }
 
   let encode e = e.k e
+
+  module Ns = struct
+    type error = De.Def.Ns.error
+
+    let pp_error ppf e =
+      match e with #De.Def.Ns.error as e -> De.Def.Ns.pp_error ppf e
+
+    let compress_bound len = De.Def.Ns.compress_bound len + 6
+
+    let header dst level =
+      let window_bits = 15 in
+      let header = (_deflated + ((window_bits - 8) lsl 4)) lsl 8 in
+      let level =
+        match level with 0 | 1 -> 0 | 2 | 3 | 4 | 5 -> 1 | 6 -> 2 | _ -> 3 in
+      let header = header lor (level lsl 6) in
+      let header = header + (31 - (header mod 31)) in
+      unsafe_set_uint16_be dst 0 header
+
+    let deflate ?(level = 4) src dst =
+      header dst level
+      ; let sub_dst = bigstring_sub dst 2 (bigstring_length dst - 2) in
+        let res = De.Def.Ns.deflate ~level src sub_dst in
+        match res with
+        | Ok res ->
+          let adl32 =
+            Checkseum.Adler32.(
+              unsafe_digest_bigstring src 0 (bigstring_length src) default)
+          in
+          unsafe_set_uint32_be sub_dst res (Optint.to_int32 adl32)
+          ; Ok (res + 6)
+        | Error e -> Error (e : De.Def.Ns.error :> [> error ])
+  end
 end
 
 module Higher = struct
