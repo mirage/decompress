@@ -133,34 +133,40 @@ let invalid_complement_of_length () =
   Alcotest.test_case "invalid complement of length" `Quick @@ fun () ->
   let src = bigstring_of_string "\x00\x00\x00\x00\x00" in
   Alcotest.(check decode)
-    "invalid complement of length" (Error Invalid_complement_of_length)
+    "invalid complement of length"
+    (Error `Invalid_complement_of_length)
     (Inf.Ns.inflate ~src ~dst)
 
 let invalid_kind_of_block () =
   Alcotest.test_case "invalid kind of block" `Quick @@ fun () ->
   let src = bigstring_of_string "\x06" in
   Alcotest.(check decode)
-    "invalid kind of block" (Error Invalid_kind_of_block)
+    "invalid kind of block"
+    (Error `Invalid_kind_of_block)
     (Inf.Ns.inflate ~src ~dst)
 
 let invalid_code_lengths () =
   Alcotest.test_case "invalid code lengths" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\xfe\xff" in
   Alcotest.(check decode)
-    "invalid code lengths" (Error Invalid_dictionary) (Inf.Ns.inflate ~src ~dst)
+    "invalid code lengths"
+    (Error `Invalid_dictionary)
+    (Inf.Ns.inflate ~src ~dst)
 
 let invalid_bit_length_repeat () =
   Alcotest.test_case "invalid bit length repeat" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\x24\x49\x00" in
   Alcotest.(check decode)
-    "invalid bit length repeat" (Error Invalid_dictionary)
+    "invalid bit length repeat"
+    (Error `Invalid_dictionary)
     (Inf.Ns.inflate ~src ~dst)
 
 let invalid_codes () =
   Alcotest.test_case "invalid codes -- missing end-of-block" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\x24\xe9\xff\x6d" in
   Alcotest.(check decode)
-    "invalid codes -- missing end-of-block" (Error Invalid_dictionary)
+    "invalid codes -- missing end-of-block"
+    (Error `Invalid_dictionary)
     (Inf.Ns.inflate ~src ~dst)
 
 let invalid_lengths () =
@@ -170,7 +176,8 @@ let invalid_lengths () =
       "\x04\x80\x49\x92\x24\x49\x92\x24\x49\x92\x24\x71\xff\xff\x93\x11\x00"
   in
   Alcotest.(check decode)
-    "invalid literals/lengths" (Error Invalid_dictionary)
+    "invalid literals/lengths"
+    (Error `Invalid_dictionary)
     (Inf.Ns.inflate ~src ~dst)
 
 let invalid_distances () =
@@ -179,13 +186,16 @@ let invalid_distances () =
     bigstring_of_string
       "\x04\x80\x49\x92\x24\x49\x92\x24\x0f\xb4\xff\xff\xc3\x84" in
   Alcotest.(check decode)
-    "invalid distances" (Error Invalid_dictionary) (Inf.Ns.inflate ~src ~dst)
+    "invalid distances"
+    (Error `Invalid_dictionary)
+    (Inf.Ns.inflate ~src ~dst)
 
 let too_many_length_or_distance_symbols () =
   Alcotest.test_case "too many length of distance symbols" `Quick @@ fun () ->
   let src = bigstring_of_string "\xfc\x00\x00" in
   Alcotest.(check decode)
-    "too many length of distance symbols" (Error Unexpected_end_of_input)
+    "too many length of distance symbols"
+    (Error `Unexpected_end_of_input)
     (Inf.Ns.inflate ~src ~dst)
 
 (* XXX(dinosaure): error is not conform to what we expect (best will be [Invalid
@@ -195,7 +205,8 @@ let invalid_distance_code () =
   Alcotest.test_case "invalid distance code" `Quick @@ fun () ->
   let src = bigstring_of_string "\x02\x7e\xff\xff" in
   Alcotest.(check decode)
-    "invalid distance code" (Error Invalid_distance_code)
+    "invalid distance code"
+    (Error `Invalid_distance_code)
     (Inf.Ns.inflate ~src ~dst)
 
 (* XXX(dinosaure): see [Inf.base_dist]'s comment about this behavior. *)
@@ -206,7 +217,8 @@ let invalid_distance_too_far_back () =
     bigstring_of_string "\x0c\xc0\x81\x00\x00\x00\x00\x00\x90\xff\x6b\x04\x00"
   in
   Alcotest.(check decode)
-    "invalid distance too far back" (Error Invalid_distance)
+    "invalid distance too far back"
+    (Error `Invalid_distance)
     (Inf.Ns.inflate ~src ~dst)
 
 let fixed () =
@@ -767,7 +779,9 @@ let fuzz8 () =
   Alcotest.test_case "fuzz8" `Quick @@ fun () ->
   let src = bigstring_of_string "\x7a\x37\x6d\x99\x13" in
   Alcotest.(check decode)
-    "fuzz8" (Error Unexpected_end_of_input) (Inf.Ns.inflate ~src ~dst)
+    "fuzz8"
+    (Error `Unexpected_end_of_input)
+    (Inf.Ns.inflate ~src ~dst)
 
 let fuzz9 () =
   Alcotest.test_case "fuzz9" `Quick @@ fun () ->
@@ -781,7 +795,9 @@ let fuzz9 () =
     ] in
   let src = bigstring_of_string (String.concat "" src) in
   Alcotest.(check decode)
-    "fuzz9" (Error Invalid_distance) (Inf.Ns.inflate ~src ~dst)
+    "fuzz9"
+    (Error `Invalid_distance)
+    (Inf.Ns.inflate ~src ~dst)
 
 let fuzz10 () =
   Alcotest.test_case "fuzz10" `Quick @@ fun () ->
@@ -1043,48 +1059,91 @@ let b = Buffer.create 4096
 let compress_and_uncompress ic =
   Buffer.clear b
   ; Queue.reset q
-  ; let src_def = bigstring_create (in_channel_length ic) in
-    for i = 0 to in_channel_length ic - 1 do
+  ; let in_len = in_channel_length ic in
+    let src_def = bigstring_create in_len in
+    for i = 0 to in_len - 1 do
       let v = Char.code (input_char ic) in
       unsafe_set_uint8 src_def i v
     done
-    ; let dst_def =
-        bigstring_create (Def.Ns.compress_bound (in_channel_length ic)) in
+    ; let dst_def = bigstring_create (Def.Ns.compress_bound in_len) in
       let len = Def.Ns.deflate ~level:1 ~src:src_def ~dst:dst_def in
-      let oc = open_out "compress" in
-      output_bytes oc
-        (Bigstringaf.substring ~off:0 ~len dst_def |> Bytes.of_string)
-      ; (* ignore (assert false); *)
-        let src_inf = Bigstringaf.sub dst_def ~off:0 ~len in
-        let dst_inf = bigstring_create (in_channel_length ic) in
-        match Inf.Ns.inflate ~src:src_inf ~dst:dst_inf with
-        | Ok (_, len) ->
-          Stdlib.seek_in ic 0
-          ; Buffer.clear b
-          ; for i = 0 to len - 1 do
-              Buffer.add_char b (Char.unsafe_chr (unsafe_get_uint8 dst_inf i))
-            done
-          ; let contents = Buffer.contents b in
-            let rec slow_compare pos =
-              match input_char ic with
-              | chr ->
-                if pos >= String.length contents then
-                  Fmt.invalid_arg "Reach end of contents"
-                ; if contents.[pos] <> chr then
-                    Fmt.invalid_arg "Contents differ at %08x\n%!" pos
-                ; slow_compare (succ pos)
-              | exception End_of_file ->
-                if pos <> String.length contents then
-                  Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)"
-                    (String.length contents) pos in
-            slow_compare 0
-        | Error err ->
-          Alcotest.failf "Error when inflating: %a" Inf.Ns.pp_error err
+      let src_inf = Bigstringaf.sub dst_def ~off:0 ~len in
+      let dst_inf = bigstring_create in_len in
+      match Inf.Ns.inflate ~src:src_inf ~dst:dst_inf with
+      | Ok (i_len, o_len) ->
+        Alcotest.(check int) "inflate same len" len i_len
+        ; Alcotest.(check int) "keep good length" in_len o_len
+        ; Stdlib.seek_in ic 0
+        ; Buffer.clear b
+        ; for i = 0 to o_len - 1 do
+            Buffer.add_char b (Char.unsafe_chr (unsafe_get_uint8 dst_inf i))
+          done
+        ; let contents = Buffer.contents b in
+          let rec slow_compare pos =
+            match input_char ic with
+            | chr ->
+              if pos >= String.length contents then
+                Fmt.invalid_arg "Reach end of contents"
+              ; if contents.[pos] <> chr then
+                  Fmt.invalid_arg "Contents differ at %08x\n%!" pos
+              ; slow_compare (succ pos)
+            | exception End_of_file ->
+              if pos <> String.length contents then
+                Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)"
+                  (String.length contents) pos in
+          slow_compare 0
+      | Error err ->
+        Alcotest.failf "Error when inflating: %a" Inf.Ns.pp_error err
+
+let zlib_compress_and_uncompress ic =
+  Buffer.clear b
+  ; Queue.reset q
+  ; let in_len = in_channel_length ic in
+    let src_def = bigstring_create in_len in
+    for i = 0 to in_len - 1 do
+      let v = Char.code (input_char ic) in
+      unsafe_set_uint8 src_def i v
+    done
+    ; let dst_def = bigstring_create (Zl.Def.Ns.compress_bound in_len) in
+      let len = Zl.Def.Ns.deflate ~level:1 ~src:src_def ~dst:dst_def in
+      let src_inf = Bigstringaf.sub dst_def ~off:0 ~len in
+      let dst_inf = bigstring_create in_len in
+      match Zl.Inf.Ns.inflate ~src:src_inf ~dst:dst_inf with
+      | Ok (i_len, o_len) ->
+        Alcotest.(check int) "inflate same len" len i_len
+        ; Alcotest.(check int) "keep good length" in_len o_len
+        ; Stdlib.seek_in ic 0
+        ; Buffer.clear b
+        ; for i = 0 to o_len - 1 do
+            Buffer.add_char b (Char.unsafe_chr (unsafe_get_uint8 dst_inf i))
+          done
+        ; let contents = Buffer.contents b in
+          let rec slow_compare pos =
+            match input_char ic with
+            | chr ->
+              if pos >= String.length contents then
+                Fmt.invalid_arg "Reach end of contents"
+              ; if contents.[pos] <> chr then
+                  Fmt.invalid_arg "Contents differ at %08x\n%!" pos
+              ; slow_compare (succ pos)
+            | exception End_of_file ->
+              if pos <> String.length contents then
+                Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)"
+                  (String.length contents) pos in
+          slow_compare 0
+      | Error err ->
+        Alcotest.failf "Error when inflating: %a" Zl.Inf.Ns.pp_error err
 
 let test_corpus filename =
   Alcotest.test_case filename `Slow @@ fun () ->
   let ic = open_in Filename.(concat "corpus" filename) in
   compress_and_uncompress ic ; close_in ic
+
+let test_corpus_with_zlib filename =
+  Alcotest.test_case filename `Slow @@ fun () ->
+  let ic = open_in Filename.(concat "corpus" filename) in
+  zlib_compress_and_uncompress ic
+  ; close_in ic
 
 let encoder_0 () =
   Alcotest.test_case "encoder 0" `Quick @@ fun () ->
@@ -1152,5 +1211,18 @@ let tests =
       ; test_corpus "obj1"; test_corpus "obj2"; test_corpus "paper1"
       ; test_corpus "paper2"; test_corpus "pic"; test_corpus "progc"
       ; test_corpus "progl"; test_corpus "progp"; test_corpus "trans"
+      ] )
+  ; ( "ns_zlib"
+    , [
+        (* test_empty_with_zlib (); test_empty_with_zlib_and_small_output ()
+           ; test_empty_with_zlib_byte_per_byte () *)
+        test_corpus_with_zlib "bib"; test_corpus_with_zlib "book1"
+      ; test_corpus_with_zlib "book2"; test_corpus_with_zlib "geo"
+      ; test_corpus_with_zlib "news"; test_corpus_with_zlib "obj1"
+      ; test_corpus_with_zlib "obj2"; test_corpus_with_zlib "paper1"
+      ; test_corpus_with_zlib "paper2"; test_corpus_with_zlib "pic"
+      ; test_corpus_with_zlib "progc"; test_corpus_with_zlib "progl"
+      ; test_corpus_with_zlib "progp"; test_corpus_with_zlib "trans"
+        (* ; test_multiple_flush_zlib () *)
       ] )
   ]

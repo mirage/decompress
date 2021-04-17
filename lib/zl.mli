@@ -110,6 +110,26 @@ module Inf : sig
   val flush : decoder -> decoder
   (** [flush d] is a decoder where internal output buffer [o] is {b completely}
      free to store bytes. *)
+
+  module Ns : sig
+    (** A non-streamable implementation of the RFC 1950. It considers the input
+    to be whole and is therefore able to save some time *)
+
+    type error = [ `Invalid_header | `Invalid_checksum | De.Inf.Ns.error ]
+
+    val pp_error : Format.formatter -> error -> unit
+
+    val inflate :
+      src:bigstring -> dst:bigstring -> (int * int, [> error ]) result
+    (** [inflate src dst w] inflate the content of src into dst using the window
+    w.
+
+    In case of sucess, it returns the bytes read and the bytes writen in an
+    Ok result.
+
+    In case of failure, it returns the error, the bytes read and the bytes
+    writen in an Error result. *)
+  end
 end
 
 (** {2:encode ZLIB Encoder.}
@@ -211,6 +231,11 @@ module Def : sig
      did nothing. Depending on what you do, a loop can infinitely call [encode]
      without any updates until the given output still has less than 2 bytes.
    *)
+
+  module Ns : sig
+    val compress_bound : int -> int
+    val deflate : ?level:int -> src:bigstring -> dst:bigstring -> int
+  end
 end
 
 module Higher : sig

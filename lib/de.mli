@@ -125,13 +125,14 @@ module Inf : sig
       to be whole and is therefore able to save some time *)
 
     type error =
-      | Unexpected_end_of_input
-      | Unexpected_end_of_output
-      | Invalid_kind_of_block
-      | Invalid_dictionary
-      | Invalid_complement_of_length
-      | Invalid_distance
-      | Invalid_distance_code  (** The type for inflation errors. *)
+      [ `Unexpected_end_of_input
+      | `Unexpected_end_of_output
+      | `Invalid_kind_of_block
+      | `Invalid_dictionary
+      | `Invalid_complement_of_length
+      | `Invalid_distance
+      | `Invalid_distance_code ]
+    (** The type for inflation errors. *)
 
     val pp_error : Format.formatter -> error -> unit
 

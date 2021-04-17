@@ -1464,42 +1464,42 @@ module Inf = struct
     (* errors. *)
 
     type error =
-      | Unexpected_end_of_input
-      | Unexpected_end_of_output
-      | Invalid_kind_of_block
-      | Invalid_dictionary
-      | Invalid_complement_of_length
-      | Invalid_distance
-      | Invalid_distance_code
+      [ `Unexpected_end_of_input
+      | `Unexpected_end_of_output
+      | `Invalid_kind_of_block
+      | `Invalid_dictionary
+      | `Invalid_complement_of_length
+      | `Invalid_distance
+      | `Invalid_distance_code ]
 
     let pp_error ppf e =
       let s =
         match e with
-        | Unexpected_end_of_input -> "Unexpected end of input"
-        | Unexpected_end_of_output -> "Unexpected end of output"
-        | Invalid_kind_of_block -> "Invalid kind of block"
-        | Invalid_dictionary -> "Invalid dictionary"
-        | Invalid_complement_of_length -> "Invalid complement of length"
-        | Invalid_distance -> "Invalid distance"
-        | Invalid_distance_code -> "Invalid distance code" in
+        | `Unexpected_end_of_input -> "Unexpected end of input"
+        | `Unexpected_end_of_output -> "Unexpected end of output"
+        | `Invalid_kind_of_block -> "Invalid kind of block"
+        | `Invalid_dictionary -> "Invalid dictionary"
+        | `Invalid_complement_of_length -> "Invalid complement of length"
+        | `Invalid_distance -> "Invalid distance"
+        | `Invalid_distance_code -> "Invalid distance code" in
       Format.fprintf ppf "%s" s
 
     exception Malformed of error
 
     let err_unexpected_end_of_input () =
-      raise (Malformed Unexpected_end_of_input)
+      raise (Malformed `Unexpected_end_of_input)
 
     let err_unexpected_end_of_output () =
-      raise (Malformed Unexpected_end_of_output)
+      raise (Malformed `Unexpected_end_of_output)
 
-    let err_invalid_kind_of_block () = raise (Malformed Invalid_kind_of_block)
-    let err_invalid_dictionary () = raise (Malformed Invalid_dictionary)
+    let err_invalid_kind_of_block () = raise (Malformed `Invalid_kind_of_block)
+    let err_invalid_dictionary () = raise (Malformed `Invalid_dictionary)
 
     let err_invalid_complement_of_length () =
-      raise (Malformed Invalid_complement_of_length)
+      raise (Malformed `Invalid_complement_of_length)
 
-    let err_invalid_distance () = raise (Malformed Invalid_distance)
-    let err_invalid_distance_code () = raise (Malformed Invalid_distance_code)
+    let err_invalid_distance () = raise (Malformed `Invalid_distance)
+    let err_invalid_distance_code () = raise (Malformed `Invalid_distance_code)
 
     (* remaining bytes to read [d.i]. *)
     let i_rem d = d.i_len - d.i_pos [@@inline]
@@ -2981,7 +2981,6 @@ module Def = struct
     type output_bitstream = {
         i: bigstring
       ; mutable i_pos: int
-      ; mutable i_base: int
       ; i_len: int
       ; o: bigstring
       ; mutable o_pos: int
@@ -2990,16 +2989,25 @@ module Def = struct
       ; mutable bits: int
     }
 
-    type hc_matchfinder = {hash4_tab: int array; next_tab: int array}
+    type hc_matchfinder = {
+        hash3_tab: int array
+      ; hash4_tab: int array
+      ; mutable next_hash3: int
+      ; mutable next_hash4: int
+      ; next_tab: int array
+    }
 
+    let hc_matchfinder_hash3_order = 15
     let hc_matchfinder_hash4_order = 16
     let window_size = 1 lsl 15
 
     let hc_matchfinder_init () =
+      let hash3_tab =
+        Array.make (1 lsl hc_matchfinder_hash3_order) (-window_size) in
       let hash4_tab =
         Array.make (1 lsl hc_matchfinder_hash4_order) (-window_size) in
       let next_tab = Array.make window_size 0 in
-      {hash4_tab; next_tab}
+      {hash3_tab; next_hash3= 0; hash4_tab; next_hash4= 0; next_tab}
 
     type sequence = {
         mutable litrunlen_and_length: int
@@ -3039,7 +3047,6 @@ module Def = struct
       {
         i
       ; i_pos= 0
-      ; i_base= 0
       ; i_len= bigstring_length i
       ; o
       ; o_pos= 0
@@ -3237,22 +3244,20 @@ module Def = struct
     let add_bits os bits num_bits =
       os.hold <- os.hold lor (bits lsl os.bits)
       ; os.bits <- os.bits + num_bits
-      ; if os.bits >= 16 then
-          begin
-            unsafe_set_uint16 os.o os.o_pos os.hold
-            ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 2
-            ; os.bits <- os.bits - 16
-            ; os.hold <- os.hold lsr 16
-          end
+      ; if os.bits >= 16 then begin
+          unsafe_set_uint16 os.o os.o_pos os.hold
+          ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 2
+          ; os.bits <- os.bits - 16
+          ; os.hold <- os.hold lsr 16
+        end
 
     let flush_bits os =
-      if os.bits >= 8 then
-        begin
-          unsafe_set_uint8 os.o os.o_pos os.hold
-          ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 1
-          ; os.bits <- os.bits - 8
-          ; os.hold <- os.hold lsr 8
-        end
+      if os.bits >= 8 then begin
+        unsafe_set_uint8 os.o os.o_pos os.hold
+        ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 1
+        ; os.bits <- os.bits - 8
+        ; os.hold <- os.hold lsr 8
+      end
 
     let write_block_header os is_final_block block_type =
       add_bits os (Bool.to_int is_final_block) 1
@@ -3432,8 +3437,7 @@ module Def = struct
 
     let write_sequences os codes sequences in_next in_next_i =
       let f seq =
-        let litrunlen =
-          ref (seq.litrunlen_and_length land 0x7FFFFF) in
+        let litrunlen = ref (seq.litrunlen_and_length land 0x7FFFFF) in
         let length = seq.litrunlen_and_length lsr 23 in
         if !litrunlen <> 0 then (
           while !litrunlen >= 4 do
@@ -3448,9 +3452,9 @@ module Def = struct
             ; in_next_i := !in_next_i + 4
             ; litrunlen := !litrunlen - 4
           done
-                      ; if !litrunlen <> 0 then (
+          ; if !litrunlen <> 0 then (
               decr litrunlen
-                        ; add_bits os
+              ; add_bits os
                   codes.codewords.litlen.(unsafe_get_uint8 in_next !in_next_i)
                   codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
               ; incr in_next_i
@@ -3468,7 +3472,7 @@ module Def = struct
                                                     !in_next_i)
                           codes.lens.litlen.(unsafe_get_uint8 in_next !in_next_i)
                       ; incr in_next_i))))
-          ; if length <> 0 then (
+        ; if length <> 0 then (
             in_next_i := !in_next_i + length
             ; let length_slot = seq.length_slot in
               let litlen_symbol = 257 + length_slot in
@@ -3485,7 +3489,7 @@ module Def = struct
                 ; add_bits os
                     (seq.offset - _base_dist.(offset_symbol) - 1)
                     _extra_dbits.(offset_symbol)) in
-    List.iter f sequences
+      List.iter f sequences
 
     let write_end_of_block os codes =
       add_bits os
@@ -3493,14 +3497,8 @@ module Def = struct
         codes.lens.litlen.(_end_of_block)
       ; flush_bits os
 
-    let flush_block
-        c
-        os
-        block
-        block_begin
-        block_length
-        is_final_block
-        sequences =
+    let flush_block c os block block_begin block_length is_final_block sequences
+        =
       let extra_precode_bits =
         [|0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 0; 2; 3; 7|] in
       let dynamic_cost = ref 0 in
@@ -3654,83 +3652,75 @@ module Def = struct
 
     let rec _matchfinder_longest_rec
         cur_node best_matchptr os lens mf depth_remaining cutoff =
-      let matchptr = os.i_base + cur_node in
+      let matchptr = (os.i_pos land lnot (window_size - 1)) + cur_node in
       if
         unsafe_get_uint8 os.i (matchptr + lens.best)
         <> unsafe_get_uint8 os.i (os.i_pos + lens.best)
-      then begin
+      then
         let cur_node = mf.next_tab.(cur_node land (window_size - 1)) in
-        decr depth_remaining
-        ; if cur_node <= cutoff || !depth_remaining = 0 then ()
-          else
-            _matchfinder_longest_rec cur_node best_matchptr os lens mf
-              depth_remaining cutoff
-      end
+        let depth_remaining = depth_remaining - 1 in
+        if cur_node <= cutoff || depth_remaining = 0 then best_matchptr
+        else
+          _matchfinder_longest_rec cur_node best_matchptr os lens mf
+            depth_remaining cutoff
       else
         let len = lz_extend os.i os.i_pos matchptr 0 lens.max in
         if len >= lens.nice then begin
           lens.best <- len
-          ; best_matchptr := matchptr
+          ; matchptr
         end
-        else begin
-          if len > lens.best then begin
-            lens.best <- len
-            ; best_matchptr := matchptr
-          end
-          ; let cur_node = mf.next_tab.(cur_node land (window_size - 1)) in
-            decr depth_remaining
-            ; if cur_node <= cutoff || !depth_remaining = 0 then ()
-              else
-                _matchfinder_longest_rec cur_node best_matchptr os lens mf
-                  depth_remaining cutoff
-        end
-
-    let hc_matchfinder_longest_match mf os lens max_search_depth next_hash =
-      let best_matchptr = ref os.i_pos in
-      let cur_pos = os.i_pos - os.i_base in
-      let depth_remaining = ref max_search_depth in
-      let cur_pos =
-        if cur_pos = window_size then (
-          hc_matchfinder_slide_window mf
-          ; os.i_base <- os.i_base + window_size
-          ; 0)
-        else cur_pos in
-      let cutoff = cur_pos - window_size in
-      if lens.max < 5 then os.i_pos - !best_matchptr
-      else
-        let cur_node = mf.hash4_tab.(!next_hash) in
-        mf.hash4_tab.(!next_hash) <- cur_pos
-        ; mf.next_tab.(cur_pos) <- cur_node
-        ; next_hash := lz_hash os.i (os.i_pos + 1) hc_matchfinder_hash4_order
-        ; if cur_node <= cutoff || lens.best >= lens.nice then
-            os.i_pos - !best_matchptr
-          else begin
+        else
+          let best_matchptr =
+            if len > lens.best then begin
+              lens.best <- len
+              ; matchptr
+            end
+            else best_matchptr in
+          let cur_node = mf.next_tab.(cur_node land (window_size - 1)) in
+          let depth_remaining = depth_remaining - 1 in
+          if cur_node <= cutoff || depth_remaining = 0 then best_matchptr
+          else
             _matchfinder_longest_rec cur_node best_matchptr os lens mf
               depth_remaining cutoff
-            ; os.i_pos - !best_matchptr
-          end
 
-    let rec _matchfinder_skip_rec os mf cur_pos next_hash remaining =
+    let hc_matchfinder_longest_match mf os lens max_search_depth =
+      let best_matchptr = os.i_pos in
+      let cur_pos = os.i_pos land (window_size - 1) in
+      if cur_pos = 0 && os.i_pos <> 0 then hc_matchfinder_slide_window mf
+      ; let cutoff = cur_pos - window_size in
+        if lens.max < 5 then os.i_pos - best_matchptr
+        else
+          let _cur_node3 = mf.hash3_tab.(mf.next_hash3) in
+          let cur_node4 = mf.hash4_tab.(mf.next_hash4) in
+          mf.hash3_tab.(mf.next_hash3) <- cur_pos
+          ; mf.hash4_tab.(mf.next_hash4) <- cur_pos
+          ; mf.next_tab.(cur_pos) <- cur_node4
+          ; mf.next_hash4 <-
+              lz_hash os.i (os.i_pos + 1) hc_matchfinder_hash4_order
+          ; if cur_node4 <= cutoff || lens.best >= lens.nice then
+              os.i_pos - best_matchptr
+            else
+              let best_matchptr =
+                _matchfinder_longest_rec cur_node4 best_matchptr os lens mf
+                  max_search_depth cutoff in
+              os.i_pos - best_matchptr
+
+    let rec _matchfinder_skip_rec os mf remaining =
       match remaining with
-      | 0 -> next_hash
+      | 0 -> ()
       | remaining ->
-        let cur_pos =
-          if cur_pos == window_size then (
-            hc_matchfinder_slide_window mf
-            ; os.i_base <- os.i_base + window_size
-            ; 0)
-          else cur_pos in
-        mf.next_tab.(cur_pos) <- mf.hash4_tab.(next_hash)
-        ; mf.hash4_tab.(next_hash) <- cur_pos
+        let cur_pos = os.i_pos land (window_size - 1) in
+        if cur_pos = 0 && os.i_pos <> 0 then hc_matchfinder_slide_window mf
+        ; mf.hash3_tab.(mf.next_hash3) <- cur_pos
+        ; mf.next_tab.(cur_pos) <- mf.hash4_tab.(mf.next_hash4)
+        ; mf.hash4_tab.(mf.next_hash4) <- cur_pos
         ; os.i_pos <- os.i_pos + 1
-        ; let next_hash = lz_hash os.i os.i_pos hc_matchfinder_hash4_order in
-          _matchfinder_skip_rec os mf (cur_pos + 1) next_hash (remaining - 1)
+        ; mf.next_hash4 <- lz_hash os.i os.i_pos hc_matchfinder_hash4_order
+        ; _matchfinder_skip_rec os mf (remaining - 1)
 
-    let hc_matchfinder_skip_positions mf os count next_hash =
-      if count + 5 > os.i_len - os.i_pos then (
-        os.i_pos <- os.i_pos + count
-        ; next_hash)
-      else _matchfinder_skip_rec os mf (os.i_pos - os.i_base) next_hash count
+    let hc_matchfinder_skip_positions mf os count =
+      if count + 5 > os.i_len - os.i_pos then os.i_pos <- os.i_pos + count
+      else _matchfinder_skip_rec os mf count
 
     let choose_literal c literal litrunlen =
       c.freqs.litlen.(literal) <- succ c.freqs.litlen.(literal)
@@ -3743,13 +3733,14 @@ module Def = struct
         succ c.freqs.litlen.(257 + length_slot)
       ; c.freqs.offset.(offset_slot) <- succ c.freqs.offset.(offset_slot)
       ; let seq =
-          { litrunlen_and_length= (length lsl 23) lor !litrunlen
-          ; offset= offset
-          ; length_slot= length_slot
-          ; offset_symbol= offset_slot }
-        in
-      litrunlen := 0
-      ; seq
+          {
+            litrunlen_and_length= (length lsl 23) lor !litrunlen
+          ; offset
+          ; length_slot
+          ; offset_symbol= offset_slot
+          } in
+        litrunlen := 0
+        ; seq
 
     let observe_match stats length =
       let i = num_literal_observation_types + Bool.to_int (length >= 9) in
@@ -3769,7 +3760,6 @@ module Def = struct
         ; nice= min c.nice_match_length _max_match_len
         ; max= _max_match_len
         } in
-      let next_hash = ref 0 in
       let hc_mf = hc_matchfinder_init () in
       while os.i_pos <> os.i_len do
         let in_block_begin = ref os.i_pos in
@@ -3791,20 +3781,26 @@ module Def = struct
             ; lens.best <- _min_match_len - 1
             ; let offset =
                 hc_matchfinder_longest_match hc_mf os lens c.max_search_depth
-                  next_hash in
+              in
               if lens.best >= _min_match_len then (
                 seqs := choose_match c lens.best offset litrunlen :: !seqs
                 ; observe_match split_stats lens.best
                 ; os.i_pos <- succ os.i_pos
-                ; next_hash :=
-                    hc_matchfinder_skip_positions hc_mf os (lens.best - 1)
-                      !next_hash)
+                ; hc_matchfinder_skip_positions hc_mf os (lens.best - 1))
               else (
                 choose_literal c (unsafe_get_uint8 os.i os.i_pos) litrunlen
                 ; observe_literal split_stats os.i_pos
                 ; os.i_pos <- succ os.i_pos)
           done
-        ; seqs := List.rev @@ {litrunlen_and_length= !litrunlen; offset= 0; offset_symbol= 0; length_slot= 0} :: !seqs
+        ; seqs :=
+            List.rev
+            @@ {
+                 litrunlen_and_length= !litrunlen
+               ; offset= 0
+               ; offset_symbol= 0
+               ; length_slot= 0
+               }
+               :: !seqs
         ; flush_block c os i in_block_begin
             (os.i_pos - !in_block_begin)
             (os.i_pos = os.i_len) !seqs
