@@ -6,4 +6,4 @@
 (executable
  (name fuzz_ns)
  (modules fuzz_ns)
- (libraries fmt bigstringaf camlzip checkseum.c de crowbar))
+ (libraries rresult fmt bigstringaf camlzip checkseum.c de crowbar))
