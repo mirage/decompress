@@ -713,10 +713,12 @@ module Def = struct
 
   let identity e = `End e
 
+  let imax = Optint.of_string "0xffffffff"
+
   let rec checksum e =
     let k e =
       let checksum = Optint.to_unsigned_int32 e.crc in
-      let isize = Optint.to_unsigned_int32 e.rd in
+      let isize = Optint.to_unsigned_int32 (Optint.logand e.rd imax) in
       unsafe_set_uint32_le e.o e.o_pos checksum
       ; unsafe_set_uint32_le e.o (e.o_pos + 4) isize
       ; flush identity {e with o_pos= e.o_pos + 8} in
