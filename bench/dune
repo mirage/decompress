@@ -57,3 +57,22 @@
  (name lzld)
  (modules lzld)
  (libraries decompress.de lz_landmarks))
+
+(library
+ (name de_landmarks)
+ (optional)
+ (modules de_landmarks)
+ (libraries bigarray-compat checkseum optint landmarks de)
+ (preprocess
+  (pps landmarks.ppx --auto)))
+
+(rule
+ (copy ../lib/de.ml de_landmarks.ml))
+
+(rule
+ (copy ../lib/de.mli de_landmarks.mli))
+
+(executable
+ (name densld)
+ (modules densld)
+ (libraries cmdliner de_landmarks bigstringaf))

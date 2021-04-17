@@ -1126,38 +1126,35 @@ let encoder_1 () =
 
 let tests =
   [
-    "ns_encoder"
-       , [ encoder_0 ()
-         ; encoder_1 () ];
-         "ns_invalids"
-         , [
-             invalid_complement_of_length (); invalid_kind_of_block ()
-           ; invalid_code_lengths (); invalid_bit_length_repeat (); invalid_codes ()
-           ; invalid_lengths (); invalid_distances ()
-           ; too_many_length_or_distance_symbols (); invalid_distance_code ()
-           ; invalid_distance_too_far_back ()
-           ]
-       ; "ns_valids"
-         , [
-             fixed (); stored (); length_extra (); long_distance_and_extra ()
-           ; window_end (); huffman_length_extra (); dynamic_and_fixed ()
-           ; fixed_and_dynamic (); dynamic_and_dynamic (); flat_of_string ()
-           ; flat_block (); flat (); max_flat (); fixed_and_flat ()
-           ; flat_and_fixed ()
-           ]
-       ; "ns_fuzz"
-         , [
-             fuzz0 (); fuzz1 (); fuzz2 (); fuzz3 (); fuzz4 (); fuzz5 (); fuzz6 ()
-           ; fuzz7 (); fuzz8 (); fuzz9 (); fuzz10 (); fuzz11 (); fuzz12 (); fuzz13 ()
-           ; fuzz14 (); fuzz15 (); fuzz16 (); fuzz17 (); fuzz18 ()
-           ]
-       ;
-    "ns_calgary"
+    "ns_encoder", [encoder_0 (); encoder_1 ()]
+  ; ( "ns_invalids"
+    , [
+        invalid_complement_of_length (); invalid_kind_of_block ()
+      ; invalid_code_lengths (); invalid_bit_length_repeat (); invalid_codes ()
+      ; invalid_lengths (); invalid_distances ()
+      ; too_many_length_or_distance_symbols (); invalid_distance_code ()
+      ; invalid_distance_too_far_back ()
+      ] )
+  ; ( "ns_valids"
+    , [
+        fixed (); stored (); length_extra (); long_distance_and_extra ()
+      ; window_end (); huffman_length_extra (); dynamic_and_fixed ()
+      ; fixed_and_dynamic (); dynamic_and_dynamic (); flat_of_string ()
+      ; flat_block (); flat (); max_flat (); fixed_and_flat ()
+      ; flat_and_fixed ()
+      ] )
+  ; ( "ns_fuzz"
+    , [
+        fuzz0 (); fuzz1 (); fuzz2 (); fuzz3 (); fuzz4 (); fuzz5 (); fuzz6 ()
+      ; fuzz7 (); fuzz8 (); fuzz9 (); fuzz10 (); fuzz11 (); fuzz12 (); fuzz13 ()
+      ; fuzz14 (); fuzz15 (); fuzz16 (); fuzz17 (); fuzz18 ()
+      ] )
+  ; ( "ns_calgary"
     , [
         test_corpus "bib"; test_corpus "rfc5322.txt"; test_corpus "book1"
       ; test_corpus "book2"; test_corpus "geo"; test_corpus "news"
       ; test_corpus "obj1"; test_corpus "obj2"; test_corpus "paper1"
       ; test_corpus "paper2"; test_corpus "pic"; test_corpus "progc"
       ; test_corpus "progl"; test_corpus "progp"; test_corpus "trans"
-      ]
+      ] )
   ]

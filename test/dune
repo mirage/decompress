@@ -23,6 +23,15 @@
  (alias runtest)
  (package decompress)
  (deps
+  (:test test_deflate.exe)
+  (source_tree corpus))
+ (action
+  (run %{test} --color=always)))
+
+(rule
+ (alias runtest)
+ (package decompress)
+ (deps
   (:test test.exe)
   (source_tree corpus))
  (action

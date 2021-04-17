@@ -1,4 +1,4 @@
-let () = Printexc.record_backtrace true
+[@@@landmark "auto"]
 
 module Bigarray = Bigarray_compat (* XXX(dinosaure): MirageOS compatibility. *)
 
@@ -203,6 +203,7 @@ let ( < ) (x : int) y = x < y [@@inline]
 let ( <= ) (x : int) y = x <= y [@@inline]
 let ( >= ) (x : int) y = x >= y [@@inline]
 let min (a : int) b = if a <= b then a else b [@@inline]
+let max (a : int) b = if a >= b then a else b [@@inline]
 
 (* XXX(dinosaure): Constants. *)
 
@@ -2899,6 +2900,12 @@ module Def = struct
     let max_num_syms = 288
     let num_symbol_bits = 10
     let symbol_mask = 0b1111111111
+    let min_match_len = 3
+    let max_match_len = 258
+    let soft_max_block_length = 300000
+    let num_precode_syms = 19
+    let end_of_block = 256
+    let max_pre_codeword_len = 7
 
     type error = Invalid_compression_level | Unexpected_end_of_output
 
@@ -2994,6 +3001,8 @@ module Def = struct
       ; num_new_observations= 0
       ; num_observations= 0
       }
+
+    type lens = {mutable best: int; mutable nice: int; mutable max: int}
 
     let blocktype_uncompressed = 0
     let blocktype_static_huffman = 1
@@ -3284,15 +3293,14 @@ module Def = struct
       ; put_unaligned_le16 os (lnot len)
       ; memcpy os len
 
-    let rec write_uncompressed_blocks os is_final_block =
+    let rec write_uncompressed_blocks os block_length is_final_block =
       match os.i_len - os.i_pos with
       | 0 -> ()
       | _ ->
-        let len = min (os.i_len - os.i_pos) 65535 in
+        let len = min block_length 65535 in
         write_uncompressed_block os len
           (is_final_block && os.i_pos + len == os.i_len)
-        ; os.i_pos <- os.i_pos + len
-        ; write_uncompressed_blocks os is_final_block
+        ; write_uncompressed_blocks os block_length is_final_block
 
     let flush_output os =
       if os.o_pos == os.o_len then err_unexpected_end_of_output ()
@@ -3306,15 +3314,8 @@ module Def = struct
 
     let compress_none _c i o =
       let os = init_output i o in
-      write_uncompressed_blocks os true
+      write_uncompressed_blocks os os.o_len true
       ; flush_output os
-
-    let min_match_len = 3
-    let max_match_len = 258
-    let soft_max_block_length = 300000
-    let num_precode_syms = 19
-    let end_of_block = 256
-    let max_pre_codeword_len = 7
 
     let precode_lens_permutation =
       [|16; 17; 18; 0; 8; 7; 9; 6; 10; 5; 11; 4; 12; 3; 13; 2; 14; 1; 15|]
@@ -3597,8 +3598,10 @@ module Def = struct
           else if !static_cost < !uncompressed_cost then
             blocktype_static_huffman, Some c.static_codes
           else blocktype_uncompressed, None in
-        if block_type = blocktype_uncompressed then
-          write_uncompressed_blocks os is_final_block
+        if block_type = blocktype_uncompressed then begin
+          os.i_pos <- !block_begin
+          ; write_uncompressed_blocks os block_length is_final_block
+        end
         else begin
           write_block_header os is_final_block block_type
           ; if block_type = blocktype_dynamic_huffman then
@@ -3608,10 +3611,8 @@ module Def = struct
         end
 
     let init_block_split_stats stats =
-      for i = 0 to num_observation_types - 1 do
-        stats.new_observations.(i) <- 0
-        ; stats.observations.(i) <- 0
-      done
+      Array.fill stats.new_observations 0 num_observation_types 0
+      ; Array.fill stats.observations 0 num_observation_types 0
       ; stats.num_new_observations <- 0
       ; stats.num_observations <- 0
 
@@ -3663,109 +3664,113 @@ module Def = struct
       then false
       else do_end_block_check stats (in_next - in_block_begin)
 
-    let lz_extend i start_pos match_pos start_len max_len =
-      let len = ref start_len in
-      while
-        !len < max_len
-        && unsafe_get_uint8 i (match_pos + !len)
-           = unsafe_get_uint8 i (start_pos + !len)
-      do
-        incr len
-      done
-      ; !len
+    let rec _lz_extend i start_pos match_pos len max_len =
+      if
+        len < max_len
+        && unsafe_get_uint8 i (match_pos + len)
+           = unsafe_get_uint8 i (start_pos + len)
+      then _lz_extend i start_pos match_pos (len + 1) max_len
+      else len
+
+    let rec lz_extend i start_pos match_pos len max_len =
+      if
+        max_len - len >= 4
+        && unsafe_get_uint32 i (match_pos + len)
+           = unsafe_get_uint32 i (start_pos + len)
+      then lz_extend i start_pos match_pos (len + 4) max_len
+      else _lz_extend i start_pos match_pos len max_len
 
     let hc_matchfinder_slide_window mf =
       Array.iteri
-        (fun i v -> mf.hash4_tab.(i) <- max (-32768) (v - window_size))
+        (fun i v -> mf.hash4_tab.(i) <- v - (window_size land 0xFFFF))
         mf.hash4_tab
       ; Array.iteri
-          (fun i v -> mf.next_tab.(i) <- max (-32768) (v - window_size))
+          (fun i v -> mf.next_tab.(i) <- v - (window_size land 0xFFFF))
           mf.next_tab
 
-    let lz_hash seq num_bits =
-      Int32.(
-        shift_right_logical (mul (of_int seq) 0x1E35A7BDl) (32 - num_bits)
-        |> to_int)
+    let lz_hash i pos num_bits =
+      let v = unsafe_get_uint32 i pos in
+      Int32.(to_int (shift_right_logical (mul v 0x1E35A7BDl) (32 - num_bits)))
 
-    let get_unaligned_le32 p i =
-      let p0 = unsafe_get_uint8 p i in
-      let p1 = unsafe_get_uint8 p (i + 1) in
-      let p2 = unsafe_get_uint8 p (i + 2) in
-      let p3 = unsafe_get_uint8 p (i + 3) in
-      (p3 lsl 24) lor (p2 lsl 16) lor (p1 lsl 8) lor p0
+    let rec _matchfinder_longest_rec
+        cur_node best_matchptr os lens mf depth_remaining cutoff =
+      let matchptr = os.i_base + cur_node in
+      if
+        unsafe_get_uint8 os.i (matchptr + lens.best)
+        <> unsafe_get_uint8 os.i (os.i_pos + lens.best)
+      then begin
+        let cur_node = mf.next_tab.(cur_node land (window_size - 1)) in
+        decr depth_remaining
+        ; if cur_node <= cutoff || !depth_remaining = 0 then ()
+          else
+            _matchfinder_longest_rec cur_node best_matchptr os lens mf
+              depth_remaining cutoff
+      end
+      else
+        let len = lz_extend os.i os.i_pos matchptr 0 lens.max in
+        if len >= lens.nice then begin
+          lens.best <- len
+          ; best_matchptr := matchptr
+        end
+        else begin
+          if len > lens.best then begin
+            lens.best <- len
+            ; best_matchptr := matchptr
+          end
+          ; let cur_node = mf.next_tab.(cur_node land (window_size - 1)) in
+            decr depth_remaining
+            ; if cur_node <= cutoff || !depth_remaining = 0 then ()
+              else
+                _matchfinder_longest_rec cur_node best_matchptr os lens mf
+                  depth_remaining cutoff
+        end
 
-    let hc_matchfinder_longest_match
-        mf os best_len max_len nice_len max_search_depth next_hash =
-      let best_len = ref best_len in
+    let hc_matchfinder_longest_match mf os lens max_search_depth next_hash =
       let best_matchptr = ref os.i_pos in
       let cur_pos = os.i_pos - os.i_base in
-      let exception Out in
-      (try
-         let depth_remaining = ref max_search_depth in
-         let cur_pos =
-           if cur_pos = window_size then (
-             hc_matchfinder_slide_window mf
-             ; os.i_base <- os.i_base + window_size
-             ; 0)
-           else cur_pos in
-         let cutoff = cur_pos - window_size in
-         if max_len < 5 then raise Out
-         ; let cur_node4 = ref mf.hash4_tab.(!next_hash) in
-           mf.hash4_tab.(!next_hash) <- cur_pos
-           ; mf.next_tab.(cur_pos) <- !cur_node4
-           ; let next_hashseq = get_unaligned_le32 os.i (os.i_pos + 1) in
-             next_hash := lz_hash next_hashseq hc_matchfinder_hash4_order
-             ; let matchptr = ref 0 in
-               if !cur_node4 <= cutoff || !best_len >= nice_len then raise Out
-               ; while true do
-                   let rec loop () =
-                     matchptr := os.i_base + !cur_node4
-                     ; if
-                         unsafe_get_uint8 os.i (!matchptr + !best_len)
-                         <> unsafe_get_uint8 os.i (os.i_pos + !best_len)
-                       then (
-                         cur_node4 :=
-                           mf.next_tab.(!cur_node4 land (window_size - 1))
-                         ; decr depth_remaining
-                         ; if !cur_node4 <= cutoff || !depth_remaining = 0 then
-                             raise Out
-                         ; loop ()) in
-                   loop ()
-                   ; let len = lz_extend os.i os.i_pos !matchptr 0 max_len in
-                     if len > !best_len then begin
-                       best_len := len
-                       ; best_matchptr := !matchptr
-                       ; if !best_len >= nice_len then raise Out
-                     end
-                     ; cur_node4 :=
-                         mf.next_tab.(!cur_node4 land (window_size - 1))
-                     ; decr depth_remaining
-                     ; if !cur_node4 <= cutoff || !depth_remaining = 0 then
-                         raise Out
-                 done
-       with Out -> ())
-      ; !best_len, os.i_pos - !best_matchptr
+      let depth_remaining = ref max_search_depth in
+      let cur_pos =
+        if cur_pos = window_size then (
+          hc_matchfinder_slide_window mf
+          ; os.i_base <- os.i_base + window_size
+          ; 0)
+        else cur_pos in
+      let cutoff = cur_pos - window_size in
+      if lens.max < 5 then os.i_pos - !best_matchptr
+      else
+        let cur_node = mf.hash4_tab.(!next_hash) in
+        mf.hash4_tab.(!next_hash) <- cur_pos
+        ; mf.next_tab.(cur_pos) <- cur_node
+        ; next_hash := lz_hash os.i (os.i_pos + 1) hc_matchfinder_hash4_order
+        ; if cur_node <= cutoff || lens.best >= lens.nice then
+            os.i_pos - !best_matchptr
+          else begin
+            _matchfinder_longest_rec cur_node best_matchptr os lens mf
+              depth_remaining cutoff
+            ; os.i_pos - !best_matchptr
+          end
+
+    let rec _matchfinder_skip_rec os mf cur_pos next_hash remaining =
+      match remaining with
+      | 0 -> next_hash
+      | remaining ->
+        let cur_pos =
+          if cur_pos == window_size then (
+            hc_matchfinder_slide_window mf
+            ; os.i_base <- os.i_base + window_size
+            ; 0)
+          else cur_pos in
+        mf.next_tab.(cur_pos) <- mf.hash4_tab.(next_hash)
+        ; mf.hash4_tab.(next_hash) <- cur_pos
+        ; os.i_pos <- os.i_pos + 1
+        ; let next_hash = lz_hash os.i os.i_pos hc_matchfinder_hash4_order in
+          _matchfinder_skip_rec os mf (cur_pos + 1) next_hash (remaining - 1)
 
     let hc_matchfinder_skip_positions mf os count next_hash =
-      let next_hashseq = ref 0 in
-      if count + 5 > os.i_len - os.i_pos then os.i_pos <- os.i_pos + count
-      else
-        let rec f cur_pos = function
-          | 0 -> ()
-          | remaining ->
-            let cur_pos =
-              if cur_pos == window_size then (
-                hc_matchfinder_slide_window mf
-                ; os.i_base <- os.i_base + window_size
-                ; 0)
-              else cur_pos in
-            mf.next_tab.(cur_pos) <- mf.hash4_tab.(!next_hash)
-            ; mf.hash4_tab.(!next_hash) <- cur_pos
-            ; os.i_pos <- os.i_pos + 1
-            ; next_hashseq := get_unaligned_le32 os.i os.i_pos
-            ; next_hash := lz_hash !next_hashseq hc_matchfinder_hash4_order
-            ; f (cur_pos + 1) (remaining - 1) in
-        f (os.i_pos - os.i_base) count
+      if count + 5 > os.i_len - os.i_pos then (
+        os.i_pos <- os.i_pos + count
+        ; next_hash)
+      else _matchfinder_skip_rec os mf (os.i_pos - os.i_base) next_hash count
 
     let choose_literal c literal litrunlen =
       c.freqs.litlen.(literal) <- succ c.freqs.litlen.(literal)
@@ -3777,12 +3782,13 @@ module Def = struct
       c.freqs.litlen.(257 + length_slot) <-
         succ c.freqs.litlen.(257 + length_slot)
       ; c.freqs.offset.(offset_slot) <- succ c.freqs.offset.(offset_slot)
-      ; s.seqs.(s.pos).litrunlen_and_length <- (length lsl 23) lor !litrunlen
-      ; s.seqs.(s.pos).offset <- offset
-      ; s.seqs.(s.pos).length_slot <- length_slot
-      ; s.seqs.(s.pos).offset_symbol <- offset_slot
-      ; litrunlen := 0
-      ; s.pos <- s.pos + 1
+      ; let seq = s.seqs.(s.pos) in
+        seq.litrunlen_and_length <- (length lsl 23) lor !litrunlen
+        ; seq.offset <- offset
+        ; seq.length_slot <- length_slot
+        ; seq.offset_symbol <- offset_slot
+        ; litrunlen := 0
+        ; s.pos <- s.pos + 1
 
     let observe_match stats length =
       let i = num_literal_observation_types + Bool.to_int (length >= 9) in
@@ -3796,8 +3802,12 @@ module Def = struct
 
     let compress_greedy c i o =
       let os = init_output i o in
-      let max_len = ref max_match_len in
-      let nice_len = ref (min c.nice_match_length !max_len) in
+      let lens =
+        {
+          best= 0
+        ; nice= min c.nice_match_length max_match_len
+        ; max= max_match_len
+        } in
       let next_hash = ref 0 in
       let hc_mf = hc_matchfinder_init () in
       let seq_len =
@@ -3816,17 +3826,20 @@ module Def = struct
             && not
                  (should_end_block split_stats !in_block_begin os.i_pos os.i_len)
           do
-            if !max_len > os.i_len - os.i_pos then (
-              max_len := os.i_len - os.i_pos
-              ; nice_len := min !nice_len !max_len)
-            ; let length, offset =
-                hc_matchfinder_longest_match hc_mf os (min_match_len - 1)
-                  !max_len !nice_len c.max_search_depth next_hash in
-              if length >= min_match_len then (
-                choose_match c length offset litrunlen s
-                ; observe_match split_stats length
-                ; os.i_pos <- os.i_pos + 1
-                ; hc_matchfinder_skip_positions hc_mf os (length - 1) next_hash)
+            if lens.max > os.i_len - os.i_pos then (
+              lens.max <- os.i_len - os.i_pos
+              ; lens.nice <- min lens.nice lens.max)
+            ; lens.best <- min_match_len - 1
+            ; let offset =
+                hc_matchfinder_longest_match hc_mf os lens c.max_search_depth
+                  next_hash in
+              if lens.best >= min_match_len then (
+                choose_match c lens.best offset litrunlen s
+                ; observe_match split_stats lens.best
+                ; os.i_pos <- succ os.i_pos
+                ; next_hash :=
+                    hc_matchfinder_skip_positions hc_mf os (lens.best - 1)
+                      !next_hash)
               else (
                 choose_literal c (unsafe_get_uint8 os.i os.i_pos) litrunlen
                 ; observe_literal split_stats os.i_pos
@@ -3909,7 +3922,7 @@ module Def = struct
       let max_blocks = max 1 ((len + min_block_length - 1) / min_block_length) in
       (5 * max_blocks) + len + 1 + end_padding
 
-    let deflate ?(level=4) ~src ~dst =
+    let deflate ?(level = 4) ~src ~dst =
       let impl, c = encoder level in
       if bigstring_length dst < end_padding then 0
       else if bigstring_length src < c.min_size_to_compress then (
