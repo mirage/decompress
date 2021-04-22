@@ -1,3 +1,48 @@
+### v1.4.0 2021-04-22 Paris (France)
+
+- Add a well-know limitation about the encoding on the documentation, the
+  output buffer must be upper than 2 bytes in any cases.
+  (@dinosaure, #114)
+- Improve the documentation
+  (@dinosaure, @brendanlong, #115)
+- **breaking changes**, the type of the window used to deflate according
+  RFC 1951 was updated to `De.Lz77.window`
+  (@dinosaure, #116 & #115)
+- Fix a bug when we want to add the EOB _op-code_ into the queue. The deflation
+  takes care about that. Note that the queue must be larger than 2.
+  (@dinosaure, @kluvin, #117)
+- Improve the documentation a bit
+  (@mseri, @dinosaure, #119)
+- Fix the use of `optint` and how we handle large files with `Gz`. Fix an error
+  when we encode the `isize` into the deflated stream.
+  (@dinosaure, @igarnier, #121 & #120)
+- Add a _non-stream_ implementation (@clecat, @dinosaure, #102 & #92)
+
+  The non-blocking stream API has a cost to maintain a _state_ across _syscall_
+  such as `read` and `write`. It's useful when we want to plug `decompress`
+  behind something like a `socket` and care about memory-consumption but it has
+  a big cost when we want to compress/decompress an object saved into one and
+  unique buffer.
+
+  The _non-stream_ API gives an opportunity to inflate/deflate one and unique
+  buffer without the usual plumbing required by the non-blocking stream API.
+  However, we are limited to compute only objects which can fit into a
+  `bigarray`.
+
+  About performance, the non-stream API is better than the non-blocking stream
+  API. See the PR for more details about performances. On the
+  `book2` (from the Calgary corpus) file:
+  - `decompress` (stream):
+     15 Mb/s (deflation), 76 Mb/s (inflation), ratio: 42.46 %
+  - `decompress` (non-stream):
+     17 Mb/s (deflation), 105 Mb/s (inflation), ratio: 34.66 %
+
+  Even if we checked the implementation with our tests (we ran `ocaml-git` and
+  `irmin` with this path), the implementation is young and we probably miss
+  some details/bugs. So we advise the user to compare, at least, the non-stream
+  implementation with the non-blocking stream implementation if something is
+  wrong.
+
 ### v1.3.0 2020-03-03 Paris (France)
 
 - Add a little executable to benchmark inflation into the distribution (@dinosaure, #93)
