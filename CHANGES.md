@@ -1,4 +1,4 @@
-### v1.4.0 XXXX-XX-XX Paris (France)
+### v1.4.0 2021-04-22 Paris (France)
 
 - Add a well-know limitation about the encoding on the documentation, the
   output buffer must be upper than 2 bytes in any cases.
