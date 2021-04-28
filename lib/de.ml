@@ -874,12 +874,6 @@ module Inf = struct
       d.k <- c_put_byte byte k (* allocation *)
       ; Flush)
 
-  let[@inline always] is_end_of_block lit d =
-    let rem = i_rem d in
-    lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask == 256
-    && lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 <= d.bits
-    && rem < 1
-
   let slow_inflate lit dist jump d =
     let rec c_peek_bits n k d =
       if d.bits >= n then k d
@@ -887,15 +881,19 @@ module Inf = struct
         let rem = i_rem d in
 
         if rem <= 0 then
-          if rem < 0 (* end of input *) then err_unexpected_end_of_input d
+          if rem < 0 (* end of input *) then
+            let is_end_of_block =
+              lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask == 256
+              && lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 <= d.bits
+              && d.last in
+            if is_end_of_block then k d else err_unexpected_end_of_input d
           else refill (c_peek_bits n k) d (* allocation *)
         else
           let byte = unsafe_get_uint8 d.i d.i_pos in
           d.i_pos <- d.i_pos + 1
           ; d.hold <- d.hold lor (byte lsl d.bits)
           ; d.bits <- d.bits + 8
-          ; if d.bits >= n || is_end_of_block lit d then k d
-            else c_peek_bits n k d in
+          ; if d.bits >= n && i_rem d >= 0 then k d else c_peek_bits n k d in
 
     match jump with
     | Length ->
@@ -936,7 +934,7 @@ module Inf = struct
            AND we reach end of input.
 
          TODO: optimize this branch! *)
-      if is_end_of_block lit d then k d else c_peek_bits lit.Lookup.l k d
+      c_peek_bits lit.Lookup.l k d
     | Extra_length ->
       let len = _extra_lbits.(d.l) in
       let k d =
@@ -1347,11 +1345,10 @@ module Inf = struct
       (* XXX(dinosaure): check this code, we should need a [k]ontinuation. *)
       let l_header d =
         assert (d.bits >= 3)
-
         ; (* allocation *)
           let last = d.hold land 1 == 1 in
           let k =
-            match (d.hold land 0x6) asr 1 with
+            match (d.hold land 0x6) lsr 1 with
             | 0 -> flat_header
             | 1 -> fixed
             | 2 -> dynamic

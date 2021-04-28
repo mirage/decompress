@@ -35,4 +35,4 @@
   (:test test.exe)
   (source_tree corpus))
  (action
-  (run %{test} --color=always -q)))
+  (run %{test} --color=always)))

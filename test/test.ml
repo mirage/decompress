@@ -1200,13 +1200,13 @@ let compress_and_uncompress ic =
     | `End ->
       Fmt.epr "[compress]: `End.\n%!"
       ; Queue.push_exn q Queue.eob
-      ; pending @@ Def.encode encoder (`Block {Def.kind= Fixed; last= true})
-  and pending = function
-    | `Partial | `Ok ->
+      ; encode_rest @@ Def.encode encoder (`Block {Def.kind= Fixed; last= true})
+  and encode_rest = function
+    | (`Partial | `Ok) as res ->
       let len = bigstring_length t - Def.dst_rem encoder in
       Fmt.epr "[pending]: `Partial (%d byte(s)).\n%!" len
       ; Inf.src decoder t 0 len
-      ; decode @@ Inf.decode decoder
+      ; decode_rest (res = `Ok) @@ Inf.decode decoder
     | `Block -> assert false
   and encode = function
     | `Partial ->
@@ -1220,6 +1220,23 @@ let compress_and_uncompress ic =
     | `Block ->
       Fmt.epr "[encode] `Ok.\n%!"
       ; compress ()
+  and decode_rest finalize = function
+    | `Await when finalize ->
+      Inf.src decoder t 0 0
+      ; decode_rest finalize @@ Inf.decode decoder
+    | `Await ->
+      Def.dst encoder t 0 (bigstring_length t)
+      ; encode_rest @@ Def.encode encoder `Await
+    | (`Flush | `End) as state ->
+      let len = bigstring_length o - Inf.dst_rem decoder in
+      let str = Bigstringaf.substring o ~off:0 ~len in
+      Fmt.epr "[decode] `Flush | `End (%d byte(s)).\n%!" len
+      ; Buffer.add_string b str
+      ; if state = `Flush then (
+          Inf.flush decoder
+          ; decode_rest finalize @@ Inf.decode decoder)
+        else Fmt.epr "[decode] `End.\n%!"
+    | `Malformed err -> Alcotest.failf "Malformed compressed input: %S" err
   and decode = function
     | `Await ->
       Def.dst encoder t 0 (bigstring_length t)
