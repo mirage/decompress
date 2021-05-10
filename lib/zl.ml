@@ -593,18 +593,24 @@ module Def = struct
       unsafe_set_uint16_be dst 0 header
 
     let deflate ?(level = 4) src dst =
-      header dst level
-      ; let sub_dst = bigstring_sub dst 2 (bigstring_length dst - 2) in
-        let res = De.Def.Ns.deflate ~level src sub_dst in
-        match res with
-        | Ok res ->
-          let adl32 =
-            Checkseum.Adler32.(
-              unsafe_digest_bigstring src 0 (bigstring_length src) default)
-          in
-          unsafe_set_uint32_be sub_dst res (Optint.to_int32 adl32)
-          ; Ok (res + 6)
-        | Error e -> Error (e : De.Def.Ns.error :> [> error ])
+      if bigstring_length dst < 2 then Error `Unexpected_end_of_output
+      else begin
+        header dst level
+        ; let sub_dst = bigstring_sub dst 2 (bigstring_length dst - 2) in
+          let res = De.Def.Ns.deflate ~level src sub_dst in
+          match res with
+          | Ok res ->
+            let adl32 =
+              Checkseum.Adler32.(
+                unsafe_digest_bigstring src 0 (bigstring_length src) default)
+            in
+            if bigstring_length sub_dst - res < 2 then
+              Error `Unexpected_end_of_output
+            else (
+              unsafe_set_uint32_be sub_dst res (Optint.to_int32 adl32)
+              ; Ok (res + 6))
+          | Error e -> Error (e : De.Def.Ns.error :> [> error ])
+      end
   end
 end
 
