@@ -4,6 +4,8 @@
  (foreign_stubs
   (language c)
   (names mclock bs))
+ (enabled_if
+  (= %{profile} benchmark))
  (preprocess
   (pps ppx_deriving_yojson))
  (libraries
@@ -19,6 +21,8 @@
 (executable
  (name run)
  (modules run)
+ (enabled_if
+  (= %{profile} benchmark))
  (libraries cmdliner fpath rresult bos))
 
 (rule
@@ -30,6 +34,8 @@
 
 (rule
  (targets output.csv)
+ (enabled_if
+  (= %{profile} benchmark))
  (deps
   (:run run.exe)
   (:zpipe zpipe)
@@ -43,6 +49,8 @@
  (name lz_landmarks)
  (optional)
  (modules lz_landmarks)
+ (enabled_if
+  (= %{profile} benchmark))
  (libraries bigarray-compat checkseum optint landmarks de)
  (preprocess
   (pps landmarks.ppx --auto)))
@@ -56,12 +64,16 @@
 (executable
  (name lzld)
  (modules lzld)
+ (enabled_if
+  (= %{profile} benchmark))
  (libraries decompress.de lz_landmarks))
 
 (library
  (name de_landmarks)
  (optional)
  (modules de_landmarks)
+ (enabled_if
+  (= %{profile} benchmark))
  (libraries bigarray-compat checkseum optint landmarks de)
  (flags
   (:standard -w -55))
@@ -77,4 +89,6 @@
 (executable
  (name densld)
  (modules densld)
+ (enabled_if
+  (= %{profile} benchmark))
  (libraries cmdliner de_landmarks bigstringaf))
