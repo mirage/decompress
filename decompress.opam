@@ -30,4 +30,6 @@ depends: [
   "fmt"         {with-test}
   "camlzip"     {>= "1.10" & with-test}
   "base64"      {>= "3.0.0" & with-test}
+  "crowbar"     {with-test & >= "0.2"}
+  "rresult"     {with-test}
 ]
