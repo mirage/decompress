@@ -1205,16 +1205,13 @@ let test_corpus_with_zlib filename =
 
 let encoder_0 () =
   Alcotest.test_case "encoder 0" `Quick @@ fun () ->
-  let src = bigstring_of_string "\x00" in
+  let src = bigstring_of_string "\x01" in
   let res = Def.Ns.deflate ~level:0 src dst in
-  let expected = "\x01\x01\x00\xfe\xff\x00" in
+  let expected = "\x01\x01\x00\xfe\xff\x01" in
   Alcotest.(check (result int Alcotest.reject))
     "encoder 0"
     (Ok (String.length expected))
     res
-  ; ( Bigstringaf.to_string dst |> fun s ->
-      String.sub s 0 (check_encode res)
-      |> String.iteri (fun i -> Fmt.pr "%d: %C\n%!" i) )
   ; Alcotest.(check string)
       "0x00" expected
       (Bigstringaf.substring dst ~off:0 ~len:(check_encode res))
@@ -1237,9 +1234,6 @@ let encoder_1 () =
     "encoder 1"
     (Ok (String.length expected))
     res
-  ; ( Bigstringaf.to_string dst |> fun s ->
-      String.sub s 0 (check_encode res)
-      |> String.iteri (fun i j -> Fmt.pr "%d: \\x%02x\n%!" i (Char.code j)) )
   ; Alcotest.(check string)
       "0x00" expected
       (Bigstringaf.substring dst ~off:0 ~len:(check_encode res))
