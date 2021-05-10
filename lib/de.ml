@@ -1525,25 +1525,6 @@ module Inf = struct
             unsafe_set_uint8 dst (dst_off + i) v
           done
 
-    let _fill v dst dst_off len =
-      let len0 = len land 3 in
-      let len1 = len asr 2 in
-
-      let nv = Nativeint.of_int v in
-      let vv = Nativeint.(logor (shift_left nv 8) nv) in
-      let vvvv = Nativeint.(logor (shift_left vv 16) vv) in
-      let vvvv = Nativeint.to_int32 vvvv in
-
-      for i = 0 to len1 - 1 do
-        let i = i * 4 in
-        unsafe_set_uint32 dst (dst_off + i) vvvv
-      done
-
-      ; for i = 0 to len0 - 1 do
-          let i = (len1 * 4) + i in
-          unsafe_set_uint8 dst (dst_off + i) v
-        done
-
     let flat d =
       d.i_pos <- d.i_pos - (d.bits / 8)
       ; d.hold <- 0
@@ -1608,7 +1589,8 @@ module Inf = struct
             d.hold <- d.hold lsr len
             ; d.bits <- d.bits - len
             ; if value < 256 then (
-                unsafe_set_uint8 d.o d.o_pos value
+                if d.o_pos >= d.o_len then err_unexpected_end_of_output ()
+                ; unsafe_set_uint8 d.o d.o_pos value
                 ; d.o_pos <- d.o_pos + 1
                 ; inflate_loop ())
               else if value == 256 then raise_notrace End
@@ -1633,11 +1615,12 @@ module Inf = struct
                         if d_ == 0 then raise_notrace Invalid_distance_code
                         ; if d_ > min d.o_pos (1 lsl 15) then
                             raise_notrace Invalid_distance
-                        ; let len = min l (d.o_len - d.o_pos) in
-                          let off = d.o_pos - d_ in
-                          _blit d.o off d.o d.o_pos len
-                          ; d.o_pos <- d.o_pos + len
-                          ; if l - len == 0 then inflate_loop () in
+                        ; let off = d.o_pos - d_ in
+                          if l > d.o_len - d.o_pos then
+                            err_unexpected_end_of_output ()
+                          ; _blit d.o off d.o d.o_pos l
+                          ; d.o_pos <- d.o_pos + l
+                          ; inflate_loop () in
         inflate_loop ()
       with
       | End -> ()
