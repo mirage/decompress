@@ -3248,15 +3248,19 @@ module Def = struct
       ; unsafe_set_uint8 os.o (os.o_pos + 1) ((v lsr 8) land 0xff)
       ; os.o_pos <- os.o_pos + 2
 
-    (* clecat: Should be rewritten with uint32 writes *)
-    let memcpy os len =
-      let i = ref 0 in
-      while !i < len do
-        let v = unsafe_get_uint8 os.i (os.i_pos + !i) in
-        unsafe_set_uint8 os.o os.o_pos v
-        ; incr i
-        ; os.o_pos <- os.o_pos + 1
+    let memcpy src ~src_off dst ~dst_off ~len =
+      let len0 = len land 3 in
+      let len1 = len asr 2 in
+      for i = 0 to len1 - 1 do
+        let i = i * 4 in
+        let v = unsafe_get_uint32 src (src_off + i) in
+        unsafe_set_uint32 dst (dst_off + i) v
       done
+      ; for i = 0 to len0 - 1 do
+          let i = (len1 * 4) + i in
+          let v = unsafe_get_uint8 src (src_off + i) in
+          unsafe_set_uint8 dst (dst_off + i) v
+        done
 
     let write_uncompressed_block os len is_final_block =
       write_block_header os is_final_block blocktype_uncompressed
@@ -3264,7 +3268,8 @@ module Def = struct
       ; if 4 + len >= os.o_len - os.o_pos then err_unexpected_end_of_output ()
       ; put_unaligned_le16 os len
       ; put_unaligned_le16 os (lnot len)
-      ; memcpy os len
+      ; memcpy os.i ~src_off:os.i_pos os.o ~dst_off:os.o_pos ~len
+      ; os.o_pos <- os.o_pos + len
 
     let rec write_uncompressed_blocks os block_length is_final_block =
       match os.i_len - os.i_pos with
