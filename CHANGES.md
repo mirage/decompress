@@ -1,3 +1,28 @@
+### v1.4.1 2021-05-11 Paris (France)
+
+- Fix and of file and end of block _op-code_ (@dinosaure, #123)
+  **breaking changes**
+  Semantically, the module `De` has another behavior about the inflation.
+  Previously, the _stream_ inflation was smart enough to recognize the end
+  of the stream and the user did not need to really emit:
+  `De.Inf.src decoder empty 0 0` to say the end of the stream. Now, such
+  call is required to notice to `De.Inf` the end of the stream. By this
+  way, we are able to terminate the inflation correctly and we still
+  continue to raise an error for unterminated stream
+  (see `tests/invalid_distance_code`).
+
+  For `Zl`/`Gz` users, this update does not imply anything when these
+  implementations take care about such detail. Only `De` users should update
+  their code to really emit the end of the stream with
+  `De.Inf.src decoder empty 0 0`. In the PR, the diff show how to upgrade such
+  code.
+- Upgrade `decompress` to `optint.0.1.0` (@samoht, @dinosaure, #124)
+- Fix compilation of benchmarks (@dinosaure, #128)
+- Fix out of bounds errors on the _non-stream_ implementation (@clecat,
+  @ewanmellor, @dinosaure, #126, #127)
+- Optimize `memcpy` used on the _non-stream_ implementation (@clecat,
+  @dinosaure, #129)
+
 ### v1.4.0 2021-04-22 Paris (France)
 
 - Add a well-know limitation about the encoding on the documentation, the
