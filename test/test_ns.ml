@@ -224,6 +224,49 @@ let invalid_distance_too_far_back () =
     (Error `Invalid_distance)
     (Inf.Ns.inflate src dst)
 
+let invalid_flat_not_enough_output () =
+  Alcotest.test_case "invalid output with flat block" `Quick @@ fun () ->
+  let src = bigstring_of_string "\x01\x04\x00\xfb\xff\xde\xad\xbe\xef" in
+  let dst = bigstring_create 0 in
+  Alcotest.(check check_decode)
+    "invalid distance too far back"
+    (Error `Unexpected_end_of_output)
+    (Inf.Ns.inflate src dst)
+
+let invalid_literal_not_enough_output () =
+  Alcotest.test_case "invalid output with literal" `Quick @@ fun () ->
+  let q = Queue.of_list [`Literal 'a'; `End] in
+  let b = Buffer.create 16 in
+  let encoder = Def.encoder (`Buffer b) ~q in
+  let go = function
+    | `Ok -> Buffer.contents b
+    | `Partial -> assert false
+    | `Block -> assert false in
+  let res = go (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true})) in
+  let src = bigstring_of_string res in
+  let dst = bigstring_create 0 in
+  Alcotest.(check check_decode)
+    "invalid distance too far back"
+    (Error `Unexpected_end_of_output)
+    (Inf.Ns.inflate src dst)
+
+let invalid_copy_not_enough_output () =
+  Alcotest.test_case "invalid output with copy" `Quick @@ fun () ->
+  let q = Queue.of_list [`Literal 'a'; `Copy (1, 3); `End] in
+  let b = Buffer.create 16 in
+  let encoder = Def.encoder (`Buffer b) ~q in
+  let go = function
+    | `Ok -> Buffer.contents b
+    | `Partial -> assert false
+    | `Block -> assert false in
+  let res = go (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true})) in
+  let src = bigstring_of_string res in
+  let dst = bigstring_create 1 in
+  Alcotest.(check check_decode)
+    "invalid distance too far back"
+    (Error `Unexpected_end_of_output)
+    (Inf.Ns.inflate src dst)
+
 let fixed () =
   Alcotest.test_case "fixed" `Quick @@ fun () ->
   let src = bigstring_of_string "\x03\x00" in
@@ -1162,16 +1205,13 @@ let test_corpus_with_zlib filename =
 
 let encoder_0 () =
   Alcotest.test_case "encoder 0" `Quick @@ fun () ->
-  let src = bigstring_of_string "\x00" in
+  let src = bigstring_of_string "\x01" in
   let res = Def.Ns.deflate ~level:0 src dst in
-  let expected = "\x01\x01\x00\xfe\xff\x00" in
+  let expected = "\x01\x01\x00\xfe\xff\x01" in
   Alcotest.(check (result int Alcotest.reject))
     "encoder 0"
     (Ok (String.length expected))
     res
-  ; ( Bigstringaf.to_string dst |> fun s ->
-      String.sub s 0 (check_encode res)
-      |> String.iteri (fun i -> Fmt.pr "%d: %C\n%!" i) )
   ; Alcotest.(check string)
       "0x00" expected
       (Bigstringaf.substring dst ~off:0 ~len:(check_encode res))
@@ -1194,9 +1234,6 @@ let encoder_1 () =
     "encoder 1"
     (Ok (String.length expected))
     res
-  ; ( Bigstringaf.to_string dst |> fun s ->
-      String.sub s 0 (check_encode res)
-      |> String.iteri (fun i j -> Fmt.pr "%d: \\x%02x\n%!" i (Char.code j)) )
   ; Alcotest.(check string)
       "0x00" expected
       (Bigstringaf.substring dst ~off:0 ~len:(check_encode res))
@@ -1210,7 +1247,8 @@ let tests =
       ; invalid_code_lengths (); invalid_bit_length_repeat (); invalid_codes ()
       ; invalid_lengths (); invalid_distances ()
       ; too_many_length_or_distance_symbols (); invalid_distance_code ()
-      ; invalid_distance_too_far_back ()
+      ; invalid_distance_too_far_back (); invalid_flat_not_enough_output ()
+      ; invalid_literal_not_enough_output (); invalid_copy_not_enough_output ()
       ] )
   ; ( "ns_valids"
     , [

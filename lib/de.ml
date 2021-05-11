@@ -1525,25 +1525,6 @@ module Inf = struct
             unsafe_set_uint8 dst (dst_off + i) v
           done
 
-    let _fill v dst dst_off len =
-      let len0 = len land 3 in
-      let len1 = len asr 2 in
-
-      let nv = Nativeint.of_int v in
-      let vv = Nativeint.(logor (shift_left nv 8) nv) in
-      let vvvv = Nativeint.(logor (shift_left vv 16) vv) in
-      let vvvv = Nativeint.to_int32 vvvv in
-
-      for i = 0 to len1 - 1 do
-        let i = i * 4 in
-        unsafe_set_uint32 dst (dst_off + i) vvvv
-      done
-
-      ; for i = 0 to len0 - 1 do
-          let i = (len1 * 4) + i in
-          unsafe_set_uint8 dst (dst_off + i) v
-        done
-
     let flat d =
       d.i_pos <- d.i_pos - (d.bits / 8)
       ; d.hold <- 0
@@ -1608,7 +1589,8 @@ module Inf = struct
             d.hold <- d.hold lsr len
             ; d.bits <- d.bits - len
             ; if value < 256 then (
-                unsafe_set_uint8 d.o d.o_pos value
+                if d.o_pos >= d.o_len then err_unexpected_end_of_output ()
+                ; unsafe_set_uint8 d.o d.o_pos value
                 ; d.o_pos <- d.o_pos + 1
                 ; inflate_loop ())
               else if value == 256 then raise_notrace End
@@ -1633,11 +1615,12 @@ module Inf = struct
                         if d_ == 0 then raise_notrace Invalid_distance_code
                         ; if d_ > min d.o_pos (1 lsl 15) then
                             raise_notrace Invalid_distance
-                        ; let len = min l (d.o_len - d.o_pos) in
-                          let off = d.o_pos - d_ in
-                          _blit d.o off d.o d.o_pos len
-                          ; d.o_pos <- d.o_pos + len
-                          ; if l - len == 0 then inflate_loop () in
+                        ; let off = d.o_pos - d_ in
+                          if l > d.o_len - d.o_pos then
+                            err_unexpected_end_of_output ()
+                          ; _blit d.o off d.o d.o_pos l
+                          ; d.o_pos <- d.o_pos + l
+                          ; inflate_loop () in
         inflate_loop ()
       with
       | End -> ()
@@ -3236,16 +3219,18 @@ module Def = struct
       os.hold <- os.hold lor (bits lsl os.bits)
       ; os.bits <- os.bits + num_bits
       ; if os.bits >= 16 then begin
-          unsafe_set_uint16 os.o os.o_pos os.hold
-          ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 2
+          if os.o_pos + 1 >= os.o_len then err_unexpected_end_of_output ()
+          ; unsafe_set_uint16 os.o os.o_pos os.hold
+          ; os.o_pos <- os.o_pos + 2
           ; os.bits <- os.bits - 16
           ; os.hold <- os.hold lsr 16
         end
 
     let flush_bits os =
       if os.bits >= 8 then begin
-        unsafe_set_uint8 os.o os.o_pos os.hold
-        ; if os.o_pos <> os.o_len then os.o_pos <- os.o_pos + 1
+        if os.o_pos >= os.o_len then err_unexpected_end_of_output ()
+        ; unsafe_set_uint8 os.o os.o_pos os.hold
+        ; os.o_pos <- os.o_pos + 1
         ; os.bits <- os.bits - 8
         ; os.hold <- os.hold lsr 8
       end
@@ -3272,7 +3257,6 @@ module Def = struct
         ; incr i
         ; os.o_pos <- os.o_pos + 1
       done
-      ; os.i_pos <- os.i_pos + !i
 
     let write_uncompressed_block os len is_final_block =
       write_block_header os is_final_block blocktype_uncompressed
@@ -3292,13 +3276,13 @@ module Def = struct
         ; write_uncompressed_blocks os block_length is_final_block
 
     let flush_output os =
-      if os.o_pos == os.o_len then err_unexpected_end_of_output ()
-      ; while os.bits > 0 do
-          unsafe_set_uint8 os.o os.o_pos os.hold
-          ; os.o_pos <- os.o_pos + 1
-          ; os.bits <- os.bits - 8
-          ; os.hold <- os.hold lsr 8
-        done
+      while os.bits > 0 do
+        if os.o_pos >= os.o_len then err_unexpected_end_of_output ()
+        ; unsafe_set_uint8 os.o os.o_pos os.hold
+        ; os.o_pos <- os.o_pos + 1
+        ; os.bits <- os.bits - 8
+        ; os.hold <- os.hold lsr 8
+      done
       ; os.o_pos
 
     let compress_none _c i o =
