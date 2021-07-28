@@ -17,6 +17,7 @@ let bigstring_create l =
 let bigstring_length x = Bigarray.Array1.dim x [@@inline]
 
 external swap : int -> int = "%bswap16"
+external swap32 : int32 -> int32 = "%bswap_int32"
 external unsafe_get_uint8 : bigstring -> int -> int = "%caml_ba_ref_1"
 external unsafe_get_char : bigstring -> int -> char = "%caml_ba_ref_1"
 external unsafe_get_uint16 : bigstring -> int -> int = "%caml_bigstring_get16"
@@ -51,6 +52,22 @@ external bytes_unsafe_set_uint32 : bytes -> int -> int32 -> unit
 let unsafe_set_uint16_le =
   if not Sys.big_endian then fun buf off v -> unsafe_set_uint16 buf off v
   else fun buf off v -> unsafe_set_uint16 buf off (swap v)
+
+let _unsafe_set_uint16_be =
+  if Sys.big_endian then fun buf off v -> unsafe_set_uint16 buf off v
+  else fun buf off v -> unsafe_set_uint16 buf off (swap v)
+
+let unsafe_get_uint16_le =
+  if not Sys.big_endian then fun buf off -> unsafe_get_uint16 buf off
+  else fun buf off -> swap (unsafe_get_uint16 buf off)
+
+let _unsafe_get_uint16_be =
+  if Sys.big_endian then fun buf off -> unsafe_get_uint16 buf off
+  else fun buf off -> swap (unsafe_get_uint16 buf off)
+
+let _unsafe_set_uint32_le =
+  if Sys.big_endian then fun buf off v -> unsafe_set_uint32 buf off (swap32 v)
+  else fun buf off v -> unsafe_set_uint32 buf off v
 
 let bigstring_to_string v =
   let len = bigstring_length v in
@@ -1530,8 +1547,8 @@ module Inf = struct
       ; d.hold <- 0
       ; d.bits <- 0
       ; if i_rem d < 4 then err_unexpected_end_of_input ()
-      ; let len = unsafe_get_uint16 d.i d.i_pos in
-        let nlen = unsafe_get_uint16 d.i (d.i_pos + 2) in
+      ; let len = unsafe_get_uint16_le d.i d.i_pos in
+        let nlen = unsafe_get_uint16_le d.i (d.i_pos + 2) in
         d.i_pos <- d.i_pos + 4
         ; if nlen != 0xffff - len then err_invalid_complement_of_length ()
           else (
@@ -1545,7 +1562,7 @@ module Inf = struct
       if d.bits < n then
         let rem = i_rem d in
         if rem > 1 then (
-          d.hold <- d.hold lor (unsafe_get_uint16 d.i d.i_pos lsl d.bits)
+          d.hold <- d.hold lor (unsafe_get_uint16_le d.i d.i_pos lsl d.bits)
           ; d.i_pos <- d.i_pos + 2
           ; d.bits <- d.bits + 16)
         else if rem = 1 then (
@@ -1559,7 +1576,7 @@ module Inf = struct
       if d.bits < n then
         let rem = i_rem d in
         if rem > 1 then (
-          d.hold <- d.hold lor (unsafe_get_uint16 d.i d.i_pos lsl d.bits)
+          d.hold <- d.hold lor (unsafe_get_uint16_le d.i d.i_pos lsl d.bits)
           ; d.i_pos <- d.i_pos + 2
           ; d.bits <- d.bits + 16)
         else if rem = 1 then (
@@ -2436,8 +2453,8 @@ module Def = struct
     let k3 e =
       assert (o_rem e >= 4)
 
-      ; unsafe_set_uint16 e.o (e.o_pos + 0) len
-      ; unsafe_set_uint16 e.o (e.o_pos + 2) (lnot len)
+      ; unsafe_set_uint16_le e.o (e.o_pos + 0) len
+      ; unsafe_set_uint16_le e.o (e.o_pos + 2) (lnot len)
       ; e.o_pos <- e.o_pos + 4
       ; e.flat <- 0
 
@@ -2552,7 +2569,7 @@ module Def = struct
   (* TODO: not really clear. *)
   and flush_bits ~bits ~hold k e =
     if e.bits >= 16 && o_rem e > 1 then (
-      unsafe_set_uint16 e.o e.o_pos (e.hold land 0xffff)
+      unsafe_set_uint16_le e.o e.o_pos (e.hold land 0xffff)
       ; e.hold <- e.hold lsr 16
       ; e.bits <- e.bits - 16
       ; e.o_pos <- e.o_pos + 2)
@@ -2606,7 +2623,7 @@ module Def = struct
 
     let rec emit e =
       if !bits >= 16 then (
-        unsafe_set_uint16 e.o !o_pos !hold
+        unsafe_set_uint16_le e.o !o_pos !hold
         ; hold := !hold lsr 16
         ; bits := !bits - 16
         ; o_pos := !o_pos + 2
@@ -2765,7 +2782,7 @@ module Def = struct
   and force blk e =
     let emit e =
       if e.bits >= 16 then (
-        unsafe_set_uint16 e.o e.o_pos e.hold
+        unsafe_set_uint16_le e.o e.o_pos e.hold
         ; e.hold <- e.hold lsr 16
         ; e.bits <- e.bits - 16
         ; e.o_pos <- e.o_pos + 2) in
@@ -3220,7 +3237,7 @@ module Def = struct
       ; os.bits <- os.bits + num_bits
       ; if os.bits >= 16 then begin
           if os.o_pos + 1 >= os.o_len then err_unexpected_end_of_output ()
-          ; unsafe_set_uint16 os.o os.o_pos os.hold
+          ; unsafe_set_uint16_le os.o os.o_pos os.hold
           ; os.o_pos <- os.o_pos + 2
           ; os.bits <- os.bits - 16
           ; os.hold <- os.hold lsr 16
