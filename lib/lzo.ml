@@ -61,6 +61,8 @@ external unsafe_set_int32 : bigstring -> int -> int32 -> unit
   = "%caml_bigstring_set32"
 
 external swap16 : int -> int = "%bswap16"
+external swap32 : int32 -> int32 = "caml_int32_bswap"
+external swap64 : int64 -> int64 = "caml_int64_bswap"
 
 (* XXX(dinosaure): assume that LZO does need [memcpy] behaviour. *)
 let unsafe_blit src src_off dst dst_off len =
@@ -134,6 +136,14 @@ let unsafe_get_int16 buf ofs = function
 let get_int16 buf ofs endian =
   if ofs < 0 || ofs > bigstring_length buf - 2 then raise Out_of_bound
   ; unsafe_get_int16 buf ofs endian
+
+let get_int32_le =
+  if Sys.big_endian then fun buf off -> swap32 (get_int32 buf off)
+  else fun buf off -> get_int32 buf off
+
+let get_int64_le =
+  if Sys.big_endian then fun buf off -> swap64 (get_int64 buf off)
+  else fun buf off -> get_int64 buf off
 
 let kstrf k fmt = Format.kasprintf k fmt
 
@@ -213,7 +223,7 @@ let count t =
   let idx = ref t.i_pos in
   let max = bigstring_length t.i in
 
-  while (not (!idx > max - 4)) && get_int32 t.i !idx = 0l do
+  while (not (!idx > max - 4)) && get_int32_le t.i !idx = 0l do
     idx := !idx + 4
     ; res := !res + 4
   done
@@ -410,8 +420,6 @@ let _m3_max_offset = 0x4000
 let ( .%[] ) buf ofs = get_int8 buf ofs
 let ( .%[]<- ) buf ofs v = set_int8 buf ofs v
 
-external swap32 : int32 -> int32 = "caml_int32_bswap"
-
 let index =
   [|
      0; 1; 2; 53; 3; 7; 54; 27; 4; 38; 41; 8; 34; 55; 48; 28; 62; 5; 39; 46; 44
@@ -427,10 +435,6 @@ let ctz v =
   let ( >> ) = Int64.shift_right_logical in
   let idx = v land neg v * 0x022fdd63cc95386dL >> 58 in
   index.(Int64.to_int idx)
-
-let get_int32_le =
-  if Sys.big_endian then fun buf off -> swap32 (get_int32 buf off)
-  else fun buf off -> get_int32 buf off
 
 let record_match ~off ~len out_data _anchor out_pos =
   let out_pos = ref out_pos in
@@ -588,8 +592,9 @@ let compress in_data in_pos in_len out_data out_pos _out_len t wrkmem =
           let len = ref 4 in
           while
             idx0 + !len - in_pos < idx_end
-            && get_int64 in_data (idx0 + !len)
-               = get_int64 in_data (reference + !len)
+            && get_int64_le in_data (idx0 + !len)
+               = get_int64_le in_data (reference + !len)
+            (* XXX(dinosaure): may be [_le] is not needed. *)
           do
             len := !len + 8
           done
@@ -600,8 +605,8 @@ let compress in_data in_pos in_len out_data out_pos _out_len t wrkmem =
                 !len
                 + ctz
                     (Int64.logxor
-                       (get_int64 in_data (idx0 + !len))
-                       (get_int64 in_data (reference + !len)))
+                       (get_int64_le in_data (idx0 + !len))
+                       (get_int64_le in_data (reference + !len)))
                   / 8
           ; let op =
               record_match ~off:(idx0 - reference) ~len:!len out_data out_pos op

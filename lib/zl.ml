@@ -20,6 +20,15 @@ external unsafe_get_uint8 : bigstring -> int -> int = "%caml_ba_ref_1"
 external unsafe_get_uint16 : bigstring -> int -> int = "%caml_bigstring_get16"
 external unsafe_get_uint32 : bigstring -> int -> int32 = "%caml_bigstring_get32"
 external unsafe_set_uint8 : bigstring -> int -> int -> unit = "%caml_ba_set_1"
+external swap16 : int -> int = "%bswap16"
+
+let _unsafe_get_uint16_be v i =
+  if Sys.big_endian then unsafe_get_uint16 v i
+  else swap16 (unsafe_get_uint16 v i)
+
+let unsafe_get_uint16_le v i =
+  if Sys.big_endian then swap16 (unsafe_get_uint16 v i)
+  else unsafe_get_uint16 v i
 
 external unsafe_set_uint16 : bigstring -> int -> int -> unit
   = "%caml_bigstring_set16"
@@ -123,6 +132,10 @@ let unsafe_set_uint32_be =
 let unsafe_set_uint16_be =
   if Sys.big_endian then fun buf off v -> unsafe_set_uint16 buf off v
   else fun buf off v -> unsafe_set_uint16 buf off (swap16 v)
+
+let _unsafe_set_uint16_le =
+  if Sys.big_endian then fun buf off v -> unsafe_set_uint16 buf off (swap16 v)
+  else fun buf off v -> unsafe_set_uint16 buf off v
 
 let invalid_bounds off len =
   invalid_arg "Out of bounds (off: %d, len: %d)" off len
@@ -236,7 +249,7 @@ module Inf = struct
   let rec header d =
     let k d =
       let[@warning "-8"] (Hd {o}) = d.dd in
-      let cmf = unsafe_get_uint16 d.t 0 in
+      let cmf = unsafe_get_uint16_le d.t 0 in
       let cm = cmf land 0b1111 in
       let cinfo = (cmf lsr 4) land 0b1111 in
       let flg = cmf lsr 8 in
@@ -252,7 +265,7 @@ module Inf = struct
         ; decode
             {
               d with
-              hd= unsafe_get_uint16 d.t 0
+              hd= unsafe_get_uint16_le d.t 0
             ; k= decode
             ; dd
             ; t_need= 0
@@ -378,7 +391,7 @@ module Inf = struct
       | #De.Inf.Ns.error as e -> De.Inf.Ns.pp_error ppf e
 
     let header src =
-      let cmf = unsafe_get_uint16 src 0 in
+      let cmf = unsafe_get_uint16_le src 0 in
       let cm = cmf land 0b1111 in
       let _cinfo = (cmf lsr 4) land 0b1111 in
       let flg = cmf lsr 8 in
