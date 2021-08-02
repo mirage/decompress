@@ -1,3 +1,8 @@
+### v1.4.2 2021-08-02 Paris (France)
+
+- Fix lower bounds of `cmdliner` (@kit-ty-kate, #130)
+- Fix big-endian support (@dinosaure, @talex5, #131)
+
 ### v1.4.1 2021-05-11 Paris (France)
 
 - Fix and of file and end of block _op-code_ (@dinosaure, #123)
