@@ -674,8 +674,8 @@ let fuzz2 () =
     ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e"
       (* ~~~~~~~~~~~~~~~~ *)
     ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e"
-      (* ~~~~~~~~~~~~~~~~ *); "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x3a\x2c\x50"
-      (* ~~~~~~~~:,P *)
+      (* ~~~~~~~~~~~~~~~~ *)
+    ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x3a\x2c\x50" (* ~~~~~~~~:,P *)
     ] in
   let expected = String.concat "" expected in
   (* All of src is not used (last byte is useless) *)
@@ -779,8 +779,8 @@ let fuzz5 () =
   let expected =
     [
       "\x1a\xca\x78\x78\x78\x78\x78\x78\x78\x50\x50\x37\x50\x50\x50\x50"
-      (* ..xxxxxxxPP7PPPP *); "\x50\x50\x50\x50\x50\x50\x50\x50\x50"
-      (* PPPPPPPPP *)
+      (* ..xxxxxxxPP7PPPP *)
+    ; "\x50\x50\x50\x50\x50\x50\x50\x50\x50" (* PPPPPPPPP *)
     ] in
   let expected = String.concat "" expected in
   (* All of src is not used (last byte is useless) *)
@@ -842,8 +842,8 @@ let fuzz9 () =
       "\x9b\x01\x95\xfc\x51\xd2\xed\xc8\xce\xc8\xff\x80\x00\x00\x7f\xff"
       (* ....Q........... *)
     ; "\x79\x2f\xe9\x51\x88\x7b\xb8\x2f\xef\xa5\x8c\xf8\xf1\xb6\xce\xc8"
-      (* y/.Q.{./........ *); "\xb8\xc8\xff\x2f\x00\x7f\x88\x7b\xbc"
-      (* .../...{. *)
+      (* y/.Q.{./........ *)
+    ; "\xb8\xc8\xff\x2f\x00\x7f\x88\x7b\xbc" (* .../...{. *)
     ] in
   let src = bigstring_of_string (String.concat "" src) in
   Alcotest.(check check_decode)

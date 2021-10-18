@@ -643,7 +643,6 @@ module Inf = struct
     | End_of_inflate
 
   and jump = Length | Extra_length | Distance | Extra_distance | Write
-
   and ret = Await | Flush | End | K | Malformed of string
 
   let malformedf fmt = kstrf (fun s -> Malformed s) fmt
