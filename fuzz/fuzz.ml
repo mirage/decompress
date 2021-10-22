@@ -158,7 +158,7 @@ let pp_chr =
   Fmt.using
     (function
       | '\032' .. '\126' as x -> String.make 1 x
-      | chr -> Fmt.strf "\\%03d" (Char.code chr))
+      | chr -> Fmt.str "\\%03d" (Char.code chr))
     Fmt.string
 
 let pp_cmd ppf = function
