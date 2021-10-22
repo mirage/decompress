@@ -145,7 +145,7 @@ The benchmark requires `libzlib-dev`, `cmdliner` and `bos` to be able to compile
 and the executable to produce the CSV file. To build the benchmark:
 
 ```sh
-$ dune build bench/output.csv
+$ dune build --profile benchmark bench/output.csv
 ```
 
 On linux machines, `/dev/urandom` will generate the random input for piping to zpipe. To 
