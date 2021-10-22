@@ -1855,7 +1855,7 @@ let test_invalid_hcrc () =
 let os = Alcotest.testable Gz.pp_os Gz.equal_os
 
 let test_gzip_os v_os =
-  Alcotest.test_case (Fmt.strf "GZip with OS (%a)" Gz.pp_os v_os) `Quick
+  Alcotest.test_case (Fmt.str "GZip with OS (%a)" Gz.pp_os v_os) `Quick
   @@ fun () ->
   let input = random 256 in
   let buf = Buffer.create 16 in
@@ -2004,7 +2004,7 @@ let test_lzo_1 () =
   | Error err -> Alcotest.failf "Invalid LZO input: %a" Lzo.pp_error err
 
 let test_corpus_with_lzo filename =
-  Alcotest.test_case (Fmt.strf "lzo and %s" filename) `Quick @@ fun () ->
+  Alcotest.test_case (Fmt.str "lzo and %s" filename) `Quick @@ fun () ->
   let filename = Filename.concat "corpus" filename in
   let ic = open_in filename in
   let len = in_channel_length ic in
