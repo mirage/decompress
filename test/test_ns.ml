@@ -136,40 +136,34 @@ let invalid_complement_of_length () =
   Alcotest.test_case "invalid complement of length" `Quick @@ fun () ->
   let src = bigstring_of_string "\x00\x00\x00\x00\x00" in
   Alcotest.(check check_decode)
-    "invalid complement of length"
-    (Error `Invalid_complement_of_length)
+    "invalid complement of length" (Error `Invalid_complement_of_length)
     (Inf.Ns.inflate src dst)
 
 let invalid_kind_of_block () =
   Alcotest.test_case "invalid kind of block" `Quick @@ fun () ->
   let src = bigstring_of_string "\x06" in
   Alcotest.(check check_decode)
-    "invalid kind of block"
-    (Error `Invalid_kind_of_block)
+    "invalid kind of block" (Error `Invalid_kind_of_block)
     (Inf.Ns.inflate src dst)
 
 let invalid_code_lengths () =
   Alcotest.test_case "invalid code lengths" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\xfe\xff" in
   Alcotest.(check check_decode)
-    "invalid code lengths"
-    (Error `Invalid_dictionary)
-    (Inf.Ns.inflate src dst)
+    "invalid code lengths" (Error `Invalid_dictionary) (Inf.Ns.inflate src dst)
 
 let invalid_bit_length_repeat () =
   Alcotest.test_case "invalid bit length repeat" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\x24\x49\x00" in
   Alcotest.(check check_decode)
-    "invalid bit length repeat"
-    (Error `Invalid_dictionary)
+    "invalid bit length repeat" (Error `Invalid_dictionary)
     (Inf.Ns.inflate src dst)
 
 let invalid_codes () =
   Alcotest.test_case "invalid codes -- missing end-of-block" `Quick @@ fun () ->
   let src = bigstring_of_string "\x04\x00\x24\xe9\xff\x6d" in
   Alcotest.(check check_decode)
-    "invalid codes -- missing end-of-block"
-    (Error `Invalid_dictionary)
+    "invalid codes -- missing end-of-block" (Error `Invalid_dictionary)
     (Inf.Ns.inflate src dst)
 
 let invalid_lengths () =
@@ -179,8 +173,7 @@ let invalid_lengths () =
       "\x04\x80\x49\x92\x24\x49\x92\x24\x49\x92\x24\x71\xff\xff\x93\x11\x00"
   in
   Alcotest.(check check_decode)
-    "invalid literals/lengths"
-    (Error `Invalid_dictionary)
+    "invalid literals/lengths" (Error `Invalid_dictionary)
     (Inf.Ns.inflate src dst)
 
 let invalid_distances () =
@@ -189,16 +182,13 @@ let invalid_distances () =
     bigstring_of_string
       "\x04\x80\x49\x92\x24\x49\x92\x24\x0f\xb4\xff\xff\xc3\x84" in
   Alcotest.(check check_decode)
-    "invalid distances"
-    (Error `Invalid_dictionary)
-    (Inf.Ns.inflate src dst)
+    "invalid distances" (Error `Invalid_dictionary) (Inf.Ns.inflate src dst)
 
 let too_many_length_or_distance_symbols () =
   Alcotest.test_case "too many length of distance symbols" `Quick @@ fun () ->
   let src = bigstring_of_string "\xfc\x00\x00" in
   Alcotest.(check check_decode)
-    "too many length of distance symbols"
-    (Error `Unexpected_end_of_input)
+    "too many length of distance symbols" (Error `Unexpected_end_of_input)
     (Inf.Ns.inflate src dst)
 
 (* XXX(dinosaure): error is not conform to what we expect (best will be [Invalid
@@ -208,8 +198,7 @@ let invalid_distance_code () =
   Alcotest.test_case "invalid distance code" `Quick @@ fun () ->
   let src = bigstring_of_string "\x02\x7e\xff\xff" in
   Alcotest.(check check_decode)
-    "invalid distance code"
-    (Error `Invalid_distance_code)
+    "invalid distance code" (Error `Invalid_distance_code)
     (Inf.Ns.inflate src dst)
 
 (* XXX(dinosaure): see [Inf.base_dist]'s comment about this behavior. *)
@@ -220,8 +209,7 @@ let invalid_distance_too_far_back () =
     bigstring_of_string "\x0c\xc0\x81\x00\x00\x00\x00\x00\x90\xff\x6b\x04\x00"
   in
   Alcotest.(check check_decode)
-    "invalid distance too far back"
-    (Error `Invalid_distance)
+    "invalid distance too far back" (Error `Invalid_distance)
     (Inf.Ns.inflate src dst)
 
 let invalid_flat_not_enough_output () =
@@ -229,8 +217,7 @@ let invalid_flat_not_enough_output () =
   let src = bigstring_of_string "\x01\x04\x00\xfb\xff\xde\xad\xbe\xef" in
   let dst = bigstring_create 0 in
   Alcotest.(check check_decode)
-    "invalid distance too far back"
-    (Error `Unexpected_end_of_output)
+    "invalid distance too far back" (Error `Unexpected_end_of_output)
     (Inf.Ns.inflate src dst)
 
 let invalid_literal_not_enough_output () =
@@ -246,8 +233,7 @@ let invalid_literal_not_enough_output () =
   let src = bigstring_of_string res in
   let dst = bigstring_create 0 in
   Alcotest.(check check_decode)
-    "invalid distance too far back"
-    (Error `Unexpected_end_of_output)
+    "invalid distance too far back" (Error `Unexpected_end_of_output)
     (Inf.Ns.inflate src dst)
 
 let invalid_copy_not_enough_output () =
@@ -263,8 +249,7 @@ let invalid_copy_not_enough_output () =
   let src = bigstring_of_string res in
   let dst = bigstring_create 1 in
   Alcotest.(check check_decode)
-    "invalid distance too far back"
-    (Error `Unexpected_end_of_output)
+    "invalid distance too far back" (Error `Unexpected_end_of_output)
     (Inf.Ns.inflate src dst)
 
 let fixed () =
@@ -831,9 +816,7 @@ let fuzz8 () =
   Alcotest.test_case "fuzz8" `Quick @@ fun () ->
   let src = bigstring_of_string "\x7a\x37\x6d\x99\x13" in
   Alcotest.(check check_decode)
-    "fuzz8"
-    (Error `Unexpected_end_of_input)
-    (Inf.Ns.inflate src dst)
+    "fuzz8" (Error `Unexpected_end_of_input) (Inf.Ns.inflate src dst)
 
 let fuzz9 () =
   Alcotest.test_case "fuzz9" `Quick @@ fun () ->
@@ -847,9 +830,7 @@ let fuzz9 () =
     ] in
   let src = bigstring_of_string (String.concat "" src) in
   Alcotest.(check check_decode)
-    "fuzz9"
-    (Error `Invalid_distance)
-    (Inf.Ns.inflate src dst)
+    "fuzz9" (Error `Invalid_distance) (Inf.Ns.inflate src dst)
 
 let fuzz10 () =
   Alcotest.test_case "fuzz10" `Quick @@ fun () ->
