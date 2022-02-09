@@ -11,3 +11,4 @@ COPY --chown=opam:opam . bench-dir
 WORKDIR bench-dir
 
 RUN opam exec -- opam install -y --deps-only ./decompress-bench.opam
+
