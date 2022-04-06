@@ -147,7 +147,6 @@ let _7 = {good_length= 8; max_lazy= 32; nice_length= 128; max_chain= 256}
 let _8 = {good_length= 32; max_lazy= 128; nice_length= 258; max_chain= 1024}
 let _9 = {good_length= 32; max_lazy= 258; nice_length= 258; max_chain= 4096}
 let _mem_level = 8 (* default *)
-
 let _hash_bits = _mem_level + 7
 let _hash_size = 1 lsl _hash_bits
 let _hash_mask = _hash_size - 1

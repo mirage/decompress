@@ -192,8 +192,7 @@ let command =
          compressed/decompressed data to standard output."
     ] in
   let term = Term.(ret (const run $ deflate $ format))
-  and info = Cmd.info "pipe" ~doc ~man
-  in
+  and info = Cmd.info "pipe" ~doc ~man in
   Cmd.v info term
 
 let () = exit (Cmd.eval' command)
