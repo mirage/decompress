@@ -184,7 +184,6 @@ let format =
 
 let command =
   let doc = "Pipe." in
-  let exits = Term.default_exits in
   let man =
     [
       `S Manpage.s_description
@@ -192,6 +191,9 @@ let command =
         "$(tname) reads from standard input and writes the \
          compressed/decompressed data to standard output."
     ] in
-  Term.(ret (const run $ deflate $ format)), Term.info "pipe" ~exits ~doc ~man
+  let term = Term.(ret (const run $ deflate $ format))
+  and info = Cmd.info "pipe" ~doc ~man
+  in
+  Cmd.v info term
 
-let () = Term.(exit_status @@ eval command)
+let () = exit (Cmd.eval' command)
