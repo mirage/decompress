@@ -15,9 +15,6 @@
    functions even if they are available. Others libraries like [Bigstringaf]
    serve the same purpose of a much better way. *)
 
-module Bigarray = Bigarray_compat
-(** MirageOS compatibility. *)
-
 type bigstring =
   (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 (** The type for [bigstring]. *)

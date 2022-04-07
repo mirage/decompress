@@ -1,7 +1,5 @@
 [@@@landmark "auto"]
 
-module Bigarray = Bigarray_compat (* XXX(dinosaure): MirageOS compatibility. *)
-
 type bigstring =
   (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
@@ -643,7 +641,6 @@ module Inf = struct
     | End_of_inflate
 
   and jump = Length | Extra_length | Distance | Extra_distance | Write
-
   and ret = Await | Flush | End | K | Malformed of string
 
   let malformedf fmt = kstrf (fun s -> Malformed s) fmt
@@ -3913,7 +3910,6 @@ module Lz77 = struct
   let _8 = {good_length= 32; max_lazy= 128; nice_length= 258; max_chain= 1024}
   let _9 = {good_length= 32; max_lazy= 258; nice_length= 258; max_chain= 4096}
   let _mem_level = 8 (* default *)
-
   let _hash_bits = _mem_level + 7
   let _hash_size = 1 lsl _hash_bits
   let _hash_mask = _hash_size - 1

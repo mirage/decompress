@@ -1,5 +1,3 @@
-module Bigarray = Bigarray_compat (* XXX(dinosaure): MirageOS compatibility. *)
-
 type bigstring =
   (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
@@ -177,7 +175,6 @@ type ('a, 'error) t =
   | Lazy : ('a, 'error) t Lazy.t -> ('a, 'error) t
 
 and 'a value = Byte : char value | Short : [ `LE | `BE ] -> int value
-
 and state = State.t
 
 type v = {
