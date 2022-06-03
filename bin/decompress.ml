@@ -153,6 +153,85 @@ let run_gzip_deflate () =
       ; `Ok 0 in
   Def.dst encoder o 0 io_buffer_size |> go
 
+external string_get_uint32 : string -> int -> int32 = "%caml_string_get32"
+
+external bigstring_set_uint32 : Lzo.bigstring -> int -> int32 -> unit
+  = "%caml_bigstring_set32"
+
+let string_get_uint8 str idx = Char.code (String.get str idx)
+
+external bigstring_set_uint8 : Lzo.bigstring -> int -> int -> unit
+  = "%caml_ba_set_1"
+
+let run_lzo_deflate () =
+  let wrkmem = Lzo.make_wrkmem () in
+  let in_contents =
+    let buf = Buffer.create 0x1000 in
+    let tmp = Bytes.create 0x100 in
+    let rec go () =
+      match input stdin tmp 0 (Bytes.length tmp) with
+      | 0 -> Buffer.contents buf
+      | len ->
+        Buffer.add_subbytes buf tmp 0 len
+        ; go ()
+      | exception End_of_file -> Buffer.contents buf in
+    go () in
+  let in_contents =
+    let len = String.length in_contents in
+    let res = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
+    let len0 = len land 3 in
+    let len1 = len asr 2 in
+    for i = 0 to len1 - 1 do
+      let i = i * 4 in
+      let v = string_get_uint32 in_contents i in
+      bigstring_set_uint32 res i v
+    done
+    ; for i = 0 to len0 - 1 do
+        let i = (len1 * 4) + i in
+        let v = string_get_uint8 in_contents i in
+        bigstring_set_uint8 res i v
+      done
+    ; res in
+  let out_contents =
+    Bigarray.(Array1.create char c_layout (Array1.dim in_contents * 2)) in
+  match Lzo.compress in_contents out_contents wrkmem with
+  | len ->
+    bigstring_output stdout out_contents 0 len
+    ; `Ok 0
+  | exception Invalid_argument _ -> assert false
+
+let run_lzo_inflate () =
+  let in_contents =
+    let buf = Buffer.create 0x1000 in
+    let tmp = Bytes.create 0x100 in
+    let rec go () =
+      match input stdin tmp 0 (Bytes.length tmp) with
+      | 0 -> Buffer.contents buf
+      | len ->
+        Buffer.add_subbytes buf tmp 0 len
+        ; go ()
+      | exception End_of_file -> Buffer.contents buf in
+    go () in
+  let in_contents =
+    let len = String.length in_contents in
+    let res = Bigarray.Array1.create Bigarray.char Bigarray.c_layout len in
+    let len0 = len land 3 in
+    let len1 = len asr 2 in
+    for i = 0 to len1 - 1 do
+      let i = i * 4 in
+      let v = string_get_uint32 in_contents i in
+      bigstring_set_uint32 res i v
+    done
+    ; for i = 0 to len0 - 1 do
+        let i = (len1 * 4) + i in
+        let v = string_get_uint8 in_contents i in
+        bigstring_set_uint8 res i v
+      done
+    ; res in
+  match Lzo.uncompress_with_buffer in_contents with
+  | Ok str -> output_string stdout str ; `Ok 0
+  | Error err -> `Error (false, str "%a." Lzo.pp_error err)
+
 let run deflate format =
   match deflate, format with
   | true, `Deflate -> run_deflate ()
@@ -161,11 +240,13 @@ let run deflate format =
   | false, `Zlib -> run_zlib_inflate ()
   | true, `Gzip -> run_gzip_deflate ()
   | false, `Gzip -> run_gzip_inflate ()
+  | true, `Lzo -> run_lzo_deflate ()
+  | false, `Lzo -> run_lzo_inflate ()
 
 open Cmdliner
 
 let deflate =
-  let doc = "Deflate input." in
+  let doc = "Ask to deflate inputs (instead of inflate)." in
   Arg.(value & flag & info ["d"] ~doc)
 
 let format =
@@ -174,25 +255,61 @@ let format =
     | "zlib" -> Ok `Zlib
     | "gzip" -> Ok `Gzip
     | "deflate" -> Ok `Deflate
+    | "lzo" -> Ok `Lzo
     | x -> error_msgf "Invalid format: %S" x in
   let pp ppf = function
     | `Zlib -> Format.pp_print_string ppf "zlib"
     | `Gzip -> Format.pp_print_string ppf "gzip"
-    | `Deflate -> Format.pp_print_string ppf "deflate" in
+    | `Deflate -> Format.pp_print_string ppf "deflate"
+    | `Lzo -> Format.pp_print_string ppf "lzo" in
   let format = Arg.conv (parser, pp) in
   Arg.(value & opt format `Deflate & info ["f"; "format"])
 
 let command =
-  let doc = "Pipe." in
+  let doc = "A tool to deflate/inflate a stream throught a specified format." in
   let man =
     [
       `S Manpage.s_description
     ; `P
-        "$(tname) reads from standard input and writes the \
-         compressed/decompressed data to standard output."
+        "$(tname) reads from the standard input and writes the \
+         deflated/inflated data to the standard output. Several formats \
+         exists:"
+    ; `I
+        ( "DEFLATE"
+        , "DEFLATE is a lossless data compression file format that uses a \
+           combination of LZ77 and Huffman coding. It is specified in RFC 1951 \
+           <https://datatracker.ietf.org/doc/html/rfc1951>." ); `Noblank
+    ; `I
+        ( "GZip"
+        , "GZip is a file format based on the DEFLATE algorithm, which is a \
+           combination of LZ77 and Huffman coding. It encodes few informations \
+           such as: the timestamp, the filename, or the operating system \
+           (which operates the deflation). It generates\n\
+          \           a CRC-32 checksum at the end of the stream. It is \
+           described by the RFC 1952 \
+           <https://datatracker.ietf.org/doc/html/rfc1952>." ); `Noblank
+    ; `I
+        ( "Zlib"
+        , "Zlib is an $(i,abstraction) of the DEFLATE algorithm compression \
+           algorithm which terminates the stream with an ADLER-32 checksum." )
+    ; `Noblank
+    ; `I
+        ( "Lempel-Ziv-Overhumer (LZO)"
+        , "Lempel-Ziv-Oberhumer is a lossless data compression algorithm that \
+           is focused on decompression speed." ); `S Manpage.s_examples
+    ; `P
+        "This is a small example of how to use $(tname) in your favorite shell:"
+    ; `Pre
+        "\\$ $(tname) -f gzip -d <<EOF > file.gz\n\
+         Hello World!\n\
+         EOF\n\
+         \\$ $(tname) -f gzip < file.gz\n\
+         Hello World!\n\
+         \\$"; `S Manpage.s_bugs
+    ; `P "Check bug reports at <https://github.com/mirage/decompress>"
     ] in
   let term = Term.(ret (const run $ deflate $ format))
-  and info = Cmd.info "pipe" ~doc ~man in
+  and info = Cmd.info "decompress" ~doc ~man in
   Cmd.v info term
 
 let () = exit (Cmd.eval' command)
