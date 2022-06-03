@@ -5,4 +5,4 @@
   ../../bindings/stubs/libdecompress.a
   ../../bindings/stubs/decompress.h
   zpipe.c
-  %{bin:decompress.pipe}))
+  %{bin:decompress}))
