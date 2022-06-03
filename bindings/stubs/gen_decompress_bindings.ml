@@ -1,5 +1,4 @@
 open Ctypes
-open Zl
 
 let inflate i i_len o o_len =
   let i = bigarray_of_ptr array1 i_len Bigarray.char i in

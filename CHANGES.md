@@ -1,3 +1,10 @@
+### v1.4.3 2022-04-08 Paris (France)
+
+- Replace deprecated function of `fmt` (@dinosaure, #135)
+- Remove `bigarray-compat`, `stdlib-shims` and support only
+  OCaml >= 4.08.0 (@hannesm, #138)
+- Update to `cmdliner.1.1.0` (@hannesm, #138)
+
 ### v1.4.2 2021-08-02 Paris (France)
 
 - Fix lower bounds of `cmdliner` (@kit-ty-kate, #130)

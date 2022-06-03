@@ -2,8 +2,6 @@ let io_buffer_size = 65536
 let kstrf k fmt = Format.kasprintf k fmt
 let invalid_arg fmt = Format.kasprintf invalid_arg fmt
 
-module Bigarray = Bigarray_compat (* XXX(dinosaure): MirageOS compatibility. *)
-
 type bigstring =
   (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
