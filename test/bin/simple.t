@@ -17,3 +17,6 @@ Simple tests
   $ decompress -fgzip -d < ../corpus/news > news.gz
   $ decompress -fgzip < news.gz > news
   $ diff news ../corpus/news
+  $ decompress -fzlib -d ../corpus/bib bib.zlib
+  $ decompress -fzlib bib.zlib bib
+  $ diff bib ../corpus/bib

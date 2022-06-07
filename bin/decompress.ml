@@ -4,15 +4,18 @@ let o = De.bigstring_create De.io_buffer_size
 let i = De.bigstring_create De.io_buffer_size
 let q = De.Queue.create 4096
 let str fmt = Format.asprintf fmt
+let msgf fmt = Format.kasprintf (fun msg -> `Msg msg) fmt
 let error_msgf fmt = Format.kasprintf (fun err -> Error (`Msg err)) fmt
 
 let bigstring_input ic buf off len =
   let tmp = Bytes.create len in
-  let len = input ic tmp 0 len in
-  for i = 0 to len - 1 do
-    buf.{off + i} <- Bytes.get tmp i
-  done
-  ; len
+  try
+    let len = input ic tmp 0 len in
+    for i = 0 to len - 1 do
+      buf.{off + i} <- Bytes.get tmp i
+    done
+    ; len
+  with End_of_file -> 0
 
 let bigstring_output oc buf off len =
   let res = Bytes.create len in
@@ -21,30 +24,30 @@ let bigstring_output oc buf off len =
   done
   ; output_string oc (Bytes.unsafe_to_string res)
 
-let run_inflate () =
+let run_inflate ic oc =
   let open De in
   let decoder = Inf.decoder `Manual ~o ~w in
   let rec go () =
     match Inf.decode decoder with
     | `Await ->
-      let len = bigstring_input stdin i 0 io_buffer_size in
+      let len = bigstring_input ic i 0 io_buffer_size in
       Inf.src decoder i 0 len ; go ()
     | `Flush ->
       let len = io_buffer_size - Inf.dst_rem decoder in
-      bigstring_output stdout o 0 len
+      bigstring_output oc o 0 len
       ; Inf.flush decoder
       ; go ()
     | `Malformed err -> `Error (false, str "%s." err)
     | `End ->
       let len = io_buffer_size - Inf.dst_rem decoder in
-      if len > 0 then bigstring_output stdout o 0 len
+      if len > 0 then bigstring_output oc o 0 len
       ; `Ok 0 in
   go ()
 
-let run_deflate () =
+let run_deflate ic oc =
   let open De in
-  let state = Lz77.state ~level:4 ~q ~w:l (`Channel stdin) in
-  let encoder = Def.encoder (`Channel stdout) ~q in
+  let state = Lz77.state ~level:4 ~q ~w:l (`Channel ic) in
+  let encoder = Def.encoder (`Channel oc) ~q in
 
   let rec compress () =
     match De.Lz77.compress state with
@@ -71,7 +74,7 @@ let run_deflate () =
   ; compress ()
   ; `Ok 0
 
-let run_zlib_inflate () =
+let run_zlib_inflate ic oc =
   let open Zl in
   let allocate bits = De.make_window ~bits in
   let decoder = Inf.decoder `Manual ~o ~allocate in
@@ -79,61 +82,61 @@ let run_zlib_inflate () =
   let rec go decoder =
     match Inf.decode decoder with
     | `Await decoder ->
-      let len = bigstring_input stdin i 0 De.io_buffer_size in
+      let len = bigstring_input ic i 0 De.io_buffer_size in
       Inf.src decoder i 0 len |> go
     | `Flush decoder ->
       let len = De.io_buffer_size - Inf.dst_rem decoder in
-      bigstring_output stdout o 0 len
+      bigstring_output oc o 0 len
       ; Inf.flush decoder |> go
     | `Malformed err -> `Error (false, str "%s." err)
     | `End decoder ->
       let len = De.io_buffer_size - Inf.dst_rem decoder in
-      if len > 0 then bigstring_output stdout o 0 len
+      if len > 0 then bigstring_output oc o 0 len
       ; `Ok 0 in
   go decoder
 
-let run_zlib_deflate () =
+let run_zlib_deflate ic oc =
   let open Zl in
   let encoder = Def.encoder `Manual `Manual ~q ~w:l ~level:0 in
 
   let rec go encoder =
     match Def.encode encoder with
     | `Await encoder ->
-      let len = bigstring_input stdin i 0 De.io_buffer_size in
+      let len = bigstring_input ic i 0 De.io_buffer_size in
       Def.src encoder i 0 len |> go
     | `Flush encoder ->
       let len = De.io_buffer_size - Def.dst_rem encoder in
-      bigstring_output stdout o 0 len
+      bigstring_output oc o 0 len
       ; Def.dst encoder o 0 De.io_buffer_size |> go
     | `End encoder ->
       let len = De.io_buffer_size - Def.dst_rem encoder in
-      if len > 0 then bigstring_output stdout o 0 len
+      if len > 0 then bigstring_output oc o 0 len
       ; `Ok 0 in
   Def.dst encoder o 0 De.io_buffer_size |> go
 
-let run_gzip_inflate () =
+let run_gzip_inflate ic oc =
   let open Gz in
   let decoder = Inf.decoder `Manual ~o in
 
   let rec go decoder =
     match Inf.decode decoder with
     | `Await decoder ->
-      let len = bigstring_input stdin i 0 io_buffer_size in
+      let len = bigstring_input ic i 0 io_buffer_size in
       Inf.src decoder i 0 len |> go
     | `Flush decoder ->
       let len = io_buffer_size - Inf.dst_rem decoder in
-      bigstring_output stdout o 0 len
+      bigstring_output oc o 0 len
       ; Inf.flush decoder |> go
     | `Malformed err -> `Error (false, str "%s." err)
     | `End decoder ->
       let len = io_buffer_size - Inf.dst_rem decoder in
-      if len > 0 then bigstring_output stdout o 0 len
+      if len > 0 then bigstring_output oc o 0 len
       ; `Ok 0 in
   go decoder
 
 let now () = Int32.of_float (Unix.gettimeofday ())
 
-let run_gzip_deflate () =
+let run_gzip_deflate ic oc =
   let open Gz in
   let encoder =
     Def.encoder `Manual `Manual ~q ~w:l ~level:0 ~mtime:(now ()) Gz.Unix in
@@ -141,15 +144,15 @@ let run_gzip_deflate () =
   let rec go encoder =
     match Def.encode encoder with
     | `Await encoder ->
-      let len = bigstring_input stdin i 0 io_buffer_size in
+      let len = bigstring_input ic i 0 io_buffer_size in
       Def.src encoder i 0 len |> go
     | `Flush encoder ->
       let len = io_buffer_size - Def.dst_rem encoder in
-      bigstring_output stdout o 0 len
+      bigstring_output oc o 0 len
       ; Def.dst encoder o 0 io_buffer_size |> go
     | `End encoder ->
       let len = io_buffer_size - Def.dst_rem encoder in
-      if len > 0 then bigstring_output stdout o 0 len
+      if len > 0 then bigstring_output oc o 0 len
       ; `Ok 0 in
   Def.dst encoder o 0 io_buffer_size |> go
 
@@ -163,13 +166,13 @@ let string_get_uint8 str idx = Char.code (String.get str idx)
 external bigstring_set_uint8 : Lzo.bigstring -> int -> int -> unit
   = "%caml_ba_set_1"
 
-let run_lzo_deflate () =
+let run_lzo_deflate ic oc =
   let wrkmem = Lzo.make_wrkmem () in
   let in_contents =
     let buf = Buffer.create 0x1000 in
     let tmp = Bytes.create 0x100 in
     let rec go () =
-      match input stdin tmp 0 (Bytes.length tmp) with
+      match input ic tmp 0 (Bytes.length tmp) with
       | 0 -> Buffer.contents buf
       | len ->
         Buffer.add_subbytes buf tmp 0 len
@@ -196,16 +199,16 @@ let run_lzo_deflate () =
     Bigarray.(Array1.create char c_layout (Array1.dim in_contents * 2)) in
   match Lzo.compress in_contents out_contents wrkmem with
   | len ->
-    bigstring_output stdout out_contents 0 len
+    bigstring_output oc out_contents 0 len
     ; `Ok 0
   | exception Invalid_argument _ -> assert false
 
-let run_lzo_inflate () =
+let run_lzo_inflate ic oc =
   let in_contents =
     let buf = Buffer.create 0x1000 in
     let tmp = Bytes.create 0x100 in
     let rec go () =
-      match input stdin tmp 0 (Bytes.length tmp) with
+      match input ic tmp 0 (Bytes.length tmp) with
       | 0 -> Buffer.contents buf
       | len ->
         Buffer.add_subbytes buf tmp 0 len
@@ -229,19 +232,33 @@ let run_lzo_inflate () =
       done
     ; res in
   match Lzo.uncompress_with_buffer in_contents with
-  | Ok str -> output_string stdout str ; `Ok 0
+  | Ok str -> output_string oc str ; `Ok 0
   | Error err -> `Error (false, str "%a." Lzo.pp_error err)
 
-let run deflate format =
-  match deflate, format with
-  | true, `Deflate -> run_deflate ()
-  | false, `Deflate -> run_inflate ()
-  | true, `Zlib -> run_zlib_deflate ()
-  | false, `Zlib -> run_zlib_inflate ()
-  | true, `Gzip -> run_gzip_deflate ()
-  | false, `Gzip -> run_gzip_inflate ()
-  | true, `Lzo -> run_lzo_deflate ()
-  | false, `Lzo -> run_lzo_inflate ()
+let run deflate format filename_ic filename_oc =
+  let ic, close_ic =
+    match filename_ic with
+    | Some filename ->
+      let ic = open_in_bin filename in
+      ic, fun () -> close_in ic
+    | None -> stdin, ignore in
+  let oc, close_oc =
+    match filename_oc with
+    | Some filename ->
+      let oc = open_out_bin filename in
+      oc, fun () -> close_out oc
+    | None -> stdout, ignore in
+  let res =
+    match deflate, format with
+    | true, `Deflate -> run_deflate ic oc
+    | false, `Deflate -> run_inflate ic oc
+    | true, `Zlib -> run_zlib_deflate ic oc
+    | false, `Zlib -> run_zlib_inflate ic oc
+    | true, `Gzip -> run_gzip_deflate ic oc
+    | false, `Gzip -> run_gzip_inflate ic oc
+    | true, `Lzo -> run_lzo_deflate ic oc
+    | false, `Lzo -> run_lzo_inflate ic oc in
+  close_ic () ; close_oc () ; res
 
 open Cmdliner
 
@@ -263,10 +280,14 @@ let format =
     | `Deflate -> Format.pp_print_string ppf "deflate"
     | `Lzo -> Format.pp_print_string ppf "lzo" in
   let format = Arg.conv (parser, pp) in
-  Arg.(value & opt format `Deflate & info ["f"; "format"])
+  Arg.(value & opt format `Deflate & info ["f"; "format"] ~docv:"<format>")
+
+let input = Arg.(value & pos 0 (some file) None & info [] ~docv:"<filename>")
+let output = Arg.(value & pos 1 (some string) None & info [] ~docv:"<filename>")
 
 let command =
-  let doc = "A tool to deflate/inflate a stream throught a specified format." in
+  let doc =
+    "A tool to deflate/inflate a stream/file throught a specified format." in
   let man =
     [
       `S Manpage.s_description
@@ -308,7 +329,7 @@ let command =
          \\$"; `S Manpage.s_bugs
     ; `P "Check bug reports at <https://github.com/mirage/decompress>"
     ] in
-  let term = Term.(ret (const run $ deflate $ format))
+  let term = Term.(ret (const run $ deflate $ format $ input $ output))
   and info = Cmd.info "decompress" ~doc ~man in
   Cmd.v info term
 
