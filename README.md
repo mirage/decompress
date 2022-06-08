@@ -125,7 +125,7 @@ This ability can be used on:
 
 ### Example
 
-An example exists into [bin/main.ml][main.ml] where you can see how to use
+An example exists into [bin/decompress.ml][decompress.ml] where you can see how to use
 `decompress.zl` and `decompress.de`.
 
 ### Higher interface
@@ -167,4 +167,4 @@ input bytes, output bytes and memory usage at each second.
  * `optint`
 
 [checkseum]: https://github.com/mirage/checkseum
-[main.ml]: https://github.com/mirage/decompress/blob/master/bin/pipe.ml
+[decompress.ml]: ./bin/decompress.ml
