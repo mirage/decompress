@@ -498,7 +498,8 @@ module Def = struct
     if o_rem e >= 4 then k e else flush checksum e
 
   let make_block ?(last = false) e =
-    if last = false && e.dynamic then
+    if De.Lz77.no_compression e.s then {De.Def.kind= De.Def.Flat; last}
+    else if last = false && e.dynamic then
       let literals = De.Lz77.literals e.s in
       let distances = De.Lz77.distances e.s in
       let dynamic = De.Def.dynamic_of_frequencies ~literals ~distances in
@@ -574,7 +575,7 @@ module Def = struct
     ; o_pos
     ; o_len
     ; level=
-        (match level with 0 | 1 -> 0 | 2 | 3 | 4 | 5 -> 1 | 6 -> 2 | _ -> 3)
+        (match level with 0 -> 0 | 1 | 2 | 3 | 4 | 5 -> 1 | 6 -> 2 | _ -> 3)
     ; dynamic
     ; e= De.Def.encoder `Manual ~q
     ; s= De.Lz77.state ~level `Manual ~q ~w

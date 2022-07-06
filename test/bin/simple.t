@@ -20,3 +20,9 @@ Simple tests
   $ decompress -fzlib -d ../corpus/bib bib.zlib
   $ decompress -fzlib bib.zlib bib
   $ diff bib ../corpus/bib
+  $ decompress -fzlib -d --level 0 ../corpus/bib bib.zlib
+  $ decompress -fzlib bib.zlib bib
+  $ diff bib ../corpus/bib
+  $ decompress -fgzip -d --level 0 ../corpus/news news.gz
+  $ decompress -fgzip news.gz news
+  $ diff news ../corpus/news

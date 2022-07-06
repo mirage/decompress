@@ -544,8 +544,7 @@ let flat () =
   let go = function
     | `Ok -> Buffer.contents b
     | `Partial | `Block -> assert false in
-  let res0 =
-    go (Def.encode encoder (`Block {Def.kind= Def.Flat 4; last= true})) in
+  let res0 = go (Def.encode encoder (`Block {Def.kind= Def.Flat; last= true})) in
   Alcotest.(check string)
     "deadbeef deflated" "\x01\x04\x00\xfb\xff\xde\xad\xbe\xef" res0
   ; let src = bigstring_of_string res0 in
@@ -574,9 +573,7 @@ let fixed_and_flat () =
     | `Ok -> Buffer.contents b
     | `Partial -> assert false
     | `Block ->
-      go
-        (Def.encode encoder
-           (`Block {Def.kind= Def.Flat (Queue.length q); last= true})) in
+      go (Def.encode encoder (`Block {Def.kind= Def.Flat; last= true})) in
   let res0 = go (Def.encode encoder `Flush) in
   let src = bigstring_of_string res0 in
   let res = Inf.Ns.inflate src dst in
@@ -595,18 +592,24 @@ let flat_and_fixed () =
     Queue.of_list
       [
         `Literal '\xDE'; `Literal '\xAD'; `Literal '\xBE'; `Literal '\xEF'
-      ; `Literal 'a'; `Copy (1, 3); `End
+      ; `Literal 'a'
       ] in
   let b = Buffer.create 16 in
   let encoder = Def.encoder (`Buffer b) ~q in
 
-  let rec go = function
-    | `Ok -> Buffer.contents b
+  let rec go0 = function
+    | `Ok ->
+      Queue.push_exn q (Queue.cmd (`Copy (1, 3)))
+      ; Queue.push_exn q Queue.eob
+      ; go0 (Def.encode encoder `Flush)
     | `Partial -> assert false
     | `Block ->
-      go (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true})) in
+      go1 (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true}))
+  and go1 = function
+    | `Partial | `Block -> assert false
+    | `Ok -> Buffer.contents b in
   let res0 =
-    go (Def.encode encoder (`Block {Def.kind= Def.Flat 4; last= false})) in
+    go0 (Def.encode encoder (`Block {Def.kind= Def.Flat; last= false})) in
 
   let src = bigstring_of_string res0 in
   let res = Inf.Ns.inflate src dst in

@@ -722,7 +722,8 @@ module Def = struct
     if o_rem e >= 8 then k e else flush checksum e
 
   let make_block ?(last = false) e =
-    if last = false then
+    if De.Lz77.no_compression e.s then {De.Def.kind= Flat; last}
+    else if last = false then
       let literals = De.Lz77.literals e.s in
       let distances = De.Lz77.distances e.s in
       let dynamic = De.Def.dynamic_of_frequencies ~literals ~distances in

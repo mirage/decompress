@@ -344,36 +344,30 @@ let () =
       Queue.push_exn q (Queue.literal s.[i])
     done in
 
-  let rec go = function
-    | `Ok -> Buffer.contents res
-    | `Partial -> assert false
-    | `Block -> (
+  let rec go last = function
+    | `Ok when last -> Buffer.contents res
+    | `Ok -> (
       match !payloads with
-      | [] ->
-        assert false (* XXX(dinosaure): or [{ kind= Flat 0; last= true; }] *)
-      | [x] ->
-        fill q x
-        ; payloads := []
-        ; go
-            (Def.encode encoder
-               (`Block {Def.kind= Def.Flat (String.length x); last= true}))
+      | [] -> assert false
       | x :: r ->
         fill q x
         ; payloads := r
-        ; go
-            (Def.encode encoder
-               (`Block {Def.kind= Def.Flat (String.length x); last= false})))
+        ; go last (Def.encode encoder `Flush))
+    | `Partial -> assert false
+    | `Block ->
+      let last = List.length !payloads <= 0 in
+      go last (Def.encode encoder (`Block {Def.kind= Def.Flat; last})) in
+  let res0 =
+    go false (Def.encode encoder (`Block {Def.kind= Def.Flat; last= false}))
   in
-  Queue.push_exn q Queue.eob
-  ; let res0 = go (Def.encode encoder `Flush) in
-    let buf1 = Buffer.create 4096 in
+  let buf1 = Buffer.create 4096 in
 
-    let flush b l =
-      for i = 0 to l - 1 do
-        Buffer.add_char buf1 b.{i}
-      done in
-    match Higher.of_string ~o ~w res0 ~flush with
-    | Ok () ->
-      Crowbar.check_eq ~eq:String.equal ~pp:pp_string ~cmp:String.compare
-        (Buffer.contents buf1) (String.concat "" inputs)
-    | Error (`Msg err) -> Crowbar.fail err
+  let flush b l =
+    for i = 0 to l - 1 do
+      Buffer.add_char buf1 b.{i}
+    done in
+  match Higher.of_string ~o ~w res0 ~flush with
+  | Ok () ->
+    Crowbar.check_eq ~eq:String.equal ~pp:pp_string ~cmp:String.compare
+      (Buffer.contents buf1) (String.concat "" inputs)
+  | Error (`Msg err) -> Crowbar.fail err

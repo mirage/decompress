@@ -212,6 +212,10 @@ module Queue : sig
   val eob : cmd
   (** [eob] is {i End Of Block} {!cmd}.*)
 
+  val end_with_eob : t -> bool
+  (** [end_with_eob t] returns [true] if the last inserted command
+      is {!eob}. Otherwise, it returns [false]. *)
+
   val cmd : [ `Literal of char | `Copy of int * int | `End ] -> cmd
   (** [cmd command] is {!cmd} from a human-readable value. *)
 
@@ -278,7 +282,7 @@ module Def : sig
 
   (** The type for DEFLATE header block. *)
   type kind =
-    | Flat of int
+    | Flat
         (** A [Flat len] block is a non-compressed block of [len] byte(s). After a
        {i flat} block, output is aligned on bytes. *)
     | Fixed
@@ -465,6 +469,8 @@ module Lz77 : sig
       The client can constrain lookup operation by a {i window}. Small window
      enforces {!compress} to emit small distances. However, large window allows
      {!compress} to go furthermore to recognize a pattern which can be expensive. *)
+
+  val no_compression : state -> bool
 end
 
 (** {2 Higher API.}

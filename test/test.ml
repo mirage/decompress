@@ -980,8 +980,7 @@ let flat () =
   let go = function
     | `Ok -> Buffer.contents b
     | `Partial | `Block -> assert false in
-  let res0 =
-    go (Def.encode encoder (`Block {Def.kind= Def.Flat 4; last= true})) in
+  let res0 = go (Def.encode encoder (`Block {Def.kind= Def.Flat; last= true})) in
   Alcotest.(check string)
     "deadbeef deflated" "\x01\x04\x00\xfb\xff\xde\xad\xbe\xef" res0
   ; let decoder = Inf.decoder (`String res0) ~w ~o in
@@ -1003,13 +1002,12 @@ let fixed_and_flat () =
     | `Ok -> Buffer.contents b
     | `Partial -> assert false
     | `Block ->
-      go
-        (Def.encode encoder
-           (`Block {Def.kind= Def.Flat (Queue.length q); last= true})) in
+      go (Def.encode encoder (`Block {Def.kind= Def.Flat; last= true})) in
   let res0 = go (Def.encode encoder `Flush) in
-  let decoder = Inf.decoder (`String res0) ~w ~o in
-  let res1 = unroll_inflate decoder in
-  Alcotest.(check string) "aaaadeadbeef" "aaaa\xde\xad\xbe\xef" res1
+  Fmt.epr ">>> %S\n%!" res0
+  ; let decoder = Inf.decoder (`String res0) ~w ~o in
+    let res1 = unroll_inflate decoder in
+    Alcotest.(check string) "aaaadeadbeef" "aaaa\xde\xad\xbe\xef" res1
 
 let flat_and_fixed () =
   Alcotest.test_case "flat+fixed" `Quick @@ fun () ->
@@ -1017,18 +1015,24 @@ let flat_and_fixed () =
     Queue.of_list
       [
         `Literal '\xDE'; `Literal '\xAD'; `Literal '\xBE'; `Literal '\xEF'
-      ; `Literal 'a'; `Copy (1, 3); `End
+      ; `Literal 'a'
       ] in
   let b = Buffer.create 16 in
   let encoder = Def.encoder (`Buffer b) ~q in
 
-  let rec go = function
-    | `Ok -> Buffer.contents b
+  let rec go0 = function
+    | `Ok ->
+      Queue.push_exn q (Queue.cmd (`Copy (1, 3)))
+      ; Queue.push_exn q Queue.eob
+      ; go1 (Def.encode encoder `Flush)
+    | `Partial | `Block -> assert false
+  and go1 = function
     | `Partial -> assert false
+    | `Ok -> Buffer.contents b
     | `Block ->
-      go (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true})) in
+      go0 (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true})) in
   let res0 =
-    go (Def.encode encoder (`Block {Def.kind= Def.Flat 4; last= false})) in
+    go0 (Def.encode encoder (`Block {Def.kind= Def.Flat; last= false})) in
   let decoder = Inf.decoder (`String res0) ~w ~o in
   let res1 = unroll_inflate decoder in
   Alcotest.(check string) "deadbeefaaaa" "\xde\xad\xbe\xefaaaa" res1
@@ -1276,7 +1280,7 @@ let gzip_compress_and_uncompress ~filename ic =
     let bf = Buffer.create 4096 in
     let encoder =
       Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l Gz.Unix ~q ~w:l
-        ~level:0 in
+        ~level:4 in
     let decoder = Gz.Inf.decoder `Manual ~o in
 
     let rec go_encode decoder encoder =
@@ -1334,7 +1338,7 @@ let gzip_compress_and_uncompress ~filename ic =
 
 let zlib_compress_and_uncompress ic =
   De.Queue.reset q
-  ; let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w:l ~level:0 in
+  ; let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w:l ~level:4 in
     let decoder =
       Zl.Inf.decoder `Manual ~o ~allocate:(fun bits -> De.make_window ~bits)
     in
@@ -1731,7 +1735,7 @@ let test_generate_empty_gzip_with_name () =
   ; let buf = Buffer.create 16 in
     let encoder =
       Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l
-        Gz.Unix ~q ~w:l ~level:0 in
+        Gz.Unix ~q ~w:l ~level:4 in
     let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -1757,7 +1761,7 @@ let test_generate_foo_gzip () =
   ; let buf = Buffer.create 16 in
     let encoder =
       Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l
-        Gz.Unix ~q ~w:l ~level:0 in
+        Gz.Unix ~q ~w:l ~level:4 in
     let go encoder =
       match Gz.Def.encode encoder with
       | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -1785,7 +1789,7 @@ let test_with_camlzip () =
   let oc = open_out "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo") (`Channel oc) ~filename:"foo.gz" ~mtime:0l
-      Gz.Unix ~q ~w:l ~level:0 in
+      Gz.Unix ~q ~w:l ~level:4 in
   let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -1803,7 +1807,7 @@ let test_gzip_hcrc () =
   let oc = open_out "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo & bar") (`Channel oc) ~filename:"foo.gz"
-      ~mtime:0l Gz.Unix ~hcrc:true ~q ~w:l ~level:0 in
+      ~mtime:0l Gz.Unix ~hcrc:true ~q ~w:l ~level:4 in
   let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -1861,7 +1865,7 @@ let test_gzip_os v_os =
   let buf = Buffer.create 16 in
   let encoder =
     Gz.Def.encoder (`String input) (`Buffer buf) ~mtime:0l v_os ~hcrc:true ~q
-      ~w:l ~level:0 in
+      ~w:l ~level:4 in
   let go encoder =
     match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"

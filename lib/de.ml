@@ -2145,6 +2145,15 @@ module Queue = struct
     ; unsafe_set t.buf ((mask [@inlined]) t t.w) v
     ; t.w <- t.w + 1
 
+  let end_with_eob t =
+    if not (empty t) then
+      unsafe_get t.buf ((mask [@inlined]) t (t.w - 1)) == 256
+    else false
+
+  let rem_exn t n =
+    if size t >= n then t.w <- t.w - n
+    else invalid_arg "You requested too many commands to delete"
+
   let pop_exn t =
     if (empty [@inlined]) t then raise Empty
     ; let r = unsafe_get t.buf ((mask [@inlined]) t t.r) in
@@ -2327,13 +2336,13 @@ module Def = struct
 
   let invalid_encode () = invalid_arg "expected `Await encode"
 
-  type kind = Flat of int | Fixed | Dynamic of dynamic
+  type kind = Flat | Fixed | Dynamic of dynamic
   type block = {kind: kind; last: bool}
   type encode = [ `Await | `Flush | `Block of block ]
 
   let exists v block =
     match v, block.kind with
-    | (`Copy _ | `End), Flat _ ->
+    | (`Copy _ | `End), Flat ->
       invalid_arg "copy code in flat block can not exist"
     | `Literal chr, Dynamic dynamic ->
       dynamic.ltree.T.tree.Lookup.t.(Char.code chr) lsr _max_bits > 0
@@ -2342,8 +2351,7 @@ module Def = struct
       (* assert (off >= 1 && off <= 32767 + 1) ; *)
       dynamic.ltree.T.tree.Lookup.t.(256 + 1 + _length.(len)) lsr _max_bits > 0
       && dynamic.dtree.T.tree.Lookup.t.(_distance (pred off)) lsr _max_bits > 0
-    | `End, (Fixed | Dynamic _) | `Literal _, (Flat _ | Fixed) | `Copy _, Fixed
-      ->
+    | `End, (Fixed | Dynamic _) | `Literal _, (Flat | Fixed) | `Copy _, Fixed ->
       true
 
   type encoder = {
@@ -2353,6 +2361,7 @@ module Def = struct
     ; mutable bits: int
     ; mutable bits_rem: [ `Rem of int | `Pending ]
     ; mutable flat: int
+    ; mutable fmax: int
     ; mutable o: bigstring
     ; mutable o_pos: int
     ; mutable o_max: int
@@ -2446,12 +2455,12 @@ module Def = struct
         c_byte (e.hold land 0xff) k e
       else k e
 
-  let encode_flat_header last len k e =
+  let encode_flat_header last k e =
     let k3 e =
       assert (o_rem e >= 4)
 
-      ; unsafe_set_uint16_le e.o (e.o_pos + 0) len
-      ; unsafe_set_uint16_le e.o (e.o_pos + 2) (lnot len)
+      ; unsafe_set_uint16_le e.o (e.o_pos + 0) e.fmax
+      ; unsafe_set_uint16_le e.o (e.o_pos + 2) (lnot e.fmax)
       ; e.o_pos <- e.o_pos + 4
       ; e.flat <- 0
 
@@ -2553,12 +2562,15 @@ module Def = struct
               e.k <- encode
               ; write e)
             e
-        | Flat len ->
-          encode_flat_header block.last len
-            (fun e ->
-              e.k <- encode
-              ; write_flat e)
-            e in
+        | Flat ->
+          if Queue.end_with_eob e.b then Queue.rem_exn e.b 1
+          ; let len = min (Queue.length e.b) 0xffff in
+            e.fmax <- len
+            ; encode_flat_header block.last
+                (fun e ->
+                  e.k <- encode
+                  ; write_flat e)
+                e in
       e.blk <- block
       ; k e
     | (`Flush | `Await) as v -> encode e v
@@ -2799,36 +2811,45 @@ module Def = struct
       ; emit e
 
       ; block e (`Block blk)
-    | _ -> assert false
+    | {kind= Flat; _} ->
+      emit e
+      ; block e (`Block blk)
 
   (* XXX(dinosaure): should never occur! *)
   and write_flat e =
-    let[@warning "-8"] (Flat max) = e.blk.kind in
-
     let o_pos = ref e.o_pos in
     let flat = ref e.flat in
 
     while
-      e.o_max - !o_pos + 1 > 1 && (not (Queue.is_empty e.b)) && !flat < max
+      e.o_max - !o_pos + 1 > 0 && (not (Queue.is_empty e.b)) && !flat < e.fmax
     do
       let cmd = Queue.pop_exn e.b in
 
-      if (not (cmd land 0x2000000 == 0)) || cmd == 256 then
-        invalid_arg "Impossible to emit a copy code or a EOB in a Flat block"
-
-      ; unsafe_set_uint8 e.o !o_pos (cmd land 0xff)
-      ; incr o_pos
-      ; incr flat
+      if not (cmd land 0x2000000 == 0) then
+        invalid_arg "Impossible to emit a copy code in a Flat block (%08x)" cmd
+      ; if not (cmd == 256) then (
+          unsafe_set_uint8 e.o !o_pos (cmd land 0xff)
+          ; incr o_pos
+          ; incr flat)
     done
 
     ; e.flat <- !flat
     ; e.o_pos <- !o_pos
 
-    ; if !flat == max then
-        if e.blk.last then flush (fun _ -> `Ok) e
-        else (
-          e.k <- block
-          ; `Block)
+    ; if !flat == e.fmax then begin
+        e.fmax <- 0
+        ; (* XXX(dinosaure): clean it! *)
+          if e.blk.last then flush (fun _ -> `Ok) e
+          else (
+            e.k <-
+              (fun e v ->
+                match v with
+                | `Block _ -> block e v
+                | _ ->
+                  e.k <- block
+                  ; `Block)
+            ; `Ok)
+      end
       else if o_rem e == 0 then flush write_flat e
       else `Ok
 
@@ -2839,26 +2860,18 @@ module Def = struct
       ; `Ok (* XXX(dinosaure): do nothing. *)
     | `Flush -> (
       match e.blk.kind with
-      | Flat _ -> write_flat e
+      | Flat -> write_flat e
       | Dynamic _ | Fixed -> write e)
-    | `Block blk -> (
+    | `Block blk ->
       if e.blk.last then
         invalid_arg
           "Impossible to make a new block when the current block is the last \
            one"
 
-      ; match e.blk.kind with
-        | Flat max ->
-          if e.flat < max then
-            invalid_arg
-              "Impossible to make a new block when the current Flat block is \
-               not fully filled"
+      ; if o_rem e > 1 then force blk e else flush (fun e -> force blk e) e
 
-          ; block e (`Block blk)
-        | Dynamic _ | Fixed ->
-          if o_rem e > 1 then force blk e else flush (fun e -> force blk e) e)
-
-  let first_entry e = function
+  let first_entry e v =
+    match v with
     | `Block blk ->
       e.k <- encode
       ; block e (`Block blk)
@@ -2876,12 +2889,15 @@ module Def = struct
             e.k <- encode
             ; encode e v)
           e
-      | Flat len ->
-        encode_flat_header e.blk.last len
-          (fun e ->
-            e.k <- encode
-            ; encode e v)
-          e)
+      | Flat ->
+        if Queue.end_with_eob e.b then Queue.rem_exn e.b 1
+        ; let len = min (Queue.length e.b) 0xffff in
+          e.fmax <- len
+          ; encode_flat_header e.blk.last
+              (fun e ->
+                e.k <- encode
+                ; encode e v)
+              e)
 
   let dst_rem d = o_rem d
 
@@ -2903,6 +2919,7 @@ module Def = struct
     ; bits= 0
     ; bits_rem= `Pending
     ; flat= 0
+    ; fmax= 0
     ; o
     ; o_pos
     ; o_max
@@ -3893,22 +3910,36 @@ module Lz77 = struct
   let ( .![] ) buf pos = unsafe_get_uint16 buf pos
   let ( .!{} ) buf pos = unsafe_get_uint8 buf pos
 
-  type configuration = {
+  type deflate_configuration = {
       max_chain: int
     ; max_lazy: int
     ; good_length: int
     ; nice_length: int
   }
 
-  let _1 = {good_length= 4; max_lazy= 4; nice_length= 8; max_chain= 4}
-  let _2 = {good_length= 4; max_lazy= 5; nice_length= 16; max_chain= 8}
-  let _3 = {good_length= 4; max_lazy= 6; nice_length= 32; max_chain= 32}
-  let _4 = {good_length= 4; max_lazy= 4; nice_length= 16; max_chain= 16}
-  let _5 = {good_length= 8; max_lazy= 16; nice_length= 32; max_chain= 32}
-  let _6 = {good_length= 8; max_lazy= 16; nice_length= 128; max_chain= 128}
-  let _7 = {good_length= 8; max_lazy= 32; nice_length= 128; max_chain= 256}
-  let _8 = {good_length= 32; max_lazy= 128; nice_length= 258; max_chain= 1024}
-  let _9 = {good_length= 32; max_lazy= 258; nice_length= 258; max_chain= 4096}
+  type configuration = Copy | Deflate of deflate_configuration
+
+  let _0 = Copy
+  let _1 = Deflate {good_length= 4; max_lazy= 4; nice_length= 8; max_chain= 4}
+  let _2 = Deflate {good_length= 4; max_lazy= 5; nice_length= 16; max_chain= 8}
+  let _3 = Deflate {good_length= 4; max_lazy= 6; nice_length= 32; max_chain= 32}
+  let _4 = Deflate {good_length= 4; max_lazy= 4; nice_length= 16; max_chain= 16}
+
+  let _5 =
+    Deflate {good_length= 8; max_lazy= 16; nice_length= 32; max_chain= 32}
+
+  let _6 =
+    Deflate {good_length= 8; max_lazy= 16; nice_length= 128; max_chain= 128}
+
+  let _7 =
+    Deflate {good_length= 8; max_lazy= 32; nice_length= 128; max_chain= 256}
+
+  let _8 =
+    Deflate {good_length= 32; max_lazy= 128; nice_length= 258; max_chain= 1024}
+
+  let _9 =
+    Deflate {good_length= 32; max_lazy= 258; nice_length= 258; max_chain= 4096}
+
   let _mem_level = 8 (* default *)
   let _hash_bits = _mem_level + 7
   let _hash_size = 1 lsl _hash_bits
@@ -3955,7 +3986,7 @@ module Lz77 = struct
    * and its distance is <= _max_dist
    * prev_length >= 1
    * len >= _min_lookahead *)
-  let longest_match cfg s cur_match =
+  let longest_match (cfg : deflate_configuration) s cur_match =
     let wmask = (1 lsl s.wbits) - 1 in
     let str_end = s.strstart + (_max_match - 1) in
     let limit = if s.strstart > max_dist s then s.strstart - max_dist s else 0 in
@@ -4143,8 +4174,11 @@ module Lz77 = struct
     let wsize = 1 lsl s.wbits in
     let wmask = wsize - 1 in
     let more = (wsize * 2) - s.lookahead - s.strstart in
-    let deflate =
-      match s.level with 1 | 2 | 3 -> deflate_fast | _ -> deflate_slow in
+    let deflate cfg s =
+      match cfg, s.level with
+      | Copy, _ -> copy s
+      | Deflate deflate_cfg, (1 | 2 | 3) -> deflate_fast deflate_cfg s
+      | Deflate deflate_cfg, _ -> deflate_slow deflate_cfg s in
     (* max *)
     let more =
       if s.strstart >= wsize + max_dist s then begin
@@ -4188,14 +4222,15 @@ module Lz77 = struct
           else deflate cfg s
       with Break -> deflate cfg s
 
-  and enough cfg s =
+  and enough (cfg : configuration) s =
     if s.lookahead < _min_lookahead then fill_window cfg s
     else
-      match s.level with
-      | 1 | 2 | 3 -> deflate_fast cfg s
-      | _ -> deflate_slow cfg s
+      match cfg, s.level with
+      | Copy, _ -> copy s
+      | Deflate deflate_cfg, (1 | 2 | 3) -> deflate_fast deflate_cfg s
+      | Deflate deflate_cfg, _ -> deflate_slow deflate_cfg s
 
-  and deflate_fast cfg s =
+  and deflate_fast (cfg : deflate_configuration) s =
     let hash_head = ref 0 in
     let flush = ref false in
     if s.lookahead >= _min_match then hash_head := insert_string s s.strstart
@@ -4233,9 +4268,9 @@ module Lz77 = struct
       | true ->
         s.k <- enough
         ; `Flush
-      | false -> enough cfg s
+      | false -> enough (Deflate cfg) s
 
-  and deflate_slow cfg s =
+  and deflate_slow (cfg : deflate_configuration) s =
     let hash_head = ref 0 in
     if s.lookahead >= _min_match then hash_head := insert_string s s.strstart
     ; s.prev_length <- s.match_length
@@ -4275,7 +4310,7 @@ module Lz77 = struct
         ; if flush then (
             s.k <- enough
             ; `Flush)
-          else enough cfg s
+          else enough (Deflate cfg) s
       end
       else if s.match_available then begin
         match emit_literal s (unsafe_get_char s.w (s.strstart - 1)) with
@@ -4287,14 +4322,27 @@ module Lz77 = struct
         | false ->
           s.strstart <- s.strstart + 1
           ; s.lookahead <- s.lookahead - 1
-          ; enough cfg s
+          ; enough (Deflate cfg) s
       end
       else begin
         s.match_available <- true
         ; s.strstart <- s.strstart + 1
         ; s.lookahead <- s.lookahead - 1
-        ; enough cfg s
+        ; enough (Deflate cfg) s
       end
+
+  and copy s =
+    let flush = ref (Queue.available s.q <= 1) in
+    while (not !flush) && s.lookahead > 0 do
+      flush := emit_literal s (unsafe_get_char s.w s.strstart)
+      ; s.strstart <- s.strstart + 1
+      ; s.lookahead <- s.lookahead - 1
+    done
+    ; match !flush with
+      | true ->
+        s.k <- enough
+        ; `Flush
+      | false -> enough Copy s
 
   let _literals = 256
   let _length_codes = 29
@@ -4338,7 +4386,8 @@ module Lz77 = struct
     let wsize = 1 lsl wbits in
     let cfg =
       match level with
-      | 0 | 1 -> _1
+      | 0 -> _0
+      | 1 -> _1
       | 2 -> _2
       | 3 -> _3
       | 4 -> _4
@@ -4385,6 +4434,7 @@ module Lz77 = struct
   type window = bigstring
 
   let make_window ~bits = bigstring_create ((1 lsl bits) * 2)
+  let no_compression s = s.cfg = Copy
 end
 
 module Higher = struct

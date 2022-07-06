@@ -44,9 +44,9 @@ let run_inflate ic oc =
       ; `Ok 0 in
   go ()
 
-let run_deflate ic oc =
+let run_deflate ~level ic oc =
   let open De in
-  let state = Lz77.state ~level:4 ~q ~w:l (`Channel ic) in
+  let state = Lz77.state ~level ~q ~w:l (`Channel ic) in
   let encoder = Def.encoder (`Channel oc) ~q in
 
   let rec compress () =
@@ -95,9 +95,9 @@ let run_zlib_inflate ic oc =
       ; `Ok 0 in
   go decoder
 
-let run_zlib_deflate ic oc =
+let run_zlib_deflate ~level ic oc =
   let open Zl in
-  let encoder = Def.encoder `Manual `Manual ~q ~w:l ~level:0 in
+  let encoder = Def.encoder `Manual `Manual ~q ~w:l ~level in
 
   let rec go encoder =
     match Def.encode encoder with
@@ -136,10 +136,10 @@ let run_gzip_inflate ic oc =
 
 let now () = Int32.of_float (Unix.gettimeofday ())
 
-let run_gzip_deflate ic oc =
+let run_gzip_deflate ~level ic oc =
   let open Gz in
   let encoder =
-    Def.encoder `Manual `Manual ~q ~w:l ~level:0 ~mtime:(now ()) Gz.Unix in
+    Def.encoder `Manual `Manual ~q ~w:l ~level ~mtime:(now ()) Gz.Unix in
 
   let rec go encoder =
     match Def.encode encoder with
@@ -235,7 +235,7 @@ let run_lzo_inflate ic oc =
   | Ok str -> output_string oc str ; `Ok 0
   | Error err -> `Error (false, str "%a." Lzo.pp_error err)
 
-let run deflate format filename_ic filename_oc =
+let run deflate format level filename_ic filename_oc =
   let ic, close_ic =
     match filename_ic with
     | Some filename ->
@@ -250,11 +250,11 @@ let run deflate format filename_ic filename_oc =
     | None -> stdout, ignore in
   let res =
     match deflate, format with
-    | true, `Deflate -> run_deflate ic oc
+    | true, `Deflate -> run_deflate ~level ic oc
     | false, `Deflate -> run_inflate ic oc
-    | true, `Zlib -> run_zlib_deflate ic oc
+    | true, `Zlib -> run_zlib_deflate ~level ic oc
     | false, `Zlib -> run_zlib_inflate ic oc
-    | true, `Gzip -> run_gzip_deflate ic oc
+    | true, `Gzip -> run_gzip_deflate ~level ic oc
     | false, `Gzip -> run_gzip_inflate ic oc
     | true, `Lzo -> run_lzo_deflate ic oc
     | false, `Lzo -> run_lzo_inflate ic oc in
@@ -285,6 +285,15 @@ let format =
 let input = Arg.(value & pos 0 (some file) None & info [] ~docv:"<filename>")
 let output = Arg.(value & pos 1 (some string) None & info [] ~docv:"<filename>")
 
+let level =
+  let parser str =
+    match int_of_string str with
+    | n when n >= 0 -> Ok n
+    | _ -> Error (`Msg "The compression level must be positive")
+    | exception _ -> Error (`Msg "Invalid level") in
+  let positive_int = Arg.conv (parser, Format.pp_print_int) in
+  Arg.(value & opt positive_int 4 & info ["l"; "level"] ~docv:"<level>")
+
 let command =
   let doc =
     "A tool to deflate/inflate a stream/file throught a specified format." in
@@ -305,9 +314,8 @@ let command =
         , "GZip is a file format based on the DEFLATE algorithm, which is a \
            combination of LZ77 and Huffman coding. It encodes few informations \
            such as: the timestamp, the filename, or the operating system \
-           (which operates the deflation). It generates\n\
-          \           a CRC-32 checksum at the end of the stream. It is \
-           described by the RFC 1952 \
+           (which operates the deflation). It generates a CRC-32 checksum at \
+           the end of the stream. It is described by the RFC 1952 \
            <https://datatracker.ietf.org/doc/html/rfc1952>." ); `Noblank
     ; `I
         ( "Zlib"
@@ -329,7 +337,7 @@ let command =
          \\$"; `S Manpage.s_bugs
     ; `P "Check bug reports at <https://github.com/mirage/decompress>"
     ] in
-  let term = Term.(ret (const run $ deflate $ format $ input $ output))
+  let term = Term.(ret (const run $ deflate $ format $ level $ input $ output))
   and info = Cmd.info "decompress" ~doc ~man in
   Cmd.v info term
 
