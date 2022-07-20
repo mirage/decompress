@@ -23,7 +23,7 @@ Test reverse bindings
   >   return (0);
   > }
   > EOF
-  $ cc -o a.out main.c -I$(ocamlopt -where) -L../../bindings/stubs -I../../bindings/stubs -ldecompress -lm -ldl
+  $ cc -o a.out main.c -I$(ocamlopt -where) -L../../bindings/stubs -I../../bindings/stubs -ldecompress -lm -ldl 2> /dev/null
   $ ./a.out
   Hello World!
 
