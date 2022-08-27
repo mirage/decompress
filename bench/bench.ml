@@ -103,6 +103,8 @@ let json =
   Arg.(value & flag & info ["j"; "json"] ~doc)
 
 let cmd =
-  Term.(const inflate $ max $ json), Term.info "bench" ~doc:"Run benchmarks"
+  Cmd.v
+    (Cmd.info "bench" ~doc:"Run benchmarks")
+    Term.(const inflate $ max $ json)
 
-let () = Term.(exit @@ eval cmd)
+let () = exit @@ Cmd.eval cmd

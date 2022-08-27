@@ -4,9 +4,36 @@
    codec to {{:#decode}decode} and {{:#encode}encode} DEFLATE encoding. It can
    efficiently work payload by payload without blocking IO.
 
-    Module provides {{:#compression}LZ77 compression} algorithm but let the
-   client to define his algorithm as long as he uses shared queue provided in
-   this module. *)
+    Module provides {{:#compression}LZ77 compression} algorithm but lets the
+   client to define his algorithm as long as he/she uses shared queue provided
+   in this module.
+
+    {1 Lz77 compression and huffman compression.}
+
+    [Lz77] does a compression such as it searches a repeated {i pattern} and
+   emits a [Copy] code (see {!type:Queue.cmd}) which tells us to copy a
+   previous pattern. For instance, this is an equivalence between a list
+   of {!type:Queue.cmd}s and a [string].
+
+    {[
+      let cmds = [ `Literal 'a'; `Copy (1, 3) ]
+      let results = "aaaa"
+    ]}
+
+     The goal of [Lz77] is to produce such list from a [string] to help then
+    a format such as [DEFLATE] to compress inputs.
+
+     [Def] does an huffman compression. From a list of {!type:Queue.cmd}, it
+    can calculate frequencies (see {!type:literals} and {!type:distances}) and
+    generate a smaller representation of the given {i alphabet}. Such
+    compression is available {i via} the {!const:Def.Fixed} or the
+    {!const:Def.Dynamic} block. The {!const:Def.Flat} block does a copy of any
+    literals into the output.
+
+     {b NOTE}: It's illegal to emit a [`Copy] {!type:Queue.cmd} and try to
+    serialize it with a {!const:Def.Flat} block. {!Queue.eob} is {b required}
+    for {!const:Def.Fixed} and {!const:Def.Dynamic} (to delimit the end of the
+    block) and ignored by the {!const:Def.Flat} block. *)
 
 (** {2 Prelude.}
 
@@ -212,6 +239,10 @@ module Queue : sig
   val eob : cmd
   (** [eob] is {i End Of Block} {!cmd}.*)
 
+  val end_with_eob : t -> bool
+  (** [end_with_eob t] returns [true] if the last inserted command
+      is {!eob}. Otherwise, it returns [false]. *)
+
   val cmd : [ `Literal of char | `Copy of int * int | `End ] -> cmd
   (** [cmd command] is {!cmd} from a human-readable value. *)
 
@@ -278,7 +309,7 @@ module Def : sig
 
   (** The type for DEFLATE header block. *)
   type kind =
-    | Flat of int
+    | Flat
         (** A [Flat len] block is a non-compressed block of [len] byte(s). After a
        {i flat} block, output is aligned on bytes. *)
     | Fixed
@@ -464,7 +495,20 @@ module Lz77 : sig
 
       The client can constrain lookup operation by a {i window}. Small window
      enforces {!compress} to emit small distances. However, large window allows
-     {!compress} to go furthermore to recognize a pattern which can be expensive. *)
+     {!compress} to go furthermore to recognize a pattern which can be expensive.
+
+      {b Level.}
+
+      [Lz77] has mainly 2 levels:
+      - [0] where we only copy inputs to outpus, we don't do a lookup
+      - [n] (to [9]) with a certain configuration of the lookup. The higher the
+        level, the longer it may take to find a pattern.
+
+      The [0] can be useful to {b only} {i pack} an input into a format such as
+      [DEFLATE] - as an already compressed document such as a video or an
+      image. Otherwise, [4] as the level is pretty common. *)
+
+  val no_compression : state -> bool
 end
 
 (** {2 Higher API.}

@@ -26,16 +26,30 @@ Each sub-package provide 3 sub-modules:
 
 ## How to use it
 
+### The binary
+
+The distribution provides a simple binary which is able to compress/uncompress
+anything:
+```sh
+$ decompress -fgzip --deflate < my_document.txt > my_document.gzip
+$ decompress -fgzip < my_document.gzip > my_document.out
+$ diff my_document.txt my_document.out
+```
+
+It does the GZip compression, the Zlib one and the DEFLATE one. It can do an
+LZO compression too.
+
 ### Link issue
 
 `decompress` uses [`checkseum`][checkseum] to compute CRC of streams.
 `checkseum` provides 2 implementations:
 - a C implementation to be fast
-- an OCaml implementation to be usable with `js_of_ocaml` (or, at least, require
-  only the _caml runtime_)
+- an OCaml implementation to be usable with `js_of_ocaml` (or, at least,
+  require only the _caml runtime_)
 
-When the user wants to make an OCaml executable, it must choose which implementation
-of `checkseum` he wants. A compilation of an executable with `decompress.zl` is:
+When the user wants to make an OCaml executable, it must choose which
+implementation of `checkseum` he wants. A compilation of an executable with
+`decompress.zl` is:
 ```
 $ ocamlfind opt -linkpkg -package checkseum.c,decompress.zl main.ml
 ```
@@ -45,9 +59,9 @@ Otherwise, the end-user should have a linking error (see
 
 #### With `dune`
 
-`checkseum` uses a mechanism integrated into `dune` which solves the link issue.
-It provides a way to silently choose the default implementation of `checkseum`:
-`checkseum.c`.
+`checkseum` uses a mechanism integrated into `dune` which solves the link
+issue. It provides a way to silently choose the default implementation of
+`checkseum`: `checkseum.c`.
 
 By this way (and only with `dune`), an executable with `decompress.zl` is:
 ```
@@ -72,8 +86,8 @@ Of course, the user still is able to choose which implementation he wants:
 #### Input / Output
 
 The process of the inflation/deflation is non-blocking and it does not require
-any _syscalls_ (as an usual MirageOS project). The user can decide how to get the
-input and how to store the output.
+any _syscalls_ (as an usual MirageOS project). The user can decide how to get
+the input and how to store the output.
 
 An usual _loop_ (which can fit into `lwt` or `async`) of `decompress.zl` is:
 ```ocaml
@@ -114,7 +128,8 @@ let () =
 let () =
   Lwt_main.run @@
     Lwt.join [ (decompress ~window:w0 stdin stdout |> Lwt.return)
-             ; (decompress ~window:w0 (open_in "file.z") (open_out "file") |> Lwt.return) ]
+             ; (decompress ~window:w0 (open_in "file.z") (open_out "file")
+	       |> Lwt.return) ]
 ```
 
 This ability can be used on:
@@ -125,37 +140,61 @@ This ability can be used on:
 
 ### Example
 
-An example exists into [bin/decompress.ml][decompress.ml] where you can see how to use
-`decompress.zl` and `decompress.de`.
+An example exists into [bin/decompress.ml][decompress.ml] where you can see how
+to use `decompress.zl` and `decompress.de`.
 
 ### Higher interface
 
-However, `decompress` provides a _higher_ interface close to what `camlzip` provides
-to help newcomers to use `decompress`:
+However, `decompress` provides a _higher_ interface close to what `camlzip`
+provides to help newcomers to use `decompress`:
 ```ocaml
-val compress : refill:(bigstring -> int) -> flush:(bigstring -> int -> unit) -> unit
-val uncompress : refill:(bigstring -> int) -> flush:(bigstring -> int -> unit) -> unit
+val compress :
+     refill:(bigstring -> int)
+  -> flush:(bigstring -> int -> unit)
+  -> unit
+val uncompress :
+     refill:(bigstring -> int)
+  -> flush:(bigstring -> int -> unit)
+  -> unit
 ```
 
 ### Benchmark
 
-`decompress` has a benchmark about _inflation_ to see if any update has a performance
-implication. The process try to _inflate_ a stream and stop at N second(s) (default is 30),
-The benchmark requires `libzlib-dev`, `cmdliner` and `bos` to be able to compile `zpipe`
-and the executable to produce the CSV file. To build the benchmark:
+`decompress` has a benchmark about _inflation_ to see if any update has a
+performance implication. The process try to _inflate_ a stream and stop at N
+second(s) (default is 30), The benchmark requires `libzlib-dev`, `cmdliner` and
+`bos` to be able to compile `zpipe` and the executable to produce the CSV file.
+To build the benchmark:
 
 ```sh
 $ dune build --profile benchmark bench/output.csv
 ```
 
-On linux machines, `/dev/urandom` will generate the random input for piping to zpipe. To 
-run the benchmark:
+On linux machines, `/dev/urandom` will generate the random input for piping to
+zpipe. To run the benchmark:
 ```sh
-$ cat /dev/urandom | ./build/default/bench/zpipe | ./_build/default/bench/bench.exe
+$ cat /dev/urandom | ./_build/default/bench/zpipe \
+  | ./_build/default/bench/bench.exe 2> /dev/null
 ```
 
-The output file is a CSV file which can be processed by a _plot_ software. It records
-input bytes, output bytes and memory usage at each second.
+The output file is a CSV file which can be processed by a _plot_ software. It
+records input bytes, output bytes and memory usage at each second. You can
+show results with `gnuplot`:
+```sh
+$ gnuplot -p -e \
+  'set datafile separator ",";
+   set key autotitle columnhead;
+   plot "_build/default/bench/output.csv" using 1:2 with lines,
+        "" using 1:3 with lines'
+$ gnuplot -p -e \
+  'set datafile separator ",";
+   set key autotitle columnhead;
+   plot "_build/default/bench/output.csv" using 1:4 with lines'
+```
+
+The second graph ensure that the inflation does not allocate while it
+processes. It ensure that, at another layer, `decompress` does not leak
+memory.
 
 ## Build Requirements
 

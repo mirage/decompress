@@ -33,5 +33,5 @@ let path =
 let output = Arg.(value & opt (some path) None & info ["o"])
 let max = Arg.(value & pos ~rev:true 0 int 30 & info [])
 let json = Arg.(value & flag & info ["j"; "json"])
-let cmd = Term.(const run $ output $ max $ json), Term.info "run"
-let () = Term.(exit @@ eval cmd)
+let cmd = Cmd.v (Cmd.info "run") Term.(const run $ output $ max $ json)
+let () = exit @@ Cmd.eval cmd

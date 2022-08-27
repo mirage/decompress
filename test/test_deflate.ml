@@ -107,7 +107,8 @@ let corpus =
 let () =
   Alcotest.run "lz"
     [
-      "1", List.map (deflate_with_level ~level:1) corpus
+      "0", List.map (deflate_with_level ~level:0) corpus
+    ; "1", List.map (deflate_with_level ~level:1) corpus
     ; "2", List.map (deflate_with_level ~level:2) corpus
     ; "3", List.map (deflate_with_level ~level:3) corpus
     ; "4", List.map (deflate_with_level ~level:4) corpus
