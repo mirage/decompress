@@ -1,3 +1,26 @@
+### v1.5.0 2022-08-28 Paris (France)
+
+- Update with `ocamlformat.0.20.0` (@dinosaure, #133)
+- Add `lzo` into the binary (@dinosaure, #140)
+- Be able to deflate/inflate files (@dinosaure, #141)
+- Implement the zero-compression into zlib/gzip (@dinosaure, #142)
+  **breaking change**: The behavior of flat block changed. The user does not
+  specify how many bytes he/she wants to give. He/She can just specify that
+  he/she wants a `Flat` block. The `Flat` block will contains what the queue
+  has and nothing more: if the queue has 4 elements, we will encode a `Flat`
+  block with 4 elements, if the queue has more than 65535 elements, we will
+  encore only 65535 elements into the `Flat` block.
+
+  The user is not able to _stream_ a `Flat` block: we can not fill one `Flat`
+  block with multiple `Await`. This behavior is specific to the `Flat` block,
+  the rest (`Fixed` and `Dynamic` blocks) did not change.
+
+  For higher level API, the `level = 0` informs the _deflator_ to copy as is
+  input - no compression was done for `zlib` and `gzip` and we emit only `Flat`
+  blocks. By default, the `level = 4` is given so you probably will not notice
+  anything but be care that we shifted compression level and `0` becomes a
+  level without compression.
+
 ### v1.4.3 2022-04-08 Paris (France)
 
 - Replace deprecated function of `fmt` (@dinosaure, #135)
