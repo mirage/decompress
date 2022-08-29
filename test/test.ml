@@ -240,8 +240,7 @@ let length_extra () =
       (`String "\xed\xc0\x01\x01\x00\x00\x00\x40\x20\xff\x57\x1b\x42\x2c\x4f")
       ~o ~w in
   let res = unroll_inflate decoder in
-  Fmt.epr "Buffer length: %d.\n%!" (String.length res)
-  ; Alcotest.(check string) "0x00 * 516" (String.make 516 '\x00') res
+  Alcotest.(check string) "0x00 * 516" (String.make 516 '\x00') res
 
 let long_distance_and_extra () =
   Alcotest.test_case "long distance and extra" `Quick @@ fun () ->
@@ -656,10 +655,9 @@ let fuzz16 () =
     ; `Copy (527, 208); `Copy (129, 258); `End
     ] in
   let res = encode_dynamic lst in
-  Fmt.epr "> %S.\n%!" res
-  ; let decoder = Inf.decoder (`String res) ~o ~w in
-    let res = unroll_inflate decoder in
-    Alcotest.(check str) "result" res (String.make 1068 '@')
+  let decoder = Inf.decoder (`String res) ~o ~w in
+  let res = unroll_inflate decoder in
+  Alcotest.(check str) "result" res (String.make 1068 '@')
 
 let fuzz17 () =
   Alcotest.test_case "fuzz17" `Quick @@ fun () ->
@@ -788,9 +786,8 @@ let lz77_2 () =
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
-      Fmt.epr "compressed result: @[<hov>%a@].\n%!" Fmt.(Dump.list pp_cmd) lst
-      ; let res = reconstruct lst in
-        Alcotest.(check str) "result" input res
+      let res = reconstruct lst in
+      Alcotest.(check str) "result" input res
     | `Flush -> Alcotest.fail "Unexpected `Flush return"
     | `Await -> Alcotest.fail "Impossible `Await case"
 
@@ -804,9 +801,8 @@ let lz77_3 () =
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
-      Fmt.epr "compressed result: @[<hov>%a@].\n%!" Fmt.(Dump.list pp_cmd) lst
-      ; let res = reconstruct lst in
-        Alcotest.(check str) "result" input res
+      let res = reconstruct lst in
+      Alcotest.(check str) "result" input res
     | `Flush -> Alcotest.fail "Unexpected `Flush return"
     | `Await -> Alcotest.fail "Impossible `Await case"
 
@@ -827,9 +823,8 @@ let lz77_4 () =
     match Lz77.compress state with
     | `End ->
       let lst = Queue.to_list q in
-      Fmt.epr "compressed result: @[<hov>%a@].\n%!" Fmt.(Dump.list pp_cmd) lst
-      ; let res = reconstruct lst in
-        Alcotest.(check str) "result" input res
+      let res = reconstruct lst in
+      Alcotest.(check str) "result" input res
     | `Flush -> Alcotest.fail "Unexpected `Flush return"
     | `Await -> Alcotest.fail "Impossible `Await case"
 
@@ -841,10 +836,9 @@ let hang0 () =
     ; `Literal '\243'; `Copy (244, 15); `End
     ] in
   let res = encode_dynamic lst in
-  Fmt.epr "> %S.\n%!" res
-  ; let decoder = Inf.decoder (`String res) ~o ~w in
-    let _ = unroll_inflate decoder in
-    ()
+  let decoder = Inf.decoder (`String res) ~o ~w in
+  let _ = unroll_inflate decoder in
+  ()
 
 let ( <.> ) f g x = f (g x)
 
@@ -909,7 +903,6 @@ let fixed_and_dynamic () =
         `Flush; `Block {Def.kind= Def.Dynamic dynamic_b; last= true}
       ; `Fill [`Literal 'b'; `Copy (1, 3); `End]; `Flush
       ]
-    ; Fmt.epr "> %S.\n%!" (Buffer.contents res)
     ; let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
       let res = unroll_inflate decoder in
       Alcotest.(check str) "result" res "aaaabbbb"
@@ -952,7 +945,6 @@ let dynamic_and_dynamic () =
         ; `Block {Def.kind= Def.Dynamic dynamic_b; Def.last= true}; `Flush
         ]
 
-      ; Fmt.epr "> %S.\n%!" (Buffer.contents res)
       ; let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
         let res = unroll_inflate decoder in
         Alcotest.(check str) "result" res "aaaabbbb"
@@ -1004,10 +996,9 @@ let fixed_and_flat () =
     | `Block ->
       go (Def.encode encoder (`Block {Def.kind= Def.Flat; last= true})) in
   let res0 = go (Def.encode encoder `Flush) in
-  Fmt.epr ">>> %S\n%!" res0
-  ; let decoder = Inf.decoder (`String res0) ~w ~o in
-    let res1 = unroll_inflate decoder in
-    Alcotest.(check string) "aaaadeadbeef" "aaaa\xde\xad\xbe\xef" res1
+  let decoder = Inf.decoder (`String res0) ~w ~o in
+  let res1 = unroll_inflate decoder in
+  Alcotest.(check string) "aaaadeadbeef" "aaaa\xde\xad\xbe\xef" res1
 
 let flat_and_fixed () =
   Alcotest.test_case "flat+fixed" `Quick @@ fun () ->
@@ -1075,20 +1066,13 @@ let lz77_corpus_rfc5322 () =
       match Lz77.compress state with
       | `Flush ->
         Alcotest.(check bool) "available q < 2" (Queue.available q < 2) true
-        ; Fmt.epr "Cursor at: %d.\n%!" (String.length !res)
-        ; let old = String.length !res in
-          res := partial_reconstruct !res (Queue.to_list q)
-          ; Fmt.epr "Commands: @[<hov>%a@].\n%!"
-              Fmt.(Dump.list pp_cmd)
-              (Queue.to_list q)
-          ; Fmt.epr "Cursor at: %d (%d).\n%!" (String.length !res)
-              (String.length !res - old)
-          ; Alcotest.(check str)
-              "rfc5322.txt"
-              (load_file (String.length !res) "corpus/rfc5322.txt")
-              !res
-          ; Queue.reset q
-          ; go ()
+        ; res := partial_reconstruct !res (Queue.to_list q)
+        ; Alcotest.(check str)
+            "rfc5322.txt"
+            (load_file (String.length !res) "corpus/rfc5322.txt")
+            !res
+        ; Queue.reset q
+        ; go ()
       | `Await -> Alcotest.fail "Impossible `Await case"
       | `End ->
         res := partial_reconstruct !res (Queue.to_list q)
@@ -1192,38 +1176,30 @@ let compress_and_uncompress ic =
     | `Flush ->
       let literals = Lz77.literals state in
       let distances = Lz77.distances state in
-      Fmt.epr "[compress]: `Flush.\n%!"
-      ; encode
-        @@ Def.encode encoder
-             (`Block
-               {
-                 Def.kind=
-                   Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
-               ; last= false
-               })
+      encode
+      @@ Def.encode encoder
+           (`Block
+             {
+               Def.kind=
+                 Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
+             ; last= false
+             })
     | `End ->
-      Fmt.epr "[compress]: `End.\n%!"
-      ; Queue.push_exn q Queue.eob
+      Queue.push_exn q Queue.eob
       ; encode_rest @@ Def.encode encoder (`Block {Def.kind= Fixed; last= true})
   and encode_rest = function
     | (`Partial | `Ok) as res ->
       let len = bigstring_length t - Def.dst_rem encoder in
-      Fmt.epr "[pending]: `Partial (%d byte(s)).\n%!" len
-      ; Inf.src decoder t 0 len
+      Inf.src decoder t 0 len
       ; decode_rest (res = `Ok) @@ Inf.decode decoder
     | `Block -> assert false
   and encode = function
     | `Partial ->
       let len = bigstring_length t - Def.dst_rem encoder in
-      Fmt.epr "[encode]: `Partial (%d byte(s)).\n%!" len
-      ; Inf.src decoder t 0 len
+      Inf.src decoder t 0 len
       ; decode @@ Inf.decode decoder
-    | `Ok ->
-      Fmt.epr "[encode] `Ok.\n%!"
-      ; compress ()
-    | `Block ->
-      Fmt.epr "[encode] `Ok.\n%!"
-      ; compress ()
+    | `Ok -> compress ()
+    | `Block -> compress ()
   and decode_rest finalize = function
     | `Await when finalize ->
       Inf.src decoder t 0 0
@@ -1234,12 +1210,10 @@ let compress_and_uncompress ic =
     | (`Flush | `End) as state ->
       let len = bigstring_length o - Inf.dst_rem decoder in
       let str = Bigstringaf.substring o ~off:0 ~len in
-      Fmt.epr "[decode] `Flush | `End (%d byte(s)).\n%!" len
-      ; Buffer.add_string b str
+      Buffer.add_string b str
       ; if state = `Flush then (
           Inf.flush decoder
           ; decode_rest finalize @@ Inf.decode decoder)
-        else Fmt.epr "[decode] `End.\n%!"
     | `Malformed err -> Alcotest.failf "Malformed compressed input: %S" err
   and decode = function
     | `Await ->
@@ -1248,12 +1222,10 @@ let compress_and_uncompress ic =
     | (`Flush | `End) as state ->
       let len = bigstring_length o - Inf.dst_rem decoder in
       let str = Bigstringaf.substring o ~off:0 ~len in
-      Fmt.epr "[decode] `Flush | `End (%d byte(s)).\n%!" len
-      ; Buffer.add_string b str
+      Buffer.add_string b str
       ; if state = `Flush then (
           Inf.flush decoder
           ; decode @@ Inf.decode decoder)
-        else Fmt.epr "[decode] `End.\n%!"
     | `Malformed err -> Alcotest.failf "Malformed compressed input: %S" err
   in
 
@@ -1262,7 +1234,6 @@ let compress_and_uncompress ic =
   ; Queue.reset q
   ; compress ()
 
-  ; Fmt.epr "End of compress/decompress.\n%!"
   ; Stdlib.seek_in ic 0
   ; let a0 = Buffer.contents b in
     let ln = Stdlib.in_channel_length ic in
@@ -1288,34 +1259,28 @@ let gzip_compress_and_uncompress ~filename ic =
       | `Await _ -> assert false
       | `Flush encoder ->
         let len = io_buffer_size - Gz.Def.dst_rem encoder in
-        Fmt.epr "[!] [`Flush] >>> (dst-rem: %d) %d byte(s).\n%!"
-          (Gz.Def.dst_rem encoder) len
-        ; go_decode (Gz.Inf.src decoder os 0 len) encoder
+        go_decode (Gz.Inf.src decoder os 0 len) encoder
       | `End encoder ->
         let len = io_buffer_size - Gz.Def.dst_rem encoder in
-        Fmt.epr "[!] [`End] >>> %d byte(s).\n%!" len
-        ; go_decode (Gz.Inf.src decoder os 0 len) encoder
+        go_decode (Gz.Inf.src decoder os 0 len) encoder
     and go_decode decoder encoder =
       match Gz.Inf.decode decoder with
       | `Await decoder ->
-        Fmt.epr "[!] [decode] `Await.\n%!"
-        ; go_encode decoder (Gz.Def.dst encoder os 0 io_buffer_size)
+        go_encode decoder (Gz.Def.dst encoder os 0 io_buffer_size)
       | `Flush decoder ->
-        Fmt.epr "[!] [decode] `Flush.\n%!"
-        ; let len = io_buffer_size - Gz.Inf.dst_rem decoder in
-          for i = 0 to pred len do
-            Buffer.add_char bf o.{i}
-          done
-          ; go_decode (Gz.Inf.flush decoder) encoder
+        let len = io_buffer_size - Gz.Inf.dst_rem decoder in
+        for i = 0 to pred len do
+          Buffer.add_char bf o.{i}
+        done
+        ; go_decode (Gz.Inf.flush decoder) encoder
       | `End decoder ->
-        Fmt.epr "[!] [decode] `End.\n%!"
-        ; let len = io_buffer_size - Gz.Inf.dst_rem decoder in
-          for i = 0 to pred len do
-            Buffer.add_char bf o.{i}
-          done
-          ; Alcotest.(check (option string))
-              "filename" (Gz.Inf.filename decoder) (Some filename)
-          ; Buffer.contents bf
+        let len = io_buffer_size - Gz.Inf.dst_rem decoder in
+        for i = 0 to pred len do
+          Buffer.add_char bf o.{i}
+        done
+        ; Alcotest.(check (option string))
+            "filename" (Gz.Inf.filename decoder) (Some filename)
+        ; Buffer.contents bf
       | `Malformed err -> failwith err in
 
     let contents = go_decode decoder encoder in
@@ -1472,7 +1437,6 @@ let higher_zlib input =
   ; let refill = emitter_from_string input in
     let flush, contents = producer_to_string () in
     Zl.Higher.compress ~level:0 ~w:l ~q ~refill ~flush i o
-    ; Fmt.epr "%S\n%!" (contents ())
     ; let refill = emitter_from_string (contents ()) in
       let flush, contents = producer_to_string () in
       let res = Zl.Higher.uncompress ~allocate:(fun _ -> w) ~refill ~flush i o in
@@ -2017,13 +1981,11 @@ let test_corpus_with_lzo filename =
   ; let res = Bytes.unsafe_to_string res in
     let raw = Bigstringaf.of_string res ~off:0 ~len in
     let out = Bigstringaf.create ((len + 1) * 2) in
-    Fmt.epr ">>> compress %s.\n%!" filename
-    ; let len = Lzo.compress raw out wrkmem in
-      let out = Bigstringaf.sub out ~off:0 ~len in
-      Fmt.epr ">>> uncompress %s.\n%!" filename
-      ; match Lzo.uncompress_with_buffer out with
-        | Ok res' -> Alcotest.(check str) "contents" res res'
-        | Error err -> Alcotest.failf "%a" Lzo.pp_error err
+    let len = Lzo.compress raw out wrkmem in
+    let out = Bigstringaf.sub out ~off:0 ~len in
+    match Lzo.uncompress_with_buffer out with
+    | Ok res' -> Alcotest.(check str) "contents" res res'
+    | Error err -> Alcotest.failf "%a" Lzo.pp_error err
 
 let small_queue () =
   Alcotest.test_case "small queue" `Quick @@ fun () ->
