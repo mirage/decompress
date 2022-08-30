@@ -1,3 +1,13 @@
+### v1.5.1 2022-08-30 Paris (France)
+
+- Fix the stream of gzip inflation. If the user wants to know how many bytes
+  are available into the output buffer, he/she must be in the DEFLATE internal
+  state. Otherwise, we raise an exception. However, such information is not
+  available into the API so we decided to say that the full output buffer is
+  free when we are into the GZip header state.
+
+  It ensures a real full stream API. (@dinosaure, #144)
+
 ### v1.5.0 2022-08-28 Paris (France)
 
 - Update with `ocamlformat.0.20.0` (@dinosaure, #133)
