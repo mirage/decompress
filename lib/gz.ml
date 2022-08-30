@@ -544,8 +544,7 @@ module Inf = struct
 
   let dst_rem d =
     match d.dd with
-    | Hd _ -> invalid_arg "Invalid state to know bytes remaining"
-    (* TODO(dinosaure): return [bigstring_length o]? *)
+    | Hd {o} -> bigstring_length o
     | Dd {state; _} -> De.Inf.dst_rem state
 
   let src_rem d = i_rem d
