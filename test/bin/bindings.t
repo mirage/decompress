@@ -23,7 +23,7 @@ Test reverse bindings
   >   return (0);
   > }
   > EOF
-  $ export LDFLAGS=$(ocamlc -config | grep "^native_c_libraries: " | cut -d':' -f2-)
+  $ export LDFLAGS=$(./native_c_libraries.exe)
   $ cc -o a.out main.c -I$(ocamlopt -where) -L../../bindings/stubs -I../../bindings/stubs -ldecompress $LDFLAGS 2> /dev/null
   $ ./a.out
   Hello World!
