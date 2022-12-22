@@ -6,4 +6,9 @@
   ../../bindings/stubs/libdecompress.a
   ../../bindings/stubs/decompress.h
   zpipe.c
-  %{bin:decompress}))
+  %{bin:decompress}
+  native_c_libraries.exe))
+
+(executable
+ (name native_c_libraries)
+ (libraries rresult bos astring))
