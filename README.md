@@ -201,7 +201,6 @@ memory.
  * OCaml >= 4.07.0
  * `dune` to build the project
  * `base-bytes` meta-package
- * `bigarray-compat`
  * `checkseum`
  * `optint`
 

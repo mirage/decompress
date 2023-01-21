@@ -9,7 +9,6 @@
  (preprocess
   (pps ppx_deriving_yojson))
  (libraries
-  bigarray-compat
   unix
   fmt
   decompress.de
@@ -51,7 +50,7 @@
  (modules lz_landmarks)
  (enabled_if
   (= %{profile} benchmark))
- (libraries bigarray-compat checkseum optint landmarks de)
+ (libraries checkseum optint landmarks de)
  (preprocess
   (pps landmarks.ppx --auto)))
 
@@ -74,7 +73,7 @@
  (modules de_landmarks)
  (enabled_if
   (= %{profile} benchmark))
- (libraries bigarray-compat checkseum optint landmarks de)
+ (libraries checkseum optint landmarks de)
  (flags
   (:standard -w -55))
  (preprocess

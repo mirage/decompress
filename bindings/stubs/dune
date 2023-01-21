@@ -7,7 +7,7 @@
  (name gen_decompress_bindings)
  (modules gen_decompress_bindings)
  (wrapped false)
- (libraries bigarray-compat decompress.de decompress.zl ctypes.stubs))
+ (libraries decompress.de decompress.zl ctypes.stubs))
 
 (executable
  (name decompress)
