@@ -1,18 +1,7 @@
 (executable
  (name test)
  (modules test test_ns)
- (libraries
-  fmt
-  base64
-  camlzip
-  bigarray-compat
-  bigstringaf
-  checkseum.c
-  de
-  zl
-  gz
-  lzo
-  alcotest))
+ (libraries fmt base64 camlzip bigstringaf checkseum.c de zl gz lzo alcotest))
 
 (executable
  (name test_deflate)
