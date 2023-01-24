@@ -1,3 +1,7 @@
+### v1.5.2 2023-01-23 Essaouira (Maroc)
+
+- Remove remaining `bigarray-compat` dependencies (@copy, #147)
+
 ### v1.5.1 2022-08-30 Paris (France)
 
 - Fix the stream of gzip inflation. If the user wants to know how many bytes
