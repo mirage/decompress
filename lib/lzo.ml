@@ -151,12 +151,14 @@ module State : sig
   val of_int : int -> t
   val _0 : t
   val _3 : t
+  val _no_extra : t
 end = struct
   type t = int
 
   let of_int x = x
   let _0 = 0
   let _3 = 3
+  let _no_extra = -1
 end
 
 type ('a, 'error) t =
@@ -251,9 +253,24 @@ let run :
   let rec go :
       type a. v -> (a, ([> `Malformed of string ] as 'error)) t -> (a, 'error) k
       =
-   fun t -> function
+   fun t instr ->
+    match instr with
     | Fail err -> Error err
     | Return v -> Ok v
+    | Bind (x, f) -> (
+      match go t x with Ok v -> go t (f v) | Error _ as err -> err)
+    | Fix fix ->
+      (* XXX(dinosaure): [Kontinuation] exists to break the stack-overflow with [js_of_ocaml] but
+         it was not implemented yet. *)
+      let rec m = lazy (fix r) and r = Lazy m in
+      go t r
+    | State -> Ok t.state
+    | Lazy m -> go t (Lazy.force m)
+    (* XXX(dinosaure): on top of this guard, we have no-op operations which don't try to access
+       to the input buffer. On the bottom, we have operations which try to have an access to
+       the input buffer. This guard prevent unauthorized access. *)
+    | _ when t.i_pos >= bigstring_length t.i ->
+      Error (`Malformed "Unexpected end of input")
     | Peek Byte -> Ok (get_char t.i t.i_pos)
     | Junk Byte ->
       if t.i_pos < bigstring_length t.i then (
@@ -266,19 +283,13 @@ let run :
         t.i_pos <- t.i_pos + 2
         ; Ok ())
       else raise Out_of_bound
-    | Bind (x, f) -> (
-      match go t x with Ok v -> go t (f v) | Error _ as err -> err)
-    | Fix fix ->
-      (* XXX(dinosaure): [Kontinuation] exists to break the stack-overflow with [js_of_ocaml] but
-         it was not implemented yet. *)
-      let rec m = lazy (fix r) and r = Lazy m in
-      go t r
-    | State -> Ok t.state
     | Count -> ( match count t with Ok v -> Ok v | Error err -> Error err)
-    | Transmit (len, state) -> (
-      t.state <- state
-      ; match transmit t len with Ok v -> Ok v | Error err -> Error err)
-    | Lazy m -> go t (Lazy.force m)
+    | Transmit (len, state) ->
+      if t.i_pos + len - 1 < bigstring_length t.i then begin
+        t.state <- state
+        ; match transmit t len with Ok v -> Ok v | Error err -> Error err
+      end
+      else raise Out_of_bound
     | Copy ({off; len}, state) -> (
       t.state <- state
       ; let fiber =
@@ -315,16 +326,21 @@ let fiber : (unit, [> error ]) t =
   state >>= fun state ->
   match chr, (state :> int) land 3 with
   | '\001' .. '\015', 0 ->
-    transmit ~len:(Char.code chr + 3) state >>= fun () -> m
+    transmit ~len:(Char.code chr + 3) State._no_extra >>= fun () -> m
   | '\000', 0 ->
     count >>= fun count ->
     let len = 3 + 15 + count in
-    transmit ~len State._3 >>= fun () -> m
+    transmit ~len State._no_extra >>= fun () -> m
   | '\000' .. '\015', (1 | 2 | 3) ->
-    let d, state = Char.code chr lsr 2, State.of_int (Char.code chr) in
+    let d, state = Char.code chr lsr 2, State.of_int (Char.code chr land 0b11) in
     read byte >>= fun h ->
     let off = (Char.code h lsl 2) + d + 1 in
-    copy ~off ~len:2 state >>= fun () -> m
+    copy ~off ~len:0 state >>= fun () -> m
+  | '\000' .. '\015', -1 ->
+    read byte >>= fun h ->
+    let state = State.of_int (Char.code chr land 0b11) in
+    let off = (Char.code h lsl 2) + (Char.code chr lsr 2) + 2049 in
+    copy ~off ~len:1 state
   | '\016' .. '\031', _ ->
     let length = Char.code chr land 0b111 in
     let with_length len =
