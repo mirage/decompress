@@ -2604,7 +2604,7 @@ let test_lzo_15 () =
             (Error (`Malformed "Malformed input"))
             (uncompress
                ("\x00" ^ String.make 8421505 '\x00' ^ "\x01\x11\x00\x00"))
-        ; Alcotest.(check res)
+        ; if Sys.word_size > 32 then Alcotest.(check res)
             "literal run of 429529776 bytes, overflows (2**31)-1"
             (Error (`Malformed "Malformed input"))
             (uncompress
