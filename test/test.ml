@@ -18,12 +18,6 @@ let random len =
 
 open De (* au detail *)
 
-let w = make_window ~bits:15
-let l = Lz77.make_window ~bits:15
-let i = bigstring_create io_buffer_size
-let o = bigstring_create io_buffer_size
-let q = Queue.create 4096
-let wrkmem = Lzo.make_wrkmem ()
 let unsafe_get_uint8 b i = Char.code (Bigstringaf.get b i)
 let unsafe_get_uint32_be b i = Bigstringaf.get_int32_be b i
 
@@ -103,6 +97,8 @@ let encode_dynamic lst =
 
 let invalid_complement_of_length () =
   Alcotest.test_case "invalid complement of length" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x00\x00\x00\x00\x00") ~o ~w in
   Alcotest.(check decode)
     "invalid complement of length" (Inf.decode decoder)
@@ -110,6 +106,8 @@ let invalid_complement_of_length () =
 
 let invalid_kind_of_block () =
   Alcotest.test_case "invalid kind of block" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x06") ~o ~w in
   Alcotest.(check decode)
     "invalid kind of block" (Inf.decode decoder)
@@ -117,6 +115,8 @@ let invalid_kind_of_block () =
 
 let invalid_code_lengths () =
   Alcotest.test_case "invalid code lengths" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x04\x00\xfe\xff") ~o ~w in
   Alcotest.(check decode)
     "invalid code lengths" (Inf.decode decoder)
@@ -124,6 +124,8 @@ let invalid_code_lengths () =
 
 let invalid_bit_length_repeat () =
   Alcotest.test_case "invalid bit length repeat" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x04\x00\x24\x49\x00") ~o ~w in
   Alcotest.(check decode)
     "invalid bit length repeat" (Inf.decode decoder)
@@ -131,6 +133,8 @@ let invalid_bit_length_repeat () =
 
 let invalid_codes () =
   Alcotest.test_case "invalid codes -- missing end-of-block" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x04\x00\x24\xe9\xff\x6d") ~o ~w in
   Alcotest.(check decode)
     "invalid codes -- missing end-of-block" (Inf.decode decoder)
@@ -138,6 +142,8 @@ let invalid_codes () =
 
 let invalid_lengths () =
   Alcotest.test_case "invalid literals/lengths" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder
       (`String
@@ -149,6 +155,8 @@ let invalid_lengths () =
 
 let invalid_distances () =
   Alcotest.test_case "invalid distances" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder
       (`String "\x04\x80\x49\x92\x24\x49\x92\x24\x0f\xb4\xff\xff\xc3\x84") ~o ~w
@@ -158,6 +166,8 @@ let invalid_distances () =
 
 let too_many_length_or_distance_symbols () =
   Alcotest.test_case "too many length of distance symbols" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\xfc\x00\x00") ~o ~w in
   Alcotest.(check decode)
     "too many length of distance symbols" (Inf.decode decoder)
@@ -168,6 +178,8 @@ let too_many_length_or_distance_symbols () =
 
 let invalid_distance_code () =
   Alcotest.test_case "invalid distance code" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x02\x7e\xff\xff") ~o ~w in
   Alcotest.(check decode)
     "invalid distance code" (Inf.decode decoder)
@@ -181,6 +193,8 @@ let invalid_distance_code () =
 
 let invalid_distance_too_far_back () =
   Alcotest.test_case "invalid distance too far back" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder (`String "\x0c\xc0\x81\x00\x00\x00\x00\x00\x90\xff\x6b\x04\x00")
       ~o ~w in
@@ -190,6 +204,8 @@ let invalid_distance_too_far_back () =
 
 let fixed () =
   Alcotest.test_case "fixed" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x03\x00") ~o ~w in
   Alcotest.(check decode)
     "fixed"
@@ -203,6 +219,8 @@ let fixed () =
 
 let stored () =
   Alcotest.test_case "stored" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x01\x01\x00\xfe\xff\x00") ~o ~w in
   Alcotest.(check decode)
     "stored"
@@ -214,7 +232,7 @@ let stored () =
       (Bigstringaf.substring o ~off:0
          ~len:(Bigstringaf.length o - Inf.dst_rem decoder))
 
-let unroll_inflate decoder =
+let unroll_inflate o decoder =
   let buf = Buffer.create 16 in
   let rec go () =
     match Inf.decode decoder with
@@ -235,48 +253,60 @@ let unroll_inflate decoder =
 
 let length_extra () =
   Alcotest.test_case "length extra" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder
       (`String "\xed\xc0\x01\x01\x00\x00\x00\x40\x20\xff\x57\x1b\x42\x2c\x4f")
       ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check string) "0x00 * 516" (String.make 516 '\x00') res
 
 let long_distance_and_extra () =
   Alcotest.test_case "long distance and extra" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder
       (`String
         "\xed\xcf\xc1\xb1\x2c\x47\x10\xc4\x30\xfa\x6f\x35\x1d\x01\x82\x59\x3d\xfb\xbe\x2e\x2a\xfc\x0f\x0c")
       ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check string) "0x00 * 518" (String.make 518 '\x00') res
 
 let window_end () =
   Alcotest.test_case "window end" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder
       (`String
         "\xed\xc0\x81\x00\x00\x00\x00\x80\xa0\xfd\xa9\x17\xa9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06")
       ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check string) "0x00 * 33025" (String.make 33025 '\x00') res
 
 let flat_of_string () =
   Alcotest.test_case "flat of string" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x01\x00\x00\xff\xff") ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check string) "empty" "" res
 
 let flat_block () =
   Alcotest.test_case "flat block" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder (`String "\x01\x04\x00\xfb\xff\xde\xad\xbe\xef") ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check string) "deadbeef" "\xde\xad\xbe\xef" res
 
 let fuzz0 () =
   Alcotest.test_case "fuzz0" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder
       (`String
@@ -296,6 +326,8 @@ let fuzz0 () =
 
 let fuzz1 () =
   Alcotest.test_case "fuzz1" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\019\208nO\200\189r\020\176") ~o ~w in
   Alcotest.(check decode)
     "fuzz1"
@@ -319,10 +351,12 @@ let fuzz2 () =
     ; "\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x7e\x3a\x2c\x50" (* ~~~~~~~~:,P *)
     ] in
   Alcotest.test_case "fuzz2" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder (`String "\x93\x3a\x55\x47\x12\x80\x51\x56\x3a\x01\x00\x00") ~o
       ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check string) "fuzz2" (String.concat "" expected_output) res
 
 let fuzz3 () =
@@ -368,10 +402,12 @@ let fuzz3 () =
       (* .v.v.v.v.v.v.v.v *); "\xc8\x76\xc8\x76" (* .v.v *)
     ] in
   Alcotest.test_case "fuzz3" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder (`String "\x93\x3a\x55\x47\x12\x3a\x51\x36\x0a\x01\x00\x00") ~o
       ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check string) "fuzz3" (String.concat "" expected_output) res
 
 let fuzz4 () =
@@ -385,10 +421,12 @@ let fuzz4 () =
       (* ~..~..~..~..~..~ *); "\xc8\x76\x75\x75\x75\x75\x75\x75" (* .vuuuuuu *)
     ] in
   Alcotest.test_case "fuzz4" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder (`String "\x93\x3a\x55\x47\x12\x3a\x51\x56\x0a\x06\x80\x00") ~o
       ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check string) "fuzz4" (String.concat "" expected_output) res
 
 let fuzz5 () =
@@ -404,8 +442,10 @@ let fuzz5 () =
     ; "\x50\x50\x50\x50\x50\x50\x50\x50\x50" (* PPPPPPPPP *)
     ] in
   Alcotest.test_case "fuzz5" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String (String.concat "" input)) ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check string) "fuzz5" (String.concat "" expected_output) res
 
 let fuzz6 () =
@@ -415,6 +455,8 @@ let fuzz6 () =
       (* .YYY^.Y^.Y^.Y^.Y *); "\x5e\xe3\x33" (* ^.3 *)
     ] in
   Alcotest.test_case "fuzz6" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder (`String "\x93\x8c\x8c\x8c\x8c\x7b\x8c\x8c\x8c\x01\x00\x00") ~o
       ~w in
@@ -431,6 +473,8 @@ let fuzz6 () =
 
 let fuzz7 () =
   Alcotest.test_case "fuzz7" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder =
     Inf.decoder (`String "\x93\x3a\x55\x69\x12\x3a\x3f\x10\x08\x01\x00\x00") ~o
       ~w in
@@ -446,6 +490,8 @@ let fuzz7 () =
 
 let fuzz8 () =
   Alcotest.test_case "fuzz8" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String "\x7a\x37\x6d\x99\x13") ~o ~w in
   Alcotest.(check decode)
     "fuzz8" (Inf.decode decoder) (`Malformed "Unexpected end of input")
@@ -460,6 +506,8 @@ let fuzz9 () =
       (* y/.Q.{./........ *)
     ; "\xb8\xc8\xff\x2f\x00\x7f\x88\x7b\xbc" (* .../...{. *)
     ] in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String (String.concat "" inputs)) ~o ~w in
   Alcotest.(check decode)
     "fuzz9" (Inf.decode decoder) (`Malformed "Invalid distance")
@@ -484,8 +532,10 @@ let huffman_length_extra () =
       Alcotest.(check str)
         "encoding" res "\237\193\001\001\000\000\000@ \255W\027B\193\234\004"
 
-      ; let decoder = Inf.decoder (`String res) ~o ~w in
-        let res = unroll_inflate decoder in
+      ; let o = bigstring_create io_buffer_size in
+        let w = make_window ~bits:15 in
+        let decoder = Inf.decoder (`String res) ~o ~w in
+        let res = unroll_inflate o decoder in
         Alcotest.(check str) "result" (String.make (258 + 256 + 2) '\000') res
 
 let fuzz10 () =
@@ -496,6 +546,8 @@ let fuzz10 () =
     ; `Copy (1, 19); `End
     ] in
   let res = encode_dynamic lst in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String res) ~o ~w in
   Alcotest.(check decode)
     "decoding"
@@ -509,8 +561,10 @@ let fuzz11 () =
     [`Literal (Char.chr 228); `Literal (Char.chr 255); `Copy (1, 130); `End]
   in
   let res = encode_dynamic lst in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String res) ~o ~w in
-  let res0 = unroll_inflate decoder in
+  let res0 = unroll_inflate o decoder in
   let res1 = Bytes.create 132 in
   Bytes.set res1 0 (Char.chr 228)
   ; Bytes.fill res1 1 131 (Char.chr 255)
@@ -524,8 +578,10 @@ let fuzz12 () =
     ; `Copy (2, 249); `End
     ] in
   let res = encode_dynamic lst in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String res) ~o ~w in
-  let res0 = unroll_inflate decoder in
+  let res0 = unroll_inflate o decoder in
   let res1 =
     [
       "\x47\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00\xff\x00"
@@ -566,8 +622,10 @@ let fuzz13 () =
   Alcotest.test_case "fuzz13" `Quick @@ fun () ->
   let inputs = ["\x9b\x0e\x02\x00" (* .... *)] in
   let input = String.concat "" inputs in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String input) ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check str) "result" res "\x97\x97\x97\x97\x97"
 
 let fuzz14 () =
@@ -580,8 +638,10 @@ let fuzz14 () =
       (*  ..........d.... *); "\x8f\xcd\x0e\x02\x21\xff\xff\x80" (* ....!... *)
     ] in
   let input = String.concat "" inputs in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String input) ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   let outputs =
     [
       "\x57\xff\xc6\xff\xc6\xff\xc6\xff\xc6\x9b\x52\xc6\x9b\x52\xc6\xc6"
@@ -642,8 +702,10 @@ let fuzz15 () =
       (* ..]f..WW..[..s *)
     ] in
   let input = String.concat "" inputs in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String input) ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   let outputs = ["\x78\x20\x5f\x74\x6c\x69\x63" (* x _tlic *)] in
   Alcotest.(check str) "result" res (String.concat "" outputs)
 
@@ -655,8 +717,10 @@ let fuzz16 () =
     ; `Copy (527, 208); `Copy (129, 258); `End
     ] in
   let res = encode_dynamic lst in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String res) ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   Alcotest.(check str) "result" res (String.make 1068 '@')
 
 let fuzz17 () =
@@ -667,8 +731,10 @@ let fuzz17 () =
     ; `Literal (Char.chr 218); `Literal (Char.chr 0); `End
     ] in
   let res = encode_dynamic lst in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String res) ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   let outputs =
     [
       "\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda\xda"
@@ -692,8 +758,10 @@ let fuzz18 () =
       (* ..LV..WW..[..`.. *)
     ] in
   let input = String.concat "" inputs in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String input) ~o ~w in
-  let res = unroll_inflate decoder in
+  let res = unroll_inflate o decoder in
   let outputs =
     [
       "\x75\x27\x5a\xfb\x64\x64\x2b\x63\x29\x67\x6e\x60\x20\x67\x6e\x60"
@@ -723,32 +791,34 @@ let cmds = Alcotest.list cmd
 
 let lz77_0 () =
   Alcotest.test_case "simple match" `Quick @@ fun () ->
-  Queue.reset q
-  ; let state = Lz77.state (`String "aaaaa") ~w:l ~q in
-    match Lz77.compress state with
-    | `End ->
-      let lst = Queue.to_list q in
-      Alcotest.(check cmds)
-        "result" lst
-        [`Literal 'a'; `Literal 'a'; `Copy (1, 3); `End]
-    | `Flush -> Alcotest.fail "Unexpected `Flush return"
-    | `Await -> Alcotest.fail "Impossible `Await case"
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let state = Lz77.state (`String "aaaaa") ~w:l ~q in
+  match Lz77.compress state with
+  | `End ->
+    let lst = Queue.to_list q in
+    Alcotest.(check cmds)
+      "result" lst
+      [`Literal 'a'; `Literal 'a'; `Copy (1, 3); `End]
+  | `Flush -> Alcotest.fail "Unexpected `Flush return"
+  | `Await -> Alcotest.fail "Impossible `Await case"
 
 let lz77_1 () =
   Alcotest.test_case "no match" `Quick @@ fun () ->
-  Queue.reset q
-  ; let state = Lz77.state (`String "abcde") ~w:l ~q in
-    match Lz77.compress state with
-    | `End ->
-      let lst = Queue.to_list q in
-      Alcotest.(check cmds)
-        "result" lst
-        [
-          `Literal 'a'; `Literal 'b'; `Literal 'c'; `Literal 'd'; `Literal 'e'
-        ; `End
-        ]
-    | `Flush -> Alcotest.fail "Unexpected `Flush return"
-    | `Await -> Alcotest.fail "Impossible `Await case"
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let state = Lz77.state (`String "abcde") ~w:l ~q in
+  match Lz77.compress state with
+  | `End ->
+    let lst = Queue.to_list q in
+    Alcotest.(check cmds)
+      "result" lst
+      [
+        `Literal 'a'; `Literal 'b'; `Literal 'c'; `Literal 'd'; `Literal 'e'
+      ; `End
+      ]
+  | `Flush -> Alcotest.fail "Unexpected `Flush return"
+  | `Await -> Alcotest.fail "Impossible `Await case"
 
 let reconstruct lst =
   let len =
@@ -774,59 +844,62 @@ let reconstruct lst =
 
 let lz77_2 () =
   Alcotest.test_case "fuzz" `Quick @@ fun () ->
-  Queue.reset q
-  ; let inputs =
-      [
-        "\x40\x1e\x04\x30\x73\x00\x37\x0d\x19\x38\x63\x00\x0d\x0d\x0d\x22"
-        (* @..0s.7..8c..... *)
-      ; "\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x19\x38\x80" (* ........8. *)
-      ] in
-    let input = String.concat "" inputs in
-    let state = Lz77.state (`String input) ~w:l ~q in
-    match Lz77.compress state with
-    | `End ->
-      let lst = Queue.to_list q in
-      let res = reconstruct lst in
-      Alcotest.(check str) "result" input res
-    | `Flush -> Alcotest.fail "Unexpected `Flush return"
-    | `Await -> Alcotest.fail "Impossible `Await case"
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let inputs =
+    [
+      "\x40\x1e\x04\x30\x73\x00\x37\x0d\x19\x38\x63\x00\x0d\x0d\x0d\x22"
+      (* @..0s.7..8c..... *)
+    ; "\x0d\x0d\x0d\x0d\x0d\x0d\x0d\x19\x38\x80" (* ........8. *)
+    ] in
+  let input = String.concat "" inputs in
+  let state = Lz77.state (`String input) ~w:l ~q in
+  match Lz77.compress state with
+  | `End ->
+    let lst = Queue.to_list q in
+    let res = reconstruct lst in
+    Alcotest.(check str) "result" input res
+  | `Flush -> Alcotest.fail "Unexpected `Flush return"
+  | `Await -> Alcotest.fail "Impossible `Await case"
 
 let lz77_3 () =
   Alcotest.test_case "fuzz" `Quick @@ fun () ->
-  Queue.reset q
-  ; let inputs =
-      ["\xf6\x21\xff\x7f\x00\x9d\x0d\xf6\x21\xff\x7f" (* .!......!.. *)] in
-    let input = String.concat "" inputs in
-    let state = Lz77.state (`String input) ~w:l ~q in
-    match Lz77.compress state with
-    | `End ->
-      let lst = Queue.to_list q in
-      let res = reconstruct lst in
-      Alcotest.(check str) "result" input res
-    | `Flush -> Alcotest.fail "Unexpected `Flush return"
-    | `Await -> Alcotest.fail "Impossible `Await case"
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let inputs =
+    ["\xf6\x21\xff\x7f\x00\x9d\x0d\xf6\x21\xff\x7f" (* .!......!.. *)] in
+  let input = String.concat "" inputs in
+  let state = Lz77.state (`String input) ~w:l ~q in
+  match Lz77.compress state with
+  | `End ->
+    let lst = Queue.to_list q in
+    let res = reconstruct lst in
+    Alcotest.(check str) "result" input res
+  | `Flush -> Alcotest.fail "Unexpected `Flush return"
+  | `Await -> Alcotest.fail "Impossible `Await case"
 
 let lz77_4 () =
   Alcotest.test_case "fuzz" `Quick @@ fun () ->
-  Queue.reset q
-  ; let inputs =
-      [
-        "\x02\x21\xf9\x1c\xf1\x9d\x0e\x02\xbc\xbc\x1c\xf9\xd9\xa3\x28\x53"
-        (* .!............(S *)
-      ; "\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53"
-        (* SSSSSSSSSSSSSSSS *)
-      ; "\x53\x53\x53\x53\x53\x53\x53\x7f\x0e\xff\xe8\x03\x00\x00\x00\xff"
-        (* SSSSSSS......... *); "\xff\x57\xff\xe8\x03\x00" (* .W.... *)
-      ] in
-    let input = String.concat "" inputs in
-    let state = Lz77.state (`String input) ~w:l ~q in
-    match Lz77.compress state with
-    | `End ->
-      let lst = Queue.to_list q in
-      let res = reconstruct lst in
-      Alcotest.(check str) "result" input res
-    | `Flush -> Alcotest.fail "Unexpected `Flush return"
-    | `Await -> Alcotest.fail "Impossible `Await case"
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let inputs =
+    [
+      "\x02\x21\xf9\x1c\xf1\x9d\x0e\x02\xbc\xbc\x1c\xf9\xd9\xa3\x28\x53"
+      (* .!............(S *)
+    ; "\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53\x53"
+      (* SSSSSSSSSSSSSSSS *)
+    ; "\x53\x53\x53\x53\x53\x53\x53\x7f\x0e\xff\xe8\x03\x00\x00\x00\xff"
+      (* SSSSSSS......... *); "\xff\x57\xff\xe8\x03\x00" (* .W.... *)
+    ] in
+  let input = String.concat "" inputs in
+  let state = Lz77.state (`String input) ~w:l ~q in
+  match Lz77.compress state with
+  | `End ->
+    let lst = Queue.to_list q in
+    let res = reconstruct lst in
+    Alcotest.(check str) "result" input res
+  | `Flush -> Alcotest.fail "Unexpected `Flush return"
+  | `Await -> Alcotest.fail "Impossible `Await case"
 
 let hang0 () =
   Alcotest.test_case "hang" `Quick @@ fun () ->
@@ -836,8 +909,10 @@ let hang0 () =
     ; `Literal '\243'; `Copy (244, 15); `End
     ] in
   let res = encode_dynamic lst in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String res) ~o ~w in
-  let _ = unroll_inflate decoder in
+  let _ = unroll_inflate o decoder in
   ()
 
 let ( <.> ) f g x = f (g x)
@@ -847,8 +922,8 @@ let dynamic_and_fixed () =
   let res = Buffer.create 16 in
   let literals = make_literals () in
   let distances = make_distances () in
-  Queue.reset q
-  ; List.iter (Queue.push_exn q <.> Queue.cmd) [`Literal 'a'; `Copy (1, 3)]
+  let q = Queue.create 4096 in
+  List.iter (Queue.push_exn q <.> Queue.cmd) [`Literal 'a'; `Copy (1, 3)]
   ; succ_literal literals 'a'
   ; succ_length literals 3
   ; succ_distance distances 1
@@ -871,8 +946,11 @@ let dynamic_and_fixed () =
       ; `Fill [`Literal 'b'; `Copy (1, 3); `End]
       ; `Block {Def.kind= Def.Fixed; Def.last= true}; `Flush
       ]
-    ; let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
-      let res = unroll_inflate decoder in
+
+    ; let o = bigstring_create io_buffer_size in
+      let w = make_window ~bits:15 in
+      let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
+      let res = unroll_inflate o decoder in
       Alcotest.(check str) "result" res "aaaabbbb"
 
 let fixed_and_dynamic () =
@@ -880,8 +958,8 @@ let fixed_and_dynamic () =
   let res = Buffer.create 16 in
   let literals = make_literals () in
   let distances = make_distances () in
-  Queue.reset q
-  ; List.iter (Queue.push_exn q <.> Queue.cmd) [`Literal 'a'; `Copy (1, 3)]
+  let q = Queue.create 4096 in
+  List.iter (Queue.push_exn q <.> Queue.cmd) [`Literal 'a'; `Copy (1, 3)]
   ; succ_literal literals 'b'
   ; succ_length literals 3
   ; succ_distance distances 1
@@ -903,8 +981,10 @@ let fixed_and_dynamic () =
         `Flush; `Block {Def.kind= Def.Dynamic dynamic_b; last= true}
       ; `Fill [`Literal 'b'; `Copy (1, 3); `End]; `Flush
       ]
-    ; let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
-      let res = unroll_inflate decoder in
+    ; let o = bigstring_create io_buffer_size in
+      let w = make_window ~bits:15 in
+      let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
+      let res = unroll_inflate o decoder in
       Alcotest.(check str) "result" res "aaaabbbb"
 
 let dynamic_and_dynamic () =
@@ -912,10 +992,10 @@ let dynamic_and_dynamic () =
   let res = Buffer.create 16 in
   let literals = make_literals () in
   let distances = make_distances () in
-  Queue.reset q
-  ; List.iter
-      (Queue.push_exn q <.> Queue.cmd)
-      [`Literal 'a'; `Copy (1, 3); `Literal 'b'; `Copy (1, 3); `End]
+  let q = Queue.create 4096 in
+  List.iter
+    (Queue.push_exn q <.> Queue.cmd)
+    [`Literal 'a'; `Copy (1, 3); `Literal 'b'; `Copy (1, 3); `End]
 
   ; succ_literal literals 'a'
   ; succ_length literals 3
@@ -944,9 +1024,10 @@ let dynamic_and_dynamic () =
           `Block {Def.kind= Def.Dynamic dynamic_a; Def.last= false}
         ; `Block {Def.kind= Def.Dynamic dynamic_b; Def.last= true}; `Flush
         ]
-
-      ; let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
-        let res = unroll_inflate decoder in
+      ; let o = bigstring_create io_buffer_size in
+        let w = make_window ~bits:15 in
+        let decoder = Inf.decoder (`String (Buffer.contents res)) ~w ~o in
+        let res = unroll_inflate o decoder in
         Alcotest.(check str) "result" res "aaaabbbb"
 
 let max_flat () =
@@ -957,8 +1038,10 @@ let max_flat () =
     Bytes.set inputs 1 '\xff'
   ; Bytes.set inputs 2 '\xff'
   ; (* len *)
+    let o = bigstring_create io_buffer_size in
+    let w = make_window ~bits:15 in
     let decoder = Inf.decoder (`String (Bytes.unsafe_to_string inputs)) ~w ~o in
-    let res = unroll_inflate decoder in
+    let res = unroll_inflate o decoder in
     Alcotest.(check string) "0xffff * \x00" res (String.make 0xffff '\x00')
 
 let flat () =
@@ -975,8 +1058,10 @@ let flat () =
   let res0 = go (Def.encode encoder (`Block {Def.kind= Def.Flat; last= true})) in
   Alcotest.(check string)
     "deadbeef deflated" "\x01\x04\x00\xfb\xff\xde\xad\xbe\xef" res0
-  ; let decoder = Inf.decoder (`String res0) ~w ~o in
-    let res1 = unroll_inflate decoder in
+  ; let o = bigstring_create io_buffer_size in
+    let w = make_window ~bits:15 in
+    let decoder = Inf.decoder (`String res0) ~w ~o in
+    let res1 = unroll_inflate o decoder in
     Alcotest.(check string) "deadbeef" "\xde\xad\xbe\xef" res1
 
 let fixed_and_flat () =
@@ -996,8 +1081,10 @@ let fixed_and_flat () =
     | `Block ->
       go (Def.encode encoder (`Block {Def.kind= Def.Flat; last= true})) in
   let res0 = go (Def.encode encoder `Flush) in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String res0) ~w ~o in
-  let res1 = unroll_inflate decoder in
+  let res1 = unroll_inflate o decoder in
   Alcotest.(check string) "aaaadeadbeef" "aaaa\xde\xad\xbe\xef" res1
 
 let flat_and_fixed () =
@@ -1024,8 +1111,10 @@ let flat_and_fixed () =
       go0 (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true})) in
   let res0 =
     go0 (Def.encode encoder (`Block {Def.kind= Def.Flat; last= false})) in
+  let o = bigstring_create io_buffer_size in
+  let w = make_window ~bits:15 in
   let decoder = Inf.decoder (`String res0) ~w ~o in
-  let res1 = unroll_inflate decoder in
+  let res1 = unroll_inflate o decoder in
   Alcotest.(check string) "deadbeefaaaa" "\xde\xad\xbe\xefaaaa" res1
 
 let load_file ln path =
@@ -1059,29 +1148,30 @@ let partial_reconstruct tmp lst =
 let lz77_corpus_rfc5322 () =
   Alcotest.test_case "rfc5322" `Quick @@ fun () ->
   let ic = open_in "corpus/rfc5322.txt" in
-  Queue.reset q
-  ; let state = Lz77.state (`Channel ic) ~w:l ~q in
-    let res = ref "" in
-    let rec go () =
-      match Lz77.compress state with
-      | `Flush ->
-        Alcotest.(check bool) "available q < 2" (Queue.available q < 2) true
-        ; res := partial_reconstruct !res (Queue.to_list q)
-        ; Alcotest.(check str)
-            "rfc5322.txt"
-            (load_file (String.length !res) "corpus/rfc5322.txt")
-            !res
-        ; Queue.reset q
-        ; go ()
-      | `Await -> Alcotest.fail "Impossible `Await case"
-      | `End ->
-        res := partial_reconstruct !res (Queue.to_list q)
-        ; Alcotest.(check str)
-            "rfc5322.txt"
-            (load_file (String.length !res) "corpus/rfc5322.txt")
-            !res
-        ; close_in ic in
-    go ()
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let state = Lz77.state (`Channel ic) ~w:l ~q in
+  let res = ref "" in
+  let rec go () =
+    match Lz77.compress state with
+    | `Flush ->
+      Alcotest.(check bool) "available q < 2" (Queue.available q < 2) true
+      ; res := partial_reconstruct !res (Queue.to_list q)
+      ; Alcotest.(check str)
+          "rfc5322.txt"
+          (load_file (String.length !res) "corpus/rfc5322.txt")
+          !res
+      ; Queue.reset q
+      ; go ()
+    | `Await -> Alcotest.fail "Impossible `Await case"
+    | `End ->
+      res := partial_reconstruct !res (Queue.to_list q)
+      ; Alcotest.(check str)
+          "rfc5322.txt"
+          (load_file (String.length !res) "corpus/rfc5322.txt")
+          !res
+      ; close_in ic in
+  go ()
 
 let _max_bits = 15
 let _literals = 256
@@ -1158,14 +1248,13 @@ let tree_rfc5322_corpus () =
     Alcotest.(check (pair int int)) "literal 6" (10, 0x35f) (len_6, code_6)
     ; Alcotest.(check (pair int int)) "eob" (15, 0x6fff) (len_eob, code_eob)
 
-let w0 = Lz77.make_window ~bits:15
-let w1 = make_window ~bits:15
-let t = bigstring_create io_buffer_size
-let o = bigstring_create io_buffer_size
-let q = Queue.create 0x4000
-let b = Buffer.create 4096
-
 let compress_and_uncompress ic =
+  let q = Queue.create 0x4000 in
+  let w0 = Lz77.make_window ~bits:15 in
+  let w1 = make_window ~bits:15 in
+  let t = bigstring_create io_buffer_size in
+  let o = bigstring_create io_buffer_size in
+  let b = Buffer.create 4096 in
   let state = Lz77.state ~q ~w:w0 (`Channel ic) in
   let encoder = Def.encoder `Manual ~q in
   let decoder = Inf.decoder `Manual ~o ~w:w1 in
@@ -1246,114 +1335,117 @@ let test_corpus filename =
   compress_and_uncompress ic ; close_in ic
 
 let gzip_compress_and_uncompress ~filename ic =
-  De.Queue.reset q
-  ; let os = bigstring_create io_buffer_size in
-    let bf = Buffer.create 4096 in
-    let encoder =
-      Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l Gz.Unix ~q ~w:l
-        ~level:4 in
-    let decoder = Gz.Inf.decoder `Manual ~o in
+  let os = bigstring_create io_buffer_size in
+  let bf = Buffer.create 4096 in
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
+  let encoder =
+    Gz.Def.encoder (`Channel ic) `Manual ~filename ~mtime:0l Gz.Unix ~q ~w:l
+      ~level:4 in
+  let decoder = Gz.Inf.decoder `Manual ~o in
 
-    let rec go_encode decoder encoder =
-      match Gz.Def.encode encoder with
-      | `Await _ -> assert false
-      | `Flush encoder ->
-        let len = io_buffer_size - Gz.Def.dst_rem encoder in
-        go_decode (Gz.Inf.src decoder os 0 len) encoder
-      | `End encoder ->
-        let len = io_buffer_size - Gz.Def.dst_rem encoder in
-        go_decode (Gz.Inf.src decoder os 0 len) encoder
-    and go_decode decoder encoder =
-      match Gz.Inf.decode decoder with
-      | `Await decoder ->
-        go_encode decoder (Gz.Def.dst encoder os 0 io_buffer_size)
-      | `Flush decoder ->
-        let len = io_buffer_size - Gz.Inf.dst_rem decoder in
-        for i = 0 to pred len do
-          Buffer.add_char bf o.{i}
-        done
-        ; go_decode (Gz.Inf.flush decoder) encoder
-      | `End decoder ->
-        let len = io_buffer_size - Gz.Inf.dst_rem decoder in
-        for i = 0 to pred len do
-          Buffer.add_char bf o.{i}
-        done
-        ; Alcotest.(check (option string))
-            "filename" (Gz.Inf.filename decoder) (Some filename)
-        ; Buffer.contents bf
-      | `Malformed err -> failwith err in
+  let rec go_encode decoder encoder =
+    match Gz.Def.encode encoder with
+    | `Await _ -> assert false
+    | `Flush encoder ->
+      let len = io_buffer_size - Gz.Def.dst_rem encoder in
+      go_decode (Gz.Inf.src decoder os 0 len) encoder
+    | `End encoder ->
+      let len = io_buffer_size - Gz.Def.dst_rem encoder in
+      go_decode (Gz.Inf.src decoder os 0 len) encoder
+  and go_decode decoder encoder =
+    match Gz.Inf.decode decoder with
+    | `Await decoder ->
+      go_encode decoder (Gz.Def.dst encoder os 0 io_buffer_size)
+    | `Flush decoder ->
+      let len = io_buffer_size - Gz.Inf.dst_rem decoder in
+      for i = 0 to pred len do
+        Buffer.add_char bf o.{i}
+      done
+      ; go_decode (Gz.Inf.flush decoder) encoder
+    | `End decoder ->
+      let len = io_buffer_size - Gz.Inf.dst_rem decoder in
+      for i = 0 to pred len do
+        Buffer.add_char bf o.{i}
+      done
+      ; Alcotest.(check (option string))
+          "filename" (Gz.Inf.filename decoder) (Some filename)
+      ; Buffer.contents bf
+    | `Malformed err -> failwith err in
 
-    let contents = go_decode decoder encoder in
-    seek_in ic 0
+  let contents = go_decode decoder encoder in
+  seek_in ic 0
 
-    ; let rec slow_compare pos =
-        match input_char ic with
-        | chr ->
-          if pos >= String.length contents then
-            Fmt.invalid_arg "Reach end of contents"
-          ; if contents.[pos] <> chr then
-              Fmt.invalid_arg "Contents differ at %08x\n%!" pos
-          ; slow_compare (succ pos)
-        | exception End_of_file ->
-          if pos <> String.length contents then
-            Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)"
-              (String.length contents) pos in
+  ; let rec slow_compare pos =
+      match input_char ic with
+      | chr ->
+        if pos >= String.length contents then
+          Fmt.invalid_arg "Reach end of contents"
+        ; if contents.[pos] <> chr then
+            Fmt.invalid_arg "Contents differ at %08x\n%!" pos
+        ; slow_compare (succ pos)
+      | exception End_of_file ->
+        if pos <> String.length contents then
+          Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)"
+            (String.length contents) pos in
 
-      slow_compare 0
+    slow_compare 0
 
 let zlib_compress_and_uncompress ic =
-  De.Queue.reset q
-  ; let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w:l ~level:4 in
-    let decoder =
-      Zl.Inf.decoder `Manual ~o ~allocate:(fun bits -> De.make_window ~bits)
-    in
-    let os = De.bigstring_create io_buffer_size in
-    let bf = Buffer.create 4096 in
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
+  let encoder = Zl.Def.encoder (`Channel ic) `Manual ~q ~w:l ~level:4 in
+  let decoder =
+    Zl.Inf.decoder `Manual ~o ~allocate:(fun bits -> De.make_window ~bits) in
+  let os = De.bigstring_create io_buffer_size in
+  let bf = Buffer.create 4096 in
 
-    let rec go_encode decoder encoder =
-      match Zl.Def.encode encoder with
-      | `Await _ -> assert false
-      | `Flush encoder ->
-        let len = io_buffer_size - Zl.Def.dst_rem encoder in
-        go_decode (Zl.Inf.src decoder os 0 len) encoder
-      | `End encoder ->
-        let len = io_buffer_size - Zl.Def.dst_rem encoder in
-        go_decode (Zl.Inf.src decoder os 0 len) encoder
-    and go_decode decoder encoder =
-      match Zl.Inf.decode decoder with
-      | `Await decoder ->
-        go_encode decoder (Zl.Def.dst encoder os 0 io_buffer_size)
-      | `Flush decoder ->
-        let len = io_buffer_size - Zl.Inf.dst_rem decoder in
-        for i = 0 to pred len do
-          Buffer.add_char bf o.{i}
-        done
-        ; go_decode (Zl.Inf.flush decoder) encoder
-      | `End decoder ->
-        let len = io_buffer_size - Zl.Inf.dst_rem decoder in
-        for i = 0 to pred len do
-          Buffer.add_char bf o.{i}
-        done
-        ; Buffer.contents bf
-      | `Malformed err -> failwith err in
+  let rec go_encode decoder encoder =
+    match Zl.Def.encode encoder with
+    | `Await _ -> assert false
+    | `Flush encoder ->
+      let len = io_buffer_size - Zl.Def.dst_rem encoder in
+      go_decode (Zl.Inf.src decoder os 0 len) encoder
+    | `End encoder ->
+      let len = io_buffer_size - Zl.Def.dst_rem encoder in
+      go_decode (Zl.Inf.src decoder os 0 len) encoder
+  and go_decode decoder encoder =
+    match Zl.Inf.decode decoder with
+    | `Await decoder ->
+      go_encode decoder (Zl.Def.dst encoder os 0 io_buffer_size)
+    | `Flush decoder ->
+      let len = io_buffer_size - Zl.Inf.dst_rem decoder in
+      for i = 0 to pred len do
+        Buffer.add_char bf o.{i}
+      done
+      ; go_decode (Zl.Inf.flush decoder) encoder
+    | `End decoder ->
+      let len = io_buffer_size - Zl.Inf.dst_rem decoder in
+      for i = 0 to pred len do
+        Buffer.add_char bf o.{i}
+      done
+      ; Buffer.contents bf
+    | `Malformed err -> failwith err in
 
-    let contents = go_decode decoder encoder in
-    seek_in ic 0
+  let contents = go_decode decoder encoder in
+  seek_in ic 0
 
-    ; let rec slow_compare pos =
-        match input_char ic with
-        | chr ->
-          if pos >= String.length contents then
-            Fmt.invalid_arg "Reach end of contents"
-          ; if contents.[pos] <> chr then
-              Fmt.invalid_arg "Contents differ at %08x\n%!" pos
-          ; slow_compare (succ pos)
-        | exception End_of_file ->
-          if pos <> String.length contents then
-            Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)"
-              (String.length contents) pos in
+  ; let rec slow_compare pos =
+      match input_char ic with
+      | chr ->
+        if pos >= String.length contents then
+          Fmt.invalid_arg "Reach end of contents"
+        ; if contents.[pos] <> chr then
+            Fmt.invalid_arg "Contents differ at %08x\n%!" pos
+        ; slow_compare (succ pos)
+      | exception End_of_file ->
+        if pos <> String.length contents then
+          Fmt.invalid_arg "Lengths differ: (contents: %d, file: %d)"
+            (String.length contents) pos in
 
-      slow_compare 0
+    slow_compare 0
 
 let test_corpus_with_zlib filename =
   Alcotest.test_case filename `Slow @@ fun () ->
@@ -1376,6 +1468,8 @@ let git_object () =
     ; "\x72\xb9\xb4\x44\x59\x5d\x21"; "\x05\xb7\x34\x4f\x64\xe9\xa8"
     ; "\x5a\x3e\xd9\x91\x1f\x44\x91"; "\xc1\x5c\xbd\xe5\x0c\xd1"
     ] in
+  let w = make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
   let decoder =
     Zl.Inf.decoder (`String (String.concat "" inputs)) ~o ~allocate:(fun _ -> w)
   in
@@ -1433,15 +1527,19 @@ let failwith_on_error_msg = function
 
 let higher_zlib input =
   Alcotest.test_case "higher" `Quick @@ fun () ->
-  Queue.reset q
-  ; let refill = emitter_from_string input in
+  let o = bigstring_create io_buffer_size in
+  let refill = emitter_from_string input in
+  let flush, contents = producer_to_string () in
+  let i = bigstring_create io_buffer_size in
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let w = make_window ~bits:15 in
+  Zl.Higher.compress ~level:0 ~w:l ~q ~refill ~flush i o
+  ; let refill = emitter_from_string (contents ()) in
     let flush, contents = producer_to_string () in
-    Zl.Higher.compress ~level:0 ~w:l ~q ~refill ~flush i o
-    ; let refill = emitter_from_string (contents ()) in
-      let flush, contents = producer_to_string () in
-      let res = Zl.Higher.uncompress ~allocate:(fun _ -> w) ~refill ~flush i o in
-      failwith_on_error_msg res
-      ; Alcotest.(check string) "higher" input (contents ())
+    let res = Zl.Higher.uncompress ~allocate:(fun _ -> w) ~refill ~flush i o in
+    failwith_on_error_msg res
+    ; Alcotest.(check string) "higher" input (contents ())
 
 let higher_zlib0 () = higher_zlib "aaaa"
 let higher_zlib1 () = higher_zlib "bbbb"
@@ -1450,127 +1548,126 @@ let higher_zlib3 () = higher_zlib "Le diable me remet dans le mal"
 
 let test_multiple_flush_zlib () =
   Alcotest.test_case "multiple flush zlib" `Quick @@ fun () ->
-  Queue.reset q
-  ; let refill = emitter_from_string "foo" in
-    let flush, contents = producer_to_string () in
-    Zl.Higher.compress ~level:0 ~w:l ~q ~refill ~flush i o
-    ; let input = contents () in
-      let decoder =
-        Zl.Inf.decoder (`String input) ~o ~allocate:(fun bits ->
-            De.make_window ~bits) in
-      let decoder =
-        match Zl.Inf.decode decoder with
-        | `Flush decoder -> decoder
-        | _ -> Alcotest.failf "Invalid first call to Zl.Inf.decode" in
-      let decoder =
-        match Zl.Inf.decode decoder with
-        | `Flush decoder -> decoder
-        | _ -> Alcotest.failf "Invalid second call to Zl.Inf.decode" in
-      let decoder =
-        match Zl.Inf.decode decoder with
-        | `Flush decoder ->
-          let foo =
-            Bigstringaf.substring o ~off:0
-              ~len:(Bigstringaf.length o - Zl.Inf.dst_rem decoder) in
-          Alcotest.(check string) "contents" foo "foo"
-          ; Zl.Inf.flush decoder
-        | _ -> Alcotest.failf "Invalid third call to Zl.Inf.decode" in
+  let i = bigstring_create io_buffer_size in
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
+  let refill = emitter_from_string "foo" in
+  let flush, contents = producer_to_string () in
+  Zl.Higher.compress ~level:0 ~w:l ~q ~refill ~flush i o
+  ; let input = contents () in
+    let decoder =
+      Zl.Inf.decoder (`String input) ~o ~allocate:(fun bits ->
+          De.make_window ~bits) in
+    let decoder =
       match Zl.Inf.decode decoder with
-      | `End _ -> Alcotest.(check pass) "inflated" () ()
-      | _ -> Alcotest.failf "Invalid last call to Zl.Inf.decode"
+      | `Flush decoder -> decoder
+      | _ -> Alcotest.failf "Invalid first call to Zl.Inf.decode" in
+    let decoder =
+      match Zl.Inf.decode decoder with
+      | `Flush decoder -> decoder
+      | _ -> Alcotest.failf "Invalid second call to Zl.Inf.decode" in
+    let decoder =
+      match Zl.Inf.decode decoder with
+      | `Flush decoder ->
+        let foo =
+          Bigstringaf.substring o ~off:0
+            ~len:(Bigstringaf.length o - Zl.Inf.dst_rem decoder) in
+        Alcotest.(check string) "contents" foo "foo"
+        ; Zl.Inf.flush decoder
+      | _ -> Alcotest.failf "Invalid third call to Zl.Inf.decode" in
+    match Zl.Inf.decode decoder with
+    | `End _ -> Alcotest.(check pass) "inflated" () ()
+    | _ -> Alcotest.failf "Invalid last call to Zl.Inf.decode"
 
 let test_empty_with_zlib () =
   Alcotest.test_case "empty zlib" `Quick @@ fun () ->
-  Queue.reset q
-  ; let buf = Buffer.create 16 in
-    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w:l ~level:3 in
-    let go encoder =
-      match Zl.Def.encode encoder with
-      | `Flush _ | `Await _ ->
-        Alcotest.failf "Unexpected `Flush or `Await signal"
-      | `End _ -> Buffer.contents buf in
-    let zl = go encoder in
-    let decoder =
-      Zl.Inf.decoder (`String zl) ~o ~allocate:(fun bits ->
-          De.make_window ~bits) in
-    match Zl.Inf.decode decoder with
-    | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
-    | `End decoder ->
-      Alcotest.(check int)
-        "empty"
-        (bigstring_length o - Zl.Inf.dst_rem decoder)
-        0
-    | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
+  let buf = Buffer.create 16 in
+  let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w:l ~level:3 in
+  let go encoder =
+    match Zl.Def.encode encoder with
+    | `Flush _ | `Await _ -> Alcotest.failf "Unexpected `Flush or `Await signal"
+    | `End _ -> Buffer.contents buf in
+  let zl = go encoder in
+  let decoder =
+    Zl.Inf.decoder (`String zl) ~o ~allocate:(fun bits -> De.make_window ~bits)
+  in
+  match Zl.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty" (bigstring_length o - Zl.Inf.dst_rem decoder) 0
+  | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err
 
 let test_empty_with_zlib_and_small_output () =
   Alcotest.test_case "empty zlib & small output" `Quick @@ fun () ->
-  Queue.reset q
-  ; let o = bigstring_create 4 in
-    let buf = Buffer.create 16 in
-    let encoder = Zl.Def.encoder (`String "") `Manual ~q ~w:l ~level:3 in
-    let encoder = Zl.Def.dst encoder o 0 4 in
-    let rec go encoder =
-      match Zl.Def.encode encoder with
-      | `Flush encoder ->
-        let len = bigstring_length o - Zl.Def.dst_rem encoder in
-        let raw = Bigstringaf.substring o ~off:0 ~len in
-        Buffer.add_string buf raw
-        ; go (Zl.Def.dst encoder o 0 4)
-      | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-      | `End _ ->
-        Alcotest.(check int)
-          "empty trailer"
-          (bigstring_length o - Zl.Def.dst_rem encoder)
-          0
-        ; Buffer.contents buf in
-    let zl = go encoder in
-    let decoder =
-      Zl.Inf.decoder (`String zl) ~o ~allocate:(fun bits ->
-          De.make_window ~bits) in
-    match Zl.Inf.decode decoder with
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create 4 in
+  let buf = Buffer.create 16 in
+  let encoder = Zl.Def.encoder (`String "") `Manual ~q ~w:l ~level:3 in
+  let encoder = Zl.Def.dst encoder o 0 4 in
+  let rec go encoder =
+    match Zl.Def.encode encoder with
+    | `Flush encoder ->
+      let len = bigstring_length o - Zl.Def.dst_rem encoder in
+      let raw = Bigstringaf.substring o ~off:0 ~len in
+      Buffer.add_string buf raw
+      ; go (Zl.Def.dst encoder o 0 4)
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
-    | `End decoder ->
+    | `End _ ->
       Alcotest.(check int)
-        "empty"
-        (bigstring_length o - Zl.Inf.dst_rem decoder)
+        "empty trailer"
+        (bigstring_length o - Zl.Def.dst_rem encoder)
         0
-    | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err
+      ; Buffer.contents buf in
+  let zl = go encoder in
+  let decoder =
+    Zl.Inf.decoder (`String zl) ~o ~allocate:(fun bits -> De.make_window ~bits)
+  in
+  match Zl.Inf.decode decoder with
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `End decoder ->
+    Alcotest.(check int) "empty" (bigstring_length o - Zl.Inf.dst_rem decoder) 0
+  | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err
 
 let test_empty_with_zlib_byte_per_byte () =
   Alcotest.test_case "empty zlib (byte per byte)" `Quick @@ fun () ->
-  Queue.reset q
-  ; let buf = Buffer.create 16 in
-    let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w:l ~level:3 in
-    let go encoder =
-      match Zl.Def.encode encoder with
-      | `Flush _ | `Await _ ->
-        Alcotest.failf "Unexpected `Flush or `Await signal"
-      | `End _ -> Buffer.contents buf in
-    let zl = go encoder in
-    let decoder =
-      Zl.Inf.decoder `Manual ~o ~allocate:(fun bits -> De.make_window ~bits)
-    in
-    let i = Bigstringaf.create 1 in
-    Bigstringaf.blit_from_string zl ~src_off:0 i ~dst_off:0 ~len:1
-    ; let decoder = Zl.Inf.src decoder i 0 1 in
-      let rec go decoder (buf, off, len) =
-        match Zl.Inf.decode decoder with
-        | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
-        | `Await decoder ->
-          if len > 0 then (
-            Bigstringaf.blit_from_string buf ~src_off:off i ~dst_off:0 ~len:1
-            ; let decoder = Zl.Inf.src decoder i 0 1 in
-              go decoder (buf, succ off, len - 1))
-          else go (Zl.Inf.src decoder i 0 0) (buf, off, len)
-        | `End decoder ->
-          Alcotest.(check int)
-            "empty"
-            (bigstring_length o - Zl.Inf.dst_rem decoder)
-            0
-        | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err in
-      go decoder (zl, 1, String.length zl - 1)
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
+  let buf = Buffer.create 16 in
+  let encoder = Zl.Def.encoder (`String "") (`Buffer buf) ~q ~w:l ~level:3 in
+  let go encoder =
+    match Zl.Def.encode encoder with
+    | `Flush _ | `Await _ -> Alcotest.failf "Unexpected `Flush or `Await signal"
+    | `End _ -> Buffer.contents buf in
+  let zl = go encoder in
+  let decoder =
+    Zl.Inf.decoder `Manual ~o ~allocate:(fun bits -> De.make_window ~bits) in
+  let i = Bigstringaf.create 1 in
+  Bigstringaf.blit_from_string zl ~src_off:0 i ~dst_off:0 ~len:1
+  ; let decoder = Zl.Inf.src decoder i 0 1 in
+    let rec go decoder (buf, off, len) =
+      match Zl.Inf.decode decoder with
+      | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+      | `Await decoder ->
+        if len > 0 then (
+          Bigstringaf.blit_from_string buf ~src_off:off i ~dst_off:0 ~len:1
+          ; let decoder = Zl.Inf.src decoder i 0 1 in
+            go decoder (buf, succ off, len - 1))
+        else go (Zl.Inf.src decoder i 0 0) (buf, off, len)
+      | `End decoder ->
+        Alcotest.(check int)
+          "empty"
+          (bigstring_length o - Zl.Inf.dst_rem decoder)
+          0
+      | `Malformed err -> Alcotest.failf "Malformed Zlib: %s" err in
+    go decoder (zl, 1, String.length zl - 1)
 
 let test_empty_gzip () =
   Alcotest.test_case "empty GZip" `Quick @@ fun () ->
@@ -1579,6 +1676,7 @@ let test_empty_gzip () =
       "\x1f\x8b\x08\x00\x82\xe5\x53\x5e\x00\x03\x03\x00\x00\x00\x00\x00"
     ; "\x00\x00\x00\x00"
     ] in
+  let o = bigstring_create io_buffer_size in
   let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
   match Gz.Inf.decode decoder with
   | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -1597,6 +1695,7 @@ let test_empty_gzip_with_name () =
       "\x1f\x8b\x08\x08\xa6\xec\x53\x5e\x00\x03\x74\x65\x73\x74\x00\x03"
     ; "\x00\x00\x00\x00\x00\x00\x00\x00\x00"
     ] in
+  let o = bigstring_create io_buffer_size in
   let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
   match Gz.Inf.decode decoder with
   | `Await _ -> Alcotest.failf "Unexpected `Await signal"
@@ -1617,6 +1716,7 @@ let test_foo_gzip () =
       "\x1f\x8b\x08\x08\x2d\xf1\x53\x5e\x00\x03\x66\x6f\x6f\x00\x4b\xcb"
     ; "\xcf\x07\x00\x21\x65\x73\x8c\x03\x00\x00\x00"
     ] in
+  let o = bigstring_create io_buffer_size in
   let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
   let decoder =
     match Gz.Inf.decode decoder with
@@ -1644,6 +1744,7 @@ let test_multiple_flush_gzip () =
       "\x1f\x8b\x08\x08\x2d\xf1\x53\x5e\x00\x03\x66\x6f\x6f\x00\x4b\xcb"
     ; "\xcf\x07\x00\x21\x65\x73\x8c\x03\x00\x00\x00"
     ] in
+  let o = bigstring_create io_buffer_size in
   let decoder = Gz.Inf.decoder (`String (String.concat "" input)) ~o in
   let decoder =
     match Gz.Inf.decode decoder with
@@ -1671,85 +1772,93 @@ let test_multiple_flush_gzip () =
 
 let test_generate_empty_gzip () =
   Alcotest.test_case "generate empty GZip" `Quick @@ fun () ->
-  Queue.reset q
-  ; let buf = Buffer.create 16 in
-    let encoder =
-      Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l Gz.Unix ~q ~w:l
-        ~level:3 in
-    let go encoder =
-      match Gz.Def.encode encoder with
-      | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-      | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
-      | `End _ -> Buffer.contents buf in
-    let gz = go encoder in
-    let decoder = Gz.Inf.decoder (`String gz) ~o in
-    match Gz.Inf.decode decoder with
-    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
+  let buf = Buffer.create 16 in
+  let encoder =
+    Gz.Def.encoder (`String "") (`Buffer buf) ~mtime:0l Gz.Unix ~q ~w:l ~level:3
+  in
+  let go encoder =
+    match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-    | `End decoder ->
-      Alcotest.(check int)
-        "empty GZip"
-        (bigstring_length o - Gz.Inf.dst_rem decoder)
-        0
-    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let gz = go encoder in
+  let decoder = Gz.Inf.decoder (`String gz) ~o in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check int)
+      "empty GZip"
+      (bigstring_length o - Gz.Inf.dst_rem decoder)
+      0
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
 let test_generate_empty_gzip_with_name () =
   Alcotest.test_case "generate empty GZip with name" `Quick @@ fun () ->
-  Queue.reset q
-  ; let buf = Buffer.create 16 in
-    let encoder =
-      Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l
-        Gz.Unix ~q ~w:l ~level:4 in
-    let go encoder =
-      match Gz.Def.encode encoder with
-      | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-      | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
-      | `End _ -> Buffer.contents buf in
-    let gz = go encoder in
-    let decoder = Gz.Inf.decoder (`String gz) ~o in
-    match Gz.Inf.decode decoder with
-    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
+  let buf = Buffer.create 16 in
+  let encoder =
+    Gz.Def.encoder (`String "") (`Buffer buf) ~filename:"foo" ~mtime:0l Gz.Unix
+      ~q ~w:l ~level:4 in
+  let go encoder =
+    match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-    | `End decoder ->
-      Alcotest.(check int)
-        "emtpy GZip"
-        (bigstring_length o - Gz.Inf.dst_rem decoder)
-        0
-      ; Alcotest.(check (option string))
-          "foo" (Gz.Inf.filename decoder) (Some "foo")
-    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let gz = go encoder in
+  let decoder = Gz.Inf.decoder (`String gz) ~o in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End decoder ->
+    Alcotest.(check int)
+      "emtpy GZip"
+      (bigstring_length o - Gz.Inf.dst_rem decoder)
+      0
+    ; Alcotest.(check (option string))
+        "foo" (Gz.Inf.filename decoder) (Some "foo")
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
 let test_generate_foo_gzip () =
   Alcotest.test_case "generate foo GZip" `Quick @@ fun () ->
-  Queue.reset q
-  ; let buf = Buffer.create 16 in
-    let encoder =
-      Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l
-        Gz.Unix ~q ~w:l ~level:4 in
-    let go encoder =
-      match Gz.Def.encode encoder with
-      | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-      | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
-      | `End _ -> Buffer.contents buf in
-    let gz = go encoder in
-    let decoder = Gz.Inf.decoder (`String gz) ~o in
-    let decoder =
-      match Gz.Inf.decode decoder with
-      | `Await _ | `End _ -> Alcotest.failf "Unexpected `Await or `End signal"
-      | `Flush decoder ->
-        let len = bigstring_length o - Gz.Inf.dst_rem decoder in
-        let raw = Bigstringaf.substring o ~off:0 ~len in
-        Alcotest.(check string) "contents" raw "foo"
-        ; Gz.Inf.flush decoder
-      | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err in
-    match Gz.Inf.decode decoder with
-    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
+  let buf = Buffer.create 16 in
+  let encoder =
+    Gz.Def.encoder (`String "foo") (`Buffer buf) ~filename:"foo" ~mtime:0l
+      Gz.Unix ~q ~w:l ~level:4 in
+  let go encoder =
+    match Gz.Def.encode encoder with
     | `Await _ -> Alcotest.failf "Unexpected `Await signal"
-    | `End _ -> Alcotest.(check pass) "GZip terminate" () ()
-    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
+    | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+    | `End _ -> Buffer.contents buf in
+  let gz = go encoder in
+  let decoder = Gz.Inf.decoder (`String gz) ~o in
+  let decoder =
+    match Gz.Inf.decode decoder with
+    | `Await _ | `End _ -> Alcotest.failf "Unexpected `Await or `End signal"
+    | `Flush decoder ->
+      let len = bigstring_length o - Gz.Inf.dst_rem decoder in
+      let raw = Bigstringaf.substring o ~off:0 ~len in
+      Alcotest.(check string) "contents" raw "foo"
+      ; Gz.Inf.flush decoder
+    | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err in
+  match Gz.Inf.decode decoder with
+  | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
+  | `Await _ -> Alcotest.failf "Unexpected `Await signal"
+  | `End _ -> Alcotest.(check pass) "GZip terminate" () ()
+  | `Malformed err -> Alcotest.failf "Malformed GZip: %s" err
 
 let test_with_camlzip () =
   Alcotest.test_case "compare with camlzip" `Quick @@ fun () ->
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
   let oc = open_out "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo") (`Channel oc) ~filename:"foo.gz" ~mtime:0l
@@ -1768,6 +1877,9 @@ let test_with_camlzip () =
 
 let test_gzip_hcrc () =
   Alcotest.test_case "test header crc" `Quick @@ fun () ->
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
   let oc = open_out "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo & bar") (`Channel oc) ~filename:"foo.gz"
@@ -1806,6 +1918,7 @@ let test_gzip_hcrc () =
 
 let test_invalid_hcrc () =
   Alcotest.test_case "invalid header crc" `Quick @@ fun () ->
+  let o = bigstring_create io_buffer_size in
   let inputs =
     [
       "\x1f\x8b\x08\x0a\x00\x00\x00\x00\x02\x03\x66\x6f\x6f\x2e\x67\x7a"; "\x00"
@@ -1827,6 +1940,9 @@ let test_gzip_os v_os =
   @@ fun () ->
   let input = random 256 in
   let buf = Buffer.create 16 in
+  let q = Queue.create 4096 in
+  let l = Lz77.make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
   let encoder =
     Gz.Def.encoder (`String input) (`Buffer buf) ~mtime:0l v_os ~hcrc:true ~q
       ~w:l ~level:4 in
@@ -1862,6 +1978,7 @@ let test_gzip_extra () =
     ; "\x66\x6f\x6f\x2e\x74\x78"
     ; "\x74\x00\x4b\xcb\xcf\xe7\x02\x00\xa8\x65\x32\x7e\x04\x00\x00\x00"
     ] in
+  let o = bigstring_create io_buffer_size in
   let decoder = Gz.Inf.decoder (`String (String.concat "" inputs)) ~o in
   let decoder =
     match Gz.Inf.decode decoder with
@@ -1889,6 +2006,8 @@ let test_gzip_huge () =
   let zero =
     Bigstringaf.of_string ~off:0 ~len:De.io_buffer_size
       (String.make De.io_buffer_size '\000') in
+  let q = Queue.create 4096 in
+  let o = bigstring_create io_buffer_size in
   let rec go count encoder =
     match Gz.Def.encode encoder with
     | `Await encoder when count < 4_000_000_000L ->
@@ -1909,6 +2028,8 @@ let test_gzip_huge () =
 
 let invalid_access () =
   Alcotest.test_case "Invalid array access" `Quick @@ fun () ->
+  let w = make_window ~bits:15 in
+  let o = bigstring_create io_buffer_size in
   let decoder =
     De.Inf.decoder
       (`String
@@ -1960,6 +2081,7 @@ let test_lzo_0 () =
 
 let test_lzo_1 () =
   Alcotest.test_case "simple test" `Quick @@ fun () ->
+  let wrkmem = Lzo.make_wrkmem () in
   let input = "Salut les copains!" in
   let output = Bigstringaf.create 128 in
   let len =
@@ -1981,6 +2103,7 @@ let test_corpus_with_lzo filename =
   ; let res = Bytes.unsafe_to_string res in
     let raw = Bigstringaf.of_string res ~off:0 ~len in
     let out = Bigstringaf.create ((len + 1) * 2) in
+    let wrkmem = Lzo.make_wrkmem () in
     let len = Lzo.compress raw out wrkmem in
     let out = Bigstringaf.sub out ~off:0 ~len in
     match Lzo.uncompress_with_buffer out with
@@ -1989,7 +2112,6 @@ let test_corpus_with_lzo filename =
 
 let small_queue () =
   Alcotest.test_case "small queue" `Quick @@ fun () ->
-  let q = Queue.create 2 in
   let v = "abcdef" in
   let pos = ref 0 in
   let refill buf =
@@ -1997,6 +2119,9 @@ let small_queue () =
     Bigstringaf.blit_from_string v ~src_off:!pos buf ~dst_off:0 ~len
     ; pos := !pos + len
     ; len in
+  let q = Queue.create 4096 in
+  let w = make_window ~bits:15 in
+  let i = bigstring_create io_buffer_size in
   let _str = De.Higher.to_string ~w ~q ~refill i in
   Alcotest.(check pass) "compressed" () ()
 
