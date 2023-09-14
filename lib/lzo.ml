@@ -37,8 +37,7 @@ let get_int8 buf ofs =
   if ofs < 0 || ofs > bigstring_length buf - 1 then raise Out_of_bound
   ; unsafe_get_int8 buf ofs
 
-external unsafe_set_int8 : bigstring -> int -> int -> unit
-  = "%caml_ba_unsafe_set_1"
+external unsafe_set_int8 : bigstring -> int -> int -> unit = "%caml_ba_set_1"
 
 let set_int8 buf ofs x =
   if ofs < 0 || ofs > bigstring_length buf - 1 then raise Out_of_bound
@@ -90,10 +89,9 @@ let blit src src_off dst dst_off len =
   ; unsafe_blit src src_off dst dst_off len
 
 external bytes_unsafe_set_int32 : bytes -> int -> int32 -> unit
-  = "%caml_bytes_set32u"
+  = "%caml_bytes_set32"
 
-external bytes_unsafe_set_int8 : bytes -> int -> int -> unit
-  = "%bytes_unsafe_set"
+let bytes_unsafe_set_int8 buf off chr = Bytes.set buf off (Char.unsafe_chr chr)
 
 let unsafe_bigstring_to_string buf ofs len =
   let res = Bytes.create len in
@@ -491,13 +489,13 @@ let record_literals ~off ~len in_data out_data _anchor out_pos =
   if len > 0 then
     if len <= 3 then (
       out_data.%[!out_pos - 2] <- out_data.%[!out_pos - 2] lor len
-      ; unsafe_blit in_data off out_data !out_pos 4
+      ; blit in_data off out_data !out_pos 4
       ; out_pos := !out_pos + len)
     else if len <= 16 then (
       out_data.%[!out_pos] <- len - 3
       ; incr out_pos
-      ; unsafe_blit in_data off out_data !out_pos 8
-      ; unsafe_blit in_data (off + 8) out_data (!out_pos + 8) 8
+      ; blit in_data off out_data !out_pos 8
+      ; blit in_data (off + 8) out_data (!out_pos + 8) 8
       ; out_pos := !out_pos + len)
     else (
       (if len <= 18 then (
@@ -514,7 +512,7 @@ let record_literals ~off ~len in_data out_data _anchor out_pos =
           done
         ; out_data.%[!out_pos] <- !len'
         ; incr out_pos)
-      ; unsafe_blit in_data off out_data !out_pos len
+      ; blit in_data off out_data !out_pos len
         ; out_pos := !out_pos + len
         ; in_pos := !in_pos + len)
   ; !out_pos, !in_pos
@@ -542,7 +540,7 @@ let record_trailer ~off ~len in_data out_data out_pos =
         done
       ; out_data.%[!out_pos] <- !len'
       ; incr out_pos)
-    ; unsafe_blit in_data off out_data !out_pos len)
+    ; blit in_data off out_data !out_pos len)
   ; out_pos := !out_pos + len
   ; out_data.%[!out_pos] <- _m4_marker lor 1
   ; incr out_pos
