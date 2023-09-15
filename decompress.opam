@@ -32,3 +32,7 @@ depends: [
   "bos"         {with-test & >= "0.2.1"}
   "astring"     {with-test & >= "0.8.5"}
 ]
+
+pin-depends: [
+  [ "optint.dev" "git+https://github.com/mirage/optint.git#1e1468b442a3e910755d64119903da60d12df7c8" ]
+]
