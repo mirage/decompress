@@ -20,8 +20,8 @@ depends: [
   "ocaml"       {>= "4.07.0"}
   "dune"        {>= "2.8.0"}
   "cmdliner"    {>= "1.1.0"}
-  "optint"      {= "0.2.0"}
-  "checkseum"   {= "0.4.0"}
+  "optint"      {>= "0.1.0"}
+  "checkseum"   {>= "0.5.1"}
   "bigstringaf" {with-test & >= "0.9.0"}
   "alcotest"    {with-test & >= "1.7.0"}
   "fmt"         {with-test & >= "0.8.7"}
@@ -31,4 +31,8 @@ depends: [
   "rresult"     {with-test}
   "bos"         {with-test & >= "0.2.1"}
   "astring"     {with-test & >= "0.8.5"}
+]
+
+pin-depends: [
+  [ "checkseum.dev" "git+https://github.com/mirage/checkseum.git#9160fe2b8f07524fcb36875c26529c77249468b9" ]
 ]
