@@ -22,13 +22,13 @@ depends: [
   "cmdliner"    {>= "1.1.0"}
   "optint"      {>= "0.1.0"}
   "checkseum"   {>= "0.2.0"}
-  "bigstringaf" {with-test}
-  "alcotest"    {with-test}
+  "bigstringaf" {with-test & >= "0.9.0"}
+  "alcotest"    {with-test & >= "1.7.0"}
   "fmt"         {with-test & >= "0.8.7"}
   "camlzip"     {>= "1.10" & with-test}
   "base64"      {>= "3.0.0" & with-test}
   "crowbar"     {with-test & >= "0.2"}
   "rresult"     {with-test}
-  "bos"         {with-test}
-  "astring"     {with-test}
+  "bos"         {with-test & >= "0.2.1"}
+  "astring"     {with-test & >= "0.8.5"}
 ]
