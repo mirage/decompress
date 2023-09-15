@@ -14,8 +14,8 @@
   decompress.de
   decompress.zl
   cmdliner
-  yojson
-  ppx_deriving_yojson))
+  ppx_deriving_yojson.runtime
+  yojson))
 
 (executable
  (name run)
@@ -46,13 +46,12 @@
 
 (library
  (name lz_landmarks)
- (optional)
  (modules lz_landmarks)
  (enabled_if
   (= %{profile} benchmark))
  (libraries checkseum optint landmarks de)
  (preprocess
-  (pps landmarks.ppx --auto)))
+  (pps landmarks-ppx --auto)))
 
 (rule
  (copy ../lib/lz.ml lz_landmarks.ml))
@@ -69,7 +68,6 @@
 
 (library
  (name de_landmarks)
- (optional)
  (modules de_landmarks)
  (enabled_if
   (= %{profile} benchmark))
@@ -77,7 +75,7 @@
  (flags
   (:standard -w -55))
  (preprocess
-  (pps landmarks.ppx --auto)))
+  (pps landmarks-ppx --auto)))
 
 (rule
  (copy ../lib/de.ml de_landmarks.ml))

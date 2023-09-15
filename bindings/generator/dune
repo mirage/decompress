@@ -1,3 +1,0 @@
-(executable
- (name generate)
- (libraries ctypes.stubs gen_decompress_bindings))
