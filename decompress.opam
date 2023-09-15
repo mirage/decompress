@@ -21,7 +21,7 @@ depends: [
   "dune"        {>= "2.8.0"}
   "cmdliner"    {>= "1.1.0"}
   "optint"      {>= "0.1.0"}
-  "checkseum"   {>= "0.2.0"}
+  "checkseum"   {= "0.4.0"}
   "bigstringaf" {with-test & >= "0.9.0"}
   "alcotest"    {with-test & >= "1.7.0"}
   "fmt"         {with-test & >= "0.8.7"}
@@ -31,9 +31,4 @@ depends: [
   "rresult"     {with-test}
   "bos"         {with-test & >= "0.2.1"}
   "astring"     {with-test & >= "0.8.5"}
-]
-
-pin-depends: [
-  [ "optint.dev" "git+https://github.com/mirage/optint.git#4a20818a1f8a667120418e010d6aee14d356eff2" ]
-  [ "checkseum.dev" "git+https://github.com/mirage/checkseum.git#6c4a66ca22650e79cbeefb2d86b35a096800e8c1" ]
 ]
