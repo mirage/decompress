@@ -24,14 +24,14 @@ let bigstring_empty = bigstring_create 0
 
 exception Out_of_bound
 
-external unsafe_get_char : bigstring -> int -> char = "%caml_ba_unsafe_ref_1"
+external unsafe_get_char : bigstring -> int -> char = "%caml_ba_ref_1"
 
 let get_char buf ofs =
   if ofs < 0 || ofs > bigstring_length buf - 1 then raise Out_of_bound
   ; unsafe_get_char buf ofs
 
 external unsafe_get_int16 : bigstring -> int -> int = "%caml_bigstring_get16u"
-external unsafe_get_int8 : bigstring -> int -> int = "%caml_ba_unsafe_ref_1"
+external unsafe_get_int8 : bigstring -> int -> int = "%caml_ba_ref_1"
 
 let get_int8 buf ofs =
   if ofs < 0 || ofs > bigstring_length buf - 1 then raise Out_of_bound
