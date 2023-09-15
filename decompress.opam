@@ -35,4 +35,5 @@ depends: [
 
 pin-depends: [
   [ "optint.dev" "git+https://github.com/mirage/optint.git#1e1468b442a3e910755d64119903da60d12df7c8" ]
+  [ "checkseum.dev" "git+https://github.com/mirage/checkseum.git#6c4a66ca22650e79cbeefb2d86b35a096800e8c1" ]
 ]
