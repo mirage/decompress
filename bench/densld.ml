@@ -21,7 +21,7 @@ let d =
   Arg.(value & flag & info ["d"] ~doc)
 
 let cmd =
-  ( Term.(const inflate $ file $ d)
-  , Term.info "bench" ~doc:"Run benchmarks for ns implementation" )
+  let info = Cmd.info "bench" ~doc:"Run benchmarks for ns implementation" in
+  Cmd.v info Term.(const inflate $ file $ d)
 
-let () = Term.(exit @@ eval cmd)
+let () = Cmd.(exit @@ eval cmd)
