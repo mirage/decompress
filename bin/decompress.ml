@@ -235,6 +235,28 @@ let run_lzo_inflate ic oc =
   | Ok str -> output_string oc str ; `Ok 0
   | Error err -> `Error (false, str "%a." Lzo.pp_error err)
 
+let run_lzw ic oc mode =
+  let stdin =
+    let bytes = Bytes.create 4096 in
+    fun () ->
+      match In_channel.input ic bytes 0 4096 with
+      | 0 -> raise End_of_file
+      | r -> bytes, 0, r
+  in
+  let stdout = function
+    | None -> ()
+    | Some (s, o, l) ->
+      Out_channel.output_bytes oc (Bytes.sub s o l)
+  in
+  let src = Lzw.src (Bytes stdin) in
+  let dst = Lzw.dst (Bytes stdout) () in
+  let () =
+    match mode with
+    | `Compress -> Lzw.compress src dst
+    | `Decompress -> Lzw.decompress src dst
+  in
+  `Ok 0
+
 let run deflate format level filename_ic filename_oc =
   let ic, close_ic =
     match filename_ic with
@@ -257,7 +279,10 @@ let run deflate format level filename_ic filename_oc =
     | true, `Gzip -> run_gzip_deflate ~level ic oc
     | false, `Gzip -> run_gzip_inflate ic oc
     | true, `Lzo -> run_lzo_deflate ic oc
-    | false, `Lzo -> run_lzo_inflate ic oc in
+    | false, `Lzo -> run_lzo_inflate ic oc
+    | true, `Lzw -> run_lzw ic oc `Compress
+    | false, `Lzw -> run_lzw ic oc `Decompress
+  in
   close_ic () ; close_oc () ; res
 
 open Cmdliner
@@ -273,12 +298,14 @@ let format =
     | "gzip" -> Ok `Gzip
     | "deflate" -> Ok `Deflate
     | "lzo" -> Ok `Lzo
+    | "lzw" -> Ok `Lzw
     | x -> error_msgf "Invalid format: %S" x in
   let pp ppf = function
     | `Zlib -> Format.pp_print_string ppf "zlib"
     | `Gzip -> Format.pp_print_string ppf "gzip"
     | `Deflate -> Format.pp_print_string ppf "deflate"
-    | `Lzo -> Format.pp_print_string ppf "lzo" in
+    | `Lzo -> Format.pp_print_string ppf "lzo"
+    | `Lzw -> Format.pp_print_string ppf "lzw" in
   let format = Arg.conv (parser, pp) in
   Arg.(value & opt format `Deflate & info ["f"; "format"] ~docv:"<format>")
 
