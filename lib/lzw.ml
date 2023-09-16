@@ -34,6 +34,7 @@ module Reverse_dictionary : sig
   val v : unit -> t
   val lookup : t -> int -> bytes option
   val add : t -> bytes -> unit
+  val raw_add : t -> int -> bytes -> unit
 end = struct
   type t = { tbl : (int, bytes) Hashtbl.t; mutable next_id : int }
 
@@ -49,6 +50,8 @@ end = struct
   let add t v =
     Hashtbl.add t.tbl t.next_id v;
     t.next_id <- t.next_id + 1
+
+  let raw_add t i v = Hashtbl.add t.tbl i v
 end
 
 let ux_eoi = max_int (* End of input, outside unicode range. *)
@@ -173,14 +176,17 @@ let decompress src dst =
   try
     while true do
       let code = r_uint16_be src in
+      if Option.is_none (Reverse_dictionary.lookup d code) then
+        Reverse_dictionary.raw_add d code
+          (Bytes.cat !previous_string
+             (Bytes.make 1 (Bytes.unsafe_get !previous_string 0)));
       match Reverse_dictionary.lookup d code with
       | None -> failwith ("No code found for " ^ string_of_int code)
       | Some v ->
           Bytes.iter (fun c -> writec dst (Char.code c)) v;
           if not (Int.equal (Bytes.length !previous_string) 0) then
             Reverse_dictionary.add d
-              (Bytes.concat Bytes.empty
-                 [ !previous_string; Bytes.make 1 (Bytes.unsafe_get v 0) ]);
+              (Bytes.cat !previous_string (Bytes.make 1 (Bytes.unsafe_get v 0)));
           previous_string := v
     done
   with End_of_file -> flush dst ~stop:true
