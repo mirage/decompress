@@ -4,8 +4,39 @@
 let io_buffer_size = 65535
 
 module Io = struct
-  type src = unit -> bytes * int * int
-  type dst = (bytes * int * int) option -> unit
+  type bigstring = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
+
+  type _ src =
+    | Bytes : (unit -> bytes * int * int) -> bytes src
+    | Bigstring : (unit -> bigstring * int * int) -> bigstring src
+
+  type _ dst =
+    | Bytes : ((bytes * int * int) option -> unit) -> bytes dst
+    | Bigstring : ((bigstring * int * int) option -> unit) -> bigstring dst
+
+  let set_uint8 (type b) (v : b dst) (b : b) off value = match v with
+    | Bytes _ -> Bytes.set_uint8 b off value
+    | Bigstring _ -> Bigarray.Array1.unsafe_set b off (Char.unsafe_chr value)
+
+  let unsafe_get (type b) (v : b src) (b : b) off = match v with
+    | Bytes _ -> Bytes.unsafe_get b off
+    | Bigstring _ -> Bigarray.Array1.unsafe_get b off
+
+  let empty (type b) (v : b src) : b = match v with
+    | Bytes _ -> Bytes.empty
+    | Bigstring _ -> Bigarray.Array1.create Char C_layout 0
+
+  let create (type b) (v : b dst) i : b = match v with
+    | Bytes _ -> Bytes.create i
+    | Bigstring _ -> Bigarray.Array1.create Char C_layout i
+
+  let length (type b) (v : b dst) (i : b) : int = match v with
+    | Bytes _ -> Bytes.length i
+    | Bigstring _ -> Bigarray.Array1.dim i
+
+  let write (type b) (d : b dst) (v : (b * int * int) option) = match d with
+    | Bytes fn -> fn v
+    | Bigstring fn -> fn v
 end
 
 let eof = 256
@@ -62,14 +93,14 @@ end
 let ux_eoi = max_int (* End of input, outside unicode range. *)
 let ux_soi = max_int - 1 (* Start of input, outside unicode range. *)
 
-type src = {
-  src : Io.src;
+type 'a src = {
+  src : 'a Io.src;
   d : Dictionary.t;
   max_code : int;
   mutable level : int;
   mutable current_code : int;
   mutable next_bump : int;
-  mutable i : bytes; (* Current input chunk. *)
+  mutable i : 'a; (* Current input chunk. *)
   mutable i_pos : int; (* Next input position to read. *)
   mutable i_max : int; (* Maximal input position to read. *)
   mutable c : int;
@@ -78,12 +109,12 @@ type src = {
   mutable buf : Buffer.t;
 }
 
-let src ?(max_code=65536) src =
+let src (type b) ?(max_code=65536) (src : b Io.src) =
   {
     src;
     level = 9;
     d = Dictionary.v ();
-    i = Bytes.empty;
+    i = Io.empty src;
     i_pos = max_int;
     i_max = 0;
     buf = Buffer.create 256;
@@ -95,12 +126,18 @@ let src ?(max_code=65536) src =
     max_code;
   }
 
-let refill d =
-  match d.src () with
-  | s, pos, len ->
-      d.i <- s;
-      d.i_pos <- pos;
-      d.i_max <- pos + len - 1
+let refill (type b) (d : b src) =
+  match d.src with
+  | Bytes fn ->
+    let s, pos, len = fn () in
+    d.i <- s;
+    d.i_pos <- pos;
+    d.i_max <- pos + len - 1
+  | Bigstring fn ->
+    let s, pos, len = fn () in
+    d.i <- s;
+    d.i_pos <- pos;
+    d.i_max <- pos + len - 1
 
 let rec readc d =
   if d.i_pos > d.i_max then
@@ -109,25 +146,25 @@ let rec readc d =
       refill d;
       readc d)
   else (
-    d.c <- Char.code (Bytes.unsafe_get d.i d.i_pos);
+    d.c <- Char.code (Io.unsafe_get d.src d.i d.i_pos);
     d.i_pos <- d.i_pos + 1)
 
-type dst = {
-  dst : Io.dst; (* Output destination. *)
+type 'a dst = {
+  dst : 'a Io.dst; (* Output destination. *)
   buff : Buffer.t; (* Scratch buffer. *)
   scratch : bytes;
   max_code : int;
   mutable level : int;  (* Current code size *)
   mutable current_code : int;
   mutable next_bump : int;
-  mutable o : bytes; (* Current output chunk. *)
+  mutable o : 'a; (* Current output chunk. *)
   mutable o_pos : int; (* Next output position to write. *)
   mutable o_max : int; (* Maximal output position to write. *)
   mutable pending : int * int;
 }
 
-let dst ?(max_code=65536) ?(buf = Bytes.create io_buffer_size) dst =
-  let o_max = Bytes.length buf - 1 in
+let dst (type b) ?(max_code=65536) (dst : b Io.dst) ?(buf = Io.create dst io_buffer_size) () =
+  let o_max = Io.length dst buf - 1 in
   if o_max = 0 then invalid_arg "buf's length is empty"
   else
     {
@@ -146,9 +183,9 @@ let dst ?(max_code=65536) ?(buf = Bytes.create io_buffer_size) dst =
 
 let flush e ~stop =
   if stop then (
-    if e.o_pos <> 0 then e.dst (Some (e.o, 0, e.o_pos));
-    e.dst None)
-  else e.dst (Some (e.o, 0, e.o_pos));
+    if e.o_pos <> 0 then Io.write e.dst (Some (e.o, 0, e.o_pos));
+    Io.write e.dst None)
+  else Io.write e.dst (Some (e.o, 0, e.o_pos));
   e.o_pos <- 0
 
 let rec writec e c =
@@ -156,7 +193,7 @@ let rec writec e c =
     flush e ~stop:false;
     writec e c)
   else (
-    Bytes.set_uint8 e.o e.o_pos c;
+    Io.set_uint8 e.dst e.o e.o_pos c;
     e.o_pos <- e.o_pos + 1)
 
 let w_flush dst v =
