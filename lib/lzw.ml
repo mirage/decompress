@@ -1,3 +1,6 @@
+(* This implementation relied on this excellent blog post
+   https://marknelson.us/posts/2011/11/08/lzw-revisited.html *)
+
 let io_buffer_size = 65535
 
 module Io = struct
@@ -62,7 +65,10 @@ let ux_soi = max_int - 1 (* Start of input, outside unicode range. *)
 type src = {
   src : Io.src;
   d : Dictionary.t;
-  level : int; (* Max bit size *)
+  max_code : int;
+  mutable level : int;
+  mutable current_code : int;
+  mutable next_bump : int;
   mutable i : bytes; (* Current input chunk. *)
   mutable i_pos : int; (* Next input position to read. *)
   mutable i_max : int; (* Maximal input position to read. *)
@@ -72,10 +78,10 @@ type src = {
   mutable buf : Buffer.t;
 }
 
-let src ?(level = 12) src =
+let src ?(max_code=65536) src =
   {
     src;
-    level;
+    level = 9;
     d = Dictionary.v ();
     i = Bytes.empty;
     i_pos = max_int;
@@ -84,6 +90,9 @@ let src ?(level = 12) src =
     rbuf = Buffer.create 8;
     c = ux_soi;
     extra_bits = (0, 0);
+    next_bump = 512;
+    current_code = 256;
+    max_code;
   }
 
 let refill d =
@@ -107,14 +116,17 @@ type dst = {
   dst : Io.dst; (* Output destination. *)
   buff : Buffer.t; (* Scratch buffer. *)
   scratch : bytes;
-  level : int;
+  max_code : int;
+  mutable level : int;  (* Current code size *)
+  mutable current_code : int;
+  mutable next_bump : int;
   mutable o : bytes; (* Current output chunk. *)
   mutable o_pos : int; (* Next output position to write. *)
   mutable o_max : int; (* Maximal output position to write. *)
   mutable pending : int * int;
 }
 
-let dst ?(level = 12) ?(buf = Bytes.create io_buffer_size) dst =
+let dst ?(max_code=65536) ?(buf = Bytes.create io_buffer_size) dst =
   let o_max = Bytes.length buf - 1 in
   if o_max = 0 then invalid_arg "buf's length is empty"
   else
@@ -124,7 +136,10 @@ let dst ?(level = 12) ?(buf = Bytes.create io_buffer_size) dst =
       buff = Buffer.create 128;
       o_pos = 0;
       o_max;
-      level;
+      level = 9;
+      current_code = 256;
+      next_bump = 512;
+      max_code;
       scratch = Bytes.create 2;
       pending = (0, 0);
     }
@@ -156,7 +171,14 @@ let w_level dst c =
   let out, bits = dst.pending in
   let output = out lor (c lsl bits) in
   dst.pending <- (output, bits + dst.level);
-  w_flush dst 8
+  w_flush dst 8;
+  if dst.current_code < dst.max_code then begin
+    dst.current_code <- dst.current_code + 1;
+    if dst.current_code == dst.next_bump then begin
+      dst.next_bump <- dst.next_bump * 2;
+      dst.level <- dst.level + 1
+    end
+  end
 
 let compress src dst =
   try
@@ -202,6 +224,13 @@ let r_level s =
   let r = pending_input lsr s.level in
   let m = available - s.level in
   s.extra_bits <- (r, m);
+  if s.current_code < s.max_code then begin
+    s.current_code <- s.current_code + 1;
+    if s.current_code = s.next_bump then begin
+      s.next_bump <- s.next_bump * 2;
+      s.level <- s.level + 1
+    end
+  end;
   if i = eof then raise End_of_file else i
 
 let decompress src dst =

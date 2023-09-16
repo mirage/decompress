@@ -21,12 +21,13 @@ type src
 type dst
 (** A destination to write a compressed or decompressed stream to. *)
 
-val src : ?level:int -> Io.src -> src
-(** [src io] creates a new source from an {! Io.src}. *)
+val src : ?max_code:int -> Io.src -> src
+(** [src io] creates a new source from an {! Io.src}. Max code size controls
+    the upper code that can be used. *)
 
-val dst : ?level:int -> ?buf:bytes -> Io.dst -> dst
-(** [dst io] creates a new destination from an {! Io.dst}. You can optionally
-    provide a pre-allocated internal buffer. *)
+val dst : ?max_code:int -> ?buf:bytes -> Io.dst -> dst
+(** [dst io] creates a new destination from an {! Io.dst}. Max code size controls
+    the upper code that can be used. *)
 
 val compress : src -> dst -> unit
 (** [compress src dst] compresses the bytes coming from [src]
@@ -34,4 +35,3 @@ val compress : src -> dst -> unit
 
 val decompress : src -> dst -> unit
 (** [decompress src dst] decompresses the bytes coming from [src] into [dst]. *)
-
