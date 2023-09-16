@@ -239,14 +239,14 @@ let run_lzw ic oc mode =
   let stdin =
     let bytes = Bytes.create 4096 in
     fun () ->
-      match In_channel.input ic bytes 0 4096 with
+      match input ic bytes 0 4096 with
       | 0 -> raise End_of_file
       | r -> bytes, 0, r
   in
   let stdout = function
     | None -> ()
     | Some (s, o, l) ->
-      Out_channel.output_bytes oc (Bytes.sub s o l)
+      output_bytes oc (Bytes.sub s o l)
   in
   let src = Lzw.src (Bytes stdin) in
   let dst = Lzw.dst (Bytes stdout) () in
