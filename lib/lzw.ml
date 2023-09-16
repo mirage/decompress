@@ -60,6 +60,7 @@ let ux_soi = max_int - 1 (* Start of input, outside unicode range. *)
 type src = {
   src : Io.src;
   d : Dictionary.t;
+  level : int;
   mutable i : bytes; (* Current input chunk. *)
   mutable i_pos : int; (* Next input position to read. *)
   mutable i_max : int; (* Maximal input position to read. *)
@@ -70,9 +71,10 @@ type src = {
 
 let badd d = Buffer.add_char d.rbuf (Char.chr d.c)
 
-let src src =
+let src ?(level=16) src =
   {
     src;
+    level;
     d = Dictionary.v ();
     i = Bytes.empty;
     i_pos = max_int;
@@ -102,15 +104,17 @@ let rec readc d =
 type dst = {
   dst : Io.dst; (* Output destination. *)
   buff : Buffer.t; (* Scratch buffer. *)
+  scratch : bytes;
+  level : int;
   mutable o : bytes; (* Current output chunk. *)
   mutable o_pos : int; (* Next output position to write. *)
   mutable o_max : int; (* Maximal output position to write. *)
 }
 
-let dst ?(buf = Bytes.create io_buffer_size) dst =
+let dst ?(level=16) ?(buf = Bytes.create io_buffer_size) dst =
   let o_max = Bytes.length buf - 1 in
   if o_max = 0 then invalid_arg "buf's length is empty"
-  else { dst; o = buf; buff = Buffer.create 128; o_pos = 0; o_max }
+  else { dst; o = buf; buff = Buffer.create 128; o_pos = 0; o_max; level; scratch = Bytes.create 2 }
 
 let flush e ~stop =
   if stop then (
@@ -127,8 +131,12 @@ let rec writec e c =
     Bytes.set_uint8 e.o e.o_pos c;
     e.o_pos <- e.o_pos + 1)
 
+let w_uint16_be dst c =
+  Bytes.set_uint16_ne dst.scratch 0 c;
+  writec dst (Bytes.get_uint8 dst.scratch 0);
+  writec dst (Bytes.get_uint8 dst.scratch 1)
+
 let compress src dst =
-  let scratch = Bytes.create 2 in
   try
     while true do
       readc src;
@@ -143,9 +151,7 @@ let compress src dst =
           match Dictionary.lookup src.d s_old with
           | None -> assert false
           | Some c ->
-              Bytes.set_uint16_ne scratch 0 c;
-              writec dst (Bytes.get_uint8 scratch 0);
-              writec dst (Bytes.get_uint8 scratch 1);
+              w_uint16_be dst c;
               Buffer.reset src.buf;
               Buffer.add_uint8 src.buf chr)
     done
@@ -156,9 +162,7 @@ let compress src dst =
       match Dictionary.lookup src.d s with
       | None -> assert false
       | Some c ->
-          Bytes.set_uint16_ne scratch 0 c;
-          writec dst (Bytes.get_uint8 scratch 0);
-          writec dst (Bytes.get_uint8 scratch 1);
+          w_uint16_be dst c;
           flush dst ~stop:true)
 
 let r_uint16_be s =

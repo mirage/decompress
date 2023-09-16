@@ -21,10 +21,10 @@ type src
 type dst
 (** A destination to write a compressed or decompressed stream to. *)
 
-val src : Io.src -> src
+val src : ?level:int -> Io.src -> src
 (** [src io] creates a new source from an {! Io.src}. *)
 
-val dst : ?buf:bytes -> Io.dst -> dst
+val dst : ?level:int -> ?buf:bytes -> Io.dst -> dst
 (** [dst io] creates a new destination from an {! Io.dst}. You can optionally
     provide a pre-allocated internal buffer. *)
 
