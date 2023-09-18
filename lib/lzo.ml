@@ -334,7 +334,7 @@ let fiber : (unit, [> error ]) t =
     read byte >>= fun h ->
     let state = State.of_int (Char.code chr land 0b11) in
     let off = (Char.code h lsl 2) + (Char.code chr lsr 2) + 2049 in
-    copy ~off ~len:1 state
+    copy ~off ~len:1 state >>= fun () -> m
   | '\016' .. '\031', _ ->
     let length = Char.code chr land 0b111 in
     let with_length len =
@@ -390,7 +390,7 @@ let fiber : (unit, [> error ]) t =
     transmit ~len:4 State._0 >>= fun () -> fiber
   | '\022' .. '\255' as chr ->
     let len = Char.code chr - 17 in
-    junk byte >>= fun () -> transmit ~len State._0
+    junk byte >>= fun () -> transmit ~len State._0 >>= fun () -> fiber
 
 let uncompress input output : (bigstring, [> error ]) result =
   let v = {i= input; i_pos= 0; o= output; o_pos= 0; state= State._0} in

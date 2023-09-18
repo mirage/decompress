@@ -604,7 +604,7 @@ let () =
       ( "lzo"
       , [
           test_lzo_0 (); test_lzo_1 (); test_lzo_2 (); test_lzo_3 ()
-        ; test_lzo_4 (); test_lzo_5 (); test_lzo_6 () (* ; test_lzo_7 () *)
+        ; test_lzo_4 (); test_lzo_5 (); test_lzo_6 () ; test_lzo_7 ()
         ; test_lzo_8 (); test_lzo_9 (); test_lzo_10 (); test_lzo_11 ()
         ; test_lzo_12 (); test_lzo_13 (); test_lzo_14 (); test_lzo_15 ()
         ] )
