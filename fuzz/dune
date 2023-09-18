@@ -7,3 +7,8 @@
  (name fuzz_ns)
  (modules fuzz_ns)
  (libraries rresult fmt bigstringaf camlzip checkseum.c de crowbar))
+
+(executable
+ (name fuzz_lzo)
+ (modules fuzz_lzo)
+ (libraries bigstringaf minilzo lzo crowbar))

@@ -598,6 +598,9 @@ let test_lzo_15 () =
               (uncompress
                  ("\x00" ^ String.make 16844305 '\x00' ^ "\x01\x11\x00\x00"))
 
+let test_minilzo () =
+  Alcotest.test_case "minilzo" `Quick @@ fun () -> Minilzo.minilzo ()
+
 let () =
   Alcotest.run "lzo"
     [
@@ -607,5 +610,5 @@ let () =
         ; test_lzo_4 (); test_lzo_5 (); test_lzo_6 () (* ; test_lzo_7 () *)
         ; test_lzo_8 (); test_lzo_9 (); test_lzo_10 (); test_lzo_11 ()
         ; test_lzo_12 (); test_lzo_13 (); test_lzo_14 (); test_lzo_15 ()
-        ] )
+        ] ); "minilzo", [test_minilzo ()]
     ]
