@@ -11,7 +11,7 @@
 (executable
  (name test_lzo)
  (modules test_lzo)
- (libraries fmt lzo bigstringaf alcotest))
+ (libraries fmt minilzo lzo bigstringaf alcotest))
 
 (rule
  (alias runtest)
