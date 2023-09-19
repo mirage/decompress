@@ -134,7 +134,8 @@
 
 ### v1.3.0 2020-03-03 Paris (France)
 
-- Add a little executable to benchmark inflation into the distribution (@dinosaure, #93)
+- Add a little executable to benchmark inflation into the distribution
+  (@dinosaure, #93)
 - Add instructions for running benchmark (@gs0510, #94)
 - Clarify the description (@XVilka, #96)
 - Improve the benchmark and outputs (@dinosaure, @gs0510, #95)
@@ -177,10 +178,12 @@
 ### v1.1.0 2019-03-10 Paris (France)
 
 - add GZip support (@dinosaure, @copy, @hcarty, #79)
-- **breaking changes**, `Higher` returns a `result` value instead to raise an exception (@dinosaure, @copy, #80)
+- **breaking changes**, `Higher` returns a `result` value instead to raise an
+  exception (@dinosaure, @copy, #80)
 - protect Zlib decoder on multiple _no-op_ calls of `decode`
 - test when we generate an empty zlib flow
-- fix a bug on the DEFLATE layer when we must flush bits to avoid integer overflow
+- fix a bug on the DEFLATE layer when we must flush bits to avoid integer
+  overflow
 - really use the internal continuation of the Zlib state
 - delete `fmt` depedency
 - update fuzzer
@@ -191,11 +194,12 @@
 ** breaking changes **
 
 `decompress.1.0.0` is 3 times faster about decompression than before. A huge
-[amount of work was done](https://tarides.com/blog/2019-08-26-decompress-the-new-decompress-api.html) to improve performance and coverage.
+[amount of work was done](https://tarides.com/blog/2019-08-26-decompress-the-new-decompress-api.html)
+to improve performance and coverage.
 
-The main reason to update the API is to fix a bad design decision regarding split
-compression and encoding. User is able to implement a new compression algorithm
-and use it.
+The main reason to update the API is to fix a bad design decision regarding
+split compression and encoding. User is able to implement a new compression
+algorithm and use it.
 
 Release comes with regressions:
 - `decompress` only supports `Bigarray` now, not `Bytes`
@@ -203,7 +207,8 @@ Release comes with regressions:
 - state of RFC1951 encoder/decoder is not referentially transparent anymore
 
 Of course, v1.0.0 comes with fixes and improvements:
-- `decompress` is able to compress/uncompress [Calgary corpus](https://en.wikipedia.org/wiki/Calgary_corpus)
+- `decompress` is able to compress/uncompress
+  [Calgary corpus](https://en.wikipedia.org/wiki/Calgary_corpus)
 - tests are improved and they include all coverage tests from `zlib`
 - compression algorithm has a fuzzer
 - encoder has a fuzzer
@@ -217,7 +222,8 @@ Of course, v1.0.0 comes with fixes and improvements:
 API of them are pretty-close to what `decompress.v0.9.0` does with some
 advantages on `dd`:
 - User can use their own compression algorithm instead of `Dd.L`
-- encoder exposes more granular control over what it emits (which block, when, where)
+- encoder exposes more granular control over what it emits (which block, when,
+  where)
 - Huffman tree generation is out of `dd`
 
 As a response to #25, `dd` provides a _higher_ level API resembling `camlzip`.
@@ -239,7 +245,8 @@ As a response to #25, `dd` provides a _higher_ level API resembling `camlzip`.
 * Add foreign tests vectors (@cfcs, @dinosaure)
 * Catch invalid distance (@XVilka, @dinosaure)
 * Better check on dictionaries (@XVilka, @dinosaure)
-* *breaking-change* Add [wbits] argument to check Window size on RFC1951 (@XVilka, @dinosaure)
+* **breaking-change** Add [wbits] argument to check Window size on RFC1951
+  (@XVilka, @dinosaure)
 
 ### v0.8 2018-07-09 Paris (France)
 
