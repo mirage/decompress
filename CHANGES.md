@@ -1,3 +1,18 @@
+### v1.5.3 2023-09-19 Paris (France)
+
+- Delete `libdecompress.a` (@dinosaure, #152)
+
+  This artifact is unused and complexify the distribution. We decided to delete
+  it. If people want to use `libdecompress.a`, we can provide an other package
+  which will implement the `ctypes` ceremony to safely produce a
+  `libdecompress.a`.
+
+- Lint dependencies (lower bounds) (@dinosaure, #153)
+- Remove unsafe accesses into our `decompress.lzo` implementation
+  (@dinosaure, #154)
+- Improve and fix our `decompress.lzo` implementation
+  (@dinosaure, #155, #158, #159)
+
 ### v1.5.2 2023-01-23 Essaouira (Maroc)
 
 - Remove remaining `bigarray-compat` dependencies (@copy, #147)
