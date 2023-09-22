@@ -10,4 +10,5 @@
   decompress.zl
   decompress.gz
   decompress.lzo
+  decompress.lzw
   cmdliner))
