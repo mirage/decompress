@@ -301,7 +301,7 @@ val succ_distance : distances -> int -> unit
 module Def : sig
   type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
   (** The type for output destinations. With a [`Manual] destination the client
-     must provide output storage with {!dst}. With [`String] or [`Channel]
+     must provide output storage with {!dst}. With [`Buffer] or [`Channel]
      destination the client can safely discard [`Flush] case (with [assert false]). *)
 
   type dynamic
