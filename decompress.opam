@@ -32,3 +32,4 @@ depends: [
   "bos"         {with-test & >= "0.2.1"}
   "astring"     {with-test & >= "0.8.5"}
 ]
+x-maintenance-intent: [ "(latest)" ]
