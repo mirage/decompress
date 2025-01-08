@@ -159,11 +159,11 @@ module Def : sig
   type src = [ `Channel of in_channel | `String of string | `Manual ]
   (** The type for input sources. With a [`Manual] source the client must
      provide input with {!src}. With [`String] or [`Channel] source the client
-     can safely discard [`Await] cae (with [assert false]). *)
+     can safely discard [`Await] case (with [assert false]). *)
 
   type dst = [ `Channel of out_channel | `Buffer of Buffer.t | `Manual ]
   (** The type for output destinations. With a [`Manual] destination the client
-     must provide output storage with {!dst}. With [`String] or [`Channel]
+     must provide output storage with {!dst}. With [`Buffer] or [`Channel]
      destination the client can safely discard [`Flush] case (with [assert
      false]). *)
 
