@@ -2341,6 +2341,42 @@ module Def = struct
   type block = {kind: kind; last: bool}
   type encode = [ `Await | `Flush | `Block of block ]
 
+  let calculate_static_block ~literals ~distances =
+    let bits = ref 0 in
+    for idx = 0 to _l_codes - 1 do
+      if literals.(idx) <> 0 then
+        bits := !bits + (literals.(idx) * fst (Lookup.get _static_ltree idx))
+    done
+    ; for idx = 0 to _d_codes - 1 do
+        if distances.(idx) <> 0 then
+          bits := !bits + (distances.(idx) + fst (Lookup.get _static_dtree idx))
+      done
+    ; !bits
+
+  let calculate_dynamic_block dynamic ~literals ~distances =
+    (* HLIT + HDST + HCLEN + precode lengths *)
+    let bits = ref (5 + 5 + 4 + (dynamic.h_len * 3)) in
+    let fn x = bits := !bits + (x lsr _max_bits) in
+    Array.iter fn dynamic.symbols
+    ; let ltree = dynamic.ltree.T.lengths and dtree = dynamic.dtree.T.lengths in
+      for idx = 0 to _l_codes - 1 do
+        if literals.(idx) <> 0 then
+          bits := !bits + (literals.(idx) * ltree.(idx))
+      done
+      ; for idx = 0 to _d_codes - 1 do
+          if distances.(idx) <> 0 then
+            bits := !bits + (distances.(idx) + dtree.(idx))
+        done
+      ; !bits
+
+  let block_of_frequencies ~last ~literals ~distances =
+    let dynamic = dynamic_of_frequencies ~literals ~distances in
+    if
+      calculate_dynamic_block dynamic ~literals ~distances
+      <= calculate_static_block ~literals ~distances
+    then {kind= Dynamic dynamic; last}
+    else {kind= Fixed; last}
+
   let exists v block =
     match v, block.kind with
     | (`Copy _ | `End), Flat ->
@@ -4442,20 +4478,19 @@ module Higher = struct
   let compress ~w ~q ~refill ~flush i o =
     let state = Lz77.state `Manual ~w ~q in
     let encoder = Def.encoder `Manual ~q in
-    let kind = ref Def.Fixed in
+
+    let block ~last =
+      let literals = Lz77.literals state in
+      let distances = Lz77.distances state in
+      Def.block_of_frequencies ~last ~literals ~distances in
 
     let rec compress () =
       match Lz77.compress state with
       | `Await ->
         let len = refill i in
         Lz77.src state i 0 len ; compress ()
-      | `Flush ->
-        let literals = Lz77.literals state in
-        let distances = Lz77.distances state in
-        kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
-        ; encode (Def.encode encoder (`Block {Def.kind= !kind; last= false}))
-      | `End ->
-        pending (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true}))
+      | `Flush -> encode (Def.encode encoder (`Block (block ~last:false)))
+      | `End -> pending (Def.encode encoder (`Block (block ~last:true)))
     and encode = function
       | `Partial ->
         let len = bigstring_length o - Def.dst_rem encoder in
@@ -4463,11 +4498,7 @@ module Higher = struct
         ; Def.dst encoder o 0 (bigstring_length o)
         ; encode (Def.encode encoder `Await)
       | `Ok -> compress ()
-      | `Block ->
-        let literals = Lz77.literals state in
-        let distances = Lz77.distances state in
-        kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
-        ; encode (Def.encode encoder (`Block {Def.kind= !kind; last= false}))
+      | `Block -> encode (Def.encode encoder (`Block (block ~last:false)))
     and pending = function
       | `Block -> assert false (* XXX(dinosaure): should never appear. *)
       | `Partial ->
@@ -4518,28 +4549,23 @@ module Higher = struct
     let buf = Buffer.create buffer in
     let state = Lz77.state `Manual ~q ~w in
     let encoder = Def.encoder (`Buffer buf) ~q in
-    let kind = ref Def.Fixed in
+
+    let block ~last =
+      let literals = Lz77.literals state in
+      let distances = Lz77.distances state in
+      Def.block_of_frequencies ~last ~literals ~distances in
 
     let rec compress () =
       match Lz77.compress state with
       | `Await ->
         let len = refill i in
         Lz77.src state i 0 len ; compress ()
-      | `Flush ->
-        let literals = Lz77.literals state in
-        let distances = Lz77.distances state in
-        kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
-        ; encode (Def.encode encoder (`Block {Def.kind= !kind; last= false}))
-      | `End ->
-        pending (Def.encode encoder (`Block {Def.kind= Def.Fixed; last= true}))
+      | `Flush -> encode (Def.encode encoder (`Block (block ~last:false)))
+      | `End -> pending (Def.encode encoder (`Block (block ~last:true)))
     and encode = function
       | `Partial -> assert false
       | `Ok -> compress ()
-      | `Block ->
-        let literals = Lz77.literals state in
-        let distances = Lz77.distances state in
-        kind := Def.Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
-        ; encode (Def.encode encoder (`Block {Def.kind= !kind; last= false}))
+      | `Block -> encode (Def.encode encoder (`Block (block ~last:false)))
     and pending = function `Partial | `Block -> assert false | `Ok -> () in
 
     Queue.reset q ; compress () ; Buffer.contents buf
