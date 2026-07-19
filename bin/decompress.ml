@@ -58,11 +58,11 @@ let run_deflate ~level ic oc =
       encode
       @@ Def.encode encoder
            (`Block
-             {
-               Def.kind=
-                 Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
-             ; last= false
-             })
+              {
+                Def.kind=
+                  Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
+              ; last= false
+              })
     | `End ->
       Queue.push_exn q Queue.eob
       ; pending @@ Def.encode encoder (`Block {Def.kind= Fixed; last= true})

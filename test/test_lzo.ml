@@ -1,8 +1,7 @@
 let pp_chr =
   Fmt.using (function '\032' .. '\126' as x -> x | _ -> '.') Fmt.char
 
-let pp_scalar :
-    type buffer.
+let pp_scalar : type buffer.
     get:(buffer -> int -> char) -> length:(buffer -> int) -> buffer Fmt.t =
  fun ~get ~length ppf b ->
   let l = length b in

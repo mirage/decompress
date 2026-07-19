@@ -34,11 +34,11 @@ let deflate_with_level ~level filename =
       ; encode
         @@ Def.encode encoder
              (`Block
-               {
-                 Def.kind=
-                   Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
-               ; last= false
-               })
+                {
+                  Def.kind=
+                    Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
+                ; last= false
+                })
     | `End ->
       Fmt.epr "[compress]: `End.\n%!"
       ; close_in ic

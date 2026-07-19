@@ -288,7 +288,7 @@ let _distance =
 
 let _distance code =
   if code < 256 then _distance.(code) else _distance.(256 + (code lsr 7))
-  [@@inline]
+[@@inline]
 
 let _base_length =
   [|
@@ -357,8 +357,8 @@ module Lookup = struct
   let get t i =
     let v = t.t.(i) in
     v lsr _max_bits, v land mask
-    (* allocation *)
-    [@@inline]
+  (* allocation *)
+  [@@inline]
 end
 
 let _static_ltree =
@@ -774,7 +774,7 @@ module Inf = struct
        ; 0x3F; 0xBF; 0x7F; 0xFF
       |] in
     t.(bits)
-    [@@inline]
+  [@@inline]
 
   let fixed_lit, fixed_dist =
     let tbl_lit =
@@ -1137,16 +1137,16 @@ module Inf = struct
             let off = WInf.mask (d.w.WInf.w - d.d) in
 
             (if d.d == 1 then
-             let v = unsafe_get_uint8 d.w.WInf.raw off in
-             WInf.fill d.w v d.o !o_pos len
-            else
-              let off = WInf.mask (d.w.WInf.w - d.d) in
-              let pre = WInf.max - off in
-              let rst = len - pre in
-              if rst > 0 then (
-                WInf.blit d.w d.w.WInf.raw off d.o !o_pos pre
-                ; WInf.blit d.w d.w.WInf.raw 0 d.o (!o_pos + pre) rst)
-              else WInf.blit d.w d.w.WInf.raw off d.o !o_pos len)
+               let v = unsafe_get_uint8 d.w.WInf.raw off in
+               WInf.fill d.w v d.o !o_pos len
+             else
+               let off = WInf.mask (d.w.WInf.w - d.d) in
+               let pre = WInf.max - off in
+               let rst = len - pre in
+               if rst > 0 then (
+                 WInf.blit d.w d.w.WInf.raw off d.o !o_pos pre
+                 ; WInf.blit d.w d.w.WInf.raw 0 d.o (!o_pos + pre) rst)
+               else WInf.blit d.w d.w.WInf.raw off d.o !o_pos len)
             ; o_pos := !o_pos + len
               ; if d.l - len == 0 then jump := Length else d.l <- d.l - len
       done
@@ -1226,7 +1226,7 @@ module Inf = struct
 
   let inflate_table d =
     let[@warning "-8"] (Inflate_table
-                         {t; l= max_bits; r= res; h= hlit, hdist, _}) =
+                          {t; l= max_bits; r= res; h= hlit, hdist, _}) =
       d.s in
     let max_res = hlit + hdist in
     let mask = (1 lsl max_bits) - 1 in
@@ -1317,7 +1317,7 @@ module Inf = struct
     if y < 0 then raise Division_by_zero
     else if x > 0 then 1 + ((x - 1) / y)
     else 0
-    [@@inline]
+  [@@inline]
 
   let dynamic d =
     let l_header d =
@@ -1567,7 +1567,7 @@ module Inf = struct
           ; d.i_pos <- d.i_pos + 1
           ; d.bits <- d.bits + 8)
         else err_unexpected_end_of_input ()
-      [@@inline]
+    [@@inline]
 
     let __fill_bits d n =
       if d.bits < n then
@@ -1580,14 +1580,14 @@ module Inf = struct
           d.hold <- d.hold lor (unsafe_get_uint8 d.i d.i_pos lsl d.bits)
           ; d.i_pos <- d.i_pos + 1
           ; d.bits <- d.bits + 8)
-      [@@inline]
+    [@@inline]
 
     let pop_bits d n =
       let v = d.hold land ((1 lsl n) - 1) in
       d.hold <- d.hold lsr n
       ; d.bits <- d.bits - n
       ; v
-      [@@inline]
+    [@@inline]
 
     exception End
     exception Invalid_distance
@@ -2175,7 +2175,7 @@ module Queue = struct
     assert (len >= 3 && len <= 255 + 3)
     ; assert (off >= 1 && off <= 32767 + 1)
     ; ((len - 3) lsl 16) lor (off - 1) lor 0x2000000
-    [@@inline]
+  [@@inline]
 
   let literal chr = Char.code chr [@@inline]
   let eob = 256
@@ -2261,7 +2261,8 @@ type distances = int array
 
 let make_literals () =
   let res = Array.make ((2 * _l_codes) + 1) 0 in
-  res.(256) <- 1 ; res
+  res.(256) <- 1
+  ; res
 
 let succ_literal literals chr =
   literals.(Char.code chr) <- literals.(Char.code chr) + 1
@@ -3998,7 +3999,7 @@ module Lz77 = struct
     let chain_length =
       ref
         (if s.prev_length >= cfg.good_length then cfg.max_chain asr 2
-        else cfg.max_chain) in
+         else cfg.max_chain) in
     (* max hash chain length *)
     let scan = ref s.strstart in
     (* current string *)
@@ -4277,17 +4278,17 @@ module Lz77 = struct
     ; s.prev_match <- s.match_start
     ; s.match_length <- _min_match - 1
     ; (if
-       !hash_head != 0
-       && s.prev_length < cfg.max_lazy
-       && s.strstart - !hash_head <= max_dist s
-      then
-       let match_length = longest_match cfg s !hash_head in
-       if
-         match_length <= 5
-         && match_length == _min_match
-         && s.strstart - s.match_start > _too_far
-       then s.match_length <- _min_match - 1
-       else s.match_length <- match_length)
+         !hash_head != 0
+         && s.prev_length < cfg.max_lazy
+         && s.strstart - !hash_head <= max_dist s
+       then
+         let match_length = longest_match cfg s !hash_head in
+         if
+           match_length <= 5
+           && match_length == _min_match
+           && s.strstart - s.match_start > _too_far
+         then s.match_length <- _min_match - 1
+         else s.match_length <- match_length)
     ; if s.prev_length >= _min_match && s.match_length <= s.prev_length then begin
         let max_insert = s.strstart + s.lookahead - _min_match in
         let flush =
@@ -4312,8 +4313,8 @@ module Lz77 = struct
             ; `Flush)
           else enough (Deflate cfg) s
       end
-      else if s.match_available then begin
-        match emit_literal s (unsafe_get_char s.w (s.strstart - 1)) with
+      else if s.match_available then
+        begin match emit_literal s (unsafe_get_char s.w (s.strstart - 1)) with
         | true ->
           s.strstart <- s.strstart + 1
           ; s.lookahead <- s.lookahead - 1
@@ -4323,7 +4324,7 @@ module Lz77 = struct
           s.strstart <- s.strstart + 1
           ; s.lookahead <- s.lookahead - 1
           ; enough (Deflate cfg) s
-      end
+        end
       else begin
         s.match_available <- true
         ; s.strstart <- s.strstart + 1
