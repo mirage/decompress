@@ -1468,9 +1468,9 @@ let git_object () =
     | `Malformed err -> failwith err
     | `End _ -> () in
   go decoder
-  ; let[@warning "-8"] (i0 :: i1) = inputs in
+  ; let[@warning "-partial-match"] (i0 :: i1) = inputs in
     let i1 = String.concat "" i1 in
-    let[@warning "-8"] [i0; i1] =
+    let[@warning "-partial-match"] [i0; i1] =
       List.map (fun x -> Bstr.string ~off:0 ~len:(String.length x) x) [i0; i1]
     in
     let decoder = Zl.Inf.decoder `Manual ~o ~allocate:(fun _ -> w) in

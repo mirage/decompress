@@ -462,7 +462,7 @@ module Inf = struct
 
   let rec header d =
     let k d =
-      let[@warning "-8"] (Hd {o}) = d.dd in
+      let[@warning "-partial-match"] (Hd {o}) = d.dd in
 
       let kfinal d =
         let window = De.make_window ~bits:15 in

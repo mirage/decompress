@@ -459,7 +459,7 @@ module WInf = struct
   let max = 1 lsl 15
   let mask = (1 lsl 15) - 1
 
-  let[@warning "-32"] make () =
+  let[@warning "-unused-value-declaration"] make () =
     {raw= bigstring_create max; w= 0; c= Checkseum.Adler32.default}
 
   let from raw = {raw; w= 0; c= Checkseum.Adler32.default}
@@ -1225,7 +1225,7 @@ module Inf = struct
     with Invalid_huffman -> err_invalid_dictionary d
 
   let inflate_table d =
-    let[@warning "-8"] (Inflate_table
+    let[@warning "-partial-match"] (Inflate_table
                           {t; l= max_bits; r= res; h= hlit, hdist, _}) =
       d.s in
     let max_res = hlit + hdist in
@@ -1279,7 +1279,7 @@ module Inf = struct
      have enough bytes to inflate huffman tree. *)
 
   let table d =
-    let[@warning "-8"] (Table {hlit; hdist; hclen}) = d.s in
+    let[@warning "-partial-match"] (Table {hlit; hdist; hclen}) = d.s in
     let hold = ref d.hold in
     let bits = ref d.bits in
     let t_pos = ref 0 in
