@@ -71,7 +71,7 @@ let deflate_with_level ~level filename =
       ; encode_rest @@ Def.encode encoder `Await
     | (`Flush | `End) as state ->
       let len = bigstring_length o - Inf.dst_rem decoder in
-      let str = Bigstringaf.substring o ~off:0 ~len in
+      let str = Bstr.sub_string o ~off:0 ~len in
       output_string oc str
       ; if state = `Flush then (
           Inf.flush decoder
@@ -84,7 +84,7 @@ let deflate_with_level ~level filename =
       ; encode @@ Def.encode encoder `Await
     | (`Flush | `End) as state ->
       let len = bigstring_length o - Inf.dst_rem decoder in
-      let str = Bigstringaf.substring o ~off:0 ~len in
+      let str = Bstr.sub_string o ~off:0 ~len in
       output_string oc str
       ; if state = `Flush then (
           Inf.flush decoder

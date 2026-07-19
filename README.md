@@ -93,15 +93,15 @@ An usual _loop_ (which can fit into `lwt` or `async`) of `decompress.zl` is:
 ```ocaml
 let rec go decoder = match Zl.Inf.decode decoder with
   | `Await decoder ->
-    let len = input itmp 0 (Bigstringaf.length tmp) in
+    let len = input itmp 0 (Bstr.length tmp) in
     go (Zl.Inf.src decoder itmp 0 len)
   | `Flush decoder ->
-    let len = Bigstringaf.length otmp - Zl.Inf.dst_rem decoder in
+    let len = Bstr.length otmp - Zl.Inf.dst_rem decoder in
     output stdout otmp 0 len ;
     go (Zl.Inf.flush decoder)
   | `Malformed err -> invalid_arg err
   | `End decoder ->
-    let len = Bigstringaf.length otmp - Zl.Inf.dst_rem decoder in
+    let len = Bstr.length otmp - Zl.Inf.dst_rem decoder in
     output stdout otmp 0 len in
 go decoder
 ```

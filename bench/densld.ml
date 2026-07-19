@@ -4,12 +4,12 @@ open De_landmarks
 let inflate file d =
   let file = open_in file in
   let len = in_channel_length file in
-  let src = Bigstringaf.of_string (really_input_string file len) ~off:0 ~len in
+  let src = Bstr.string (really_input_string file len) ~off:0 ~len in
   if d then
-    let dst = Bigstringaf.create (len * 10) in
+    let dst = Bstr.create (len * 10) in
     ignore @@ Inf.Ns.inflate src dst
   else
-    let dst = Bigstringaf.create (Def.Ns.compress_bound len) in
+    let dst = Bstr.create (Def.Ns.compress_bound len) in
     ignore @@ Def.Ns.deflate src dst
 
 let file =

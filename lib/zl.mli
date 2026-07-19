@@ -300,11 +300,11 @@ module Higher : sig
         let p = ref 0 in
         let refill buf =
           let len = min (String.length str - !p) De.io_buffer_size in
-          Bigstringaf.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len
+          Bstr.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len
           ; p := !p + len
           ; len in
         let flush buf len =
-          let str = Bigstringaf.substring buf ~off:0 ~len in
+          let str = Bstr.sub_string buf ~off:0 ~len in
           Buffer.add_string r str in
         Zl.Higher.compress ~level ~dynamic:true ~w ~q ~refill ~flush i o
         ; Buffer.contents r
@@ -348,11 +348,11 @@ module Higher : sig
         let p = ref 0 in
         let refill buf =
           let len = min (String.length str - !p) De.io_buffer_size in
-          Bigstringaf.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len
+          Bstr.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len
           ; p := !p + len
           ; len in
         let flush buf len =
-          let str = Bigstringaf.substring buf ~off:0 ~len in
+          let str = Bstr.sub_string buf ~off:0 ~len in
           Buffer.add_string r str in
         match Zl.Higher.uncompress ~allocate ~refill ~flush i o with
         | Ok () -> Ok (Buffer.contents r)

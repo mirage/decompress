@@ -17,13 +17,13 @@ let wrkmem = Lzo.make_wrkmem ()
 
 let () =
   add_test ~name:"lzo/minilzo" [non_empty_bytes 256] @@ fun str ->
-  let bstr = Bigstringaf.of_string str ~off:0 ~len:(String.length str) in
-  let output = Bigstringaf.create 65536 in
+  let bstr = Bstr.string str ~off:0 ~len:(String.length str) in
+  let output = Bstr.create 65536 in
   let len = Lzo.compress bstr output wrkmem in
   let buf = Bytes.create (String.length str) in
   let len =
     Minilzo.uncompress
-      ~src:(Bigstringaf.substring output ~off:0 ~len)
+      ~src:(Bstr.sub_string output ~off:0 ~len)
       ~src_off:0 ~src_len:len ~dst:buf ~dst_off:0 in
   check_eq str (Bytes.sub_string buf 0 len)
 
@@ -33,7 +33,7 @@ let () =
   let len =
     Minilzo.compress ~src:str ~src_off:0 ~src_len:(String.length str) ~dst:buf
       ~dst_off:0 in
-  let bstr = Bigstringaf.of_string (Bytes.unsafe_to_string buf) ~off:0 ~len in
+  let bstr = Bstr.string (Bytes.unsafe_to_string buf) ~off:0 ~len in
   match Lzo.uncompress_with_buffer bstr with
   | Ok str' -> check_eq str str'
   | Error _ -> Crowbar.fail "Invalid output of minilzo"
