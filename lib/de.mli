@@ -39,8 +39,8 @@
 
     [de] wants to be self-contained. By this constraint, it provides convenience
     values to be used by others (like [zl]). The client should not use these
-    functions even if they are available. Others libraries like [Bigstringaf]
-    serve the same purpose of a much better way. *)
+    functions even if they are available. Others libraries like [Bstr] serve the
+    same purpose of a much better way. *)
 
 type bigstring =
   (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
@@ -556,12 +556,12 @@ module Higher : sig
         let refill buf =
           (* assert (buf == i); *)
           let len = min (String.length str - !p) De.io_buffer_size in
-          Bigstringaf.blit_string str ~src_off:!p buf ~dst_off:0 ~len
+          Bstr.blit_string str ~src_off:!p buf ~dst_off:0 ~len
           ; p := !p + len
           ; len in
         let flush buf len =
           (* assert (buf == o); *)
-          let str = Bigstringaf.substring buf ~off:0 ~len in
+          let str = Bstr.sub_string buf ~off:0 ~len in
           Buffer.add_string r str in
         De.Higher.compress ~w ~q ~refill ~flush i o
         ; Buffer.contents r
@@ -616,11 +616,11 @@ module Higher : sig
         let p = ref 0 in
         let refill buf =
           let len = min (String.length str - !p) De.io_buffer_size in
-          Bigstringaf.blit_from_String str ~src_off:!p buf ~dst_off:0 ~len
+          Bstr.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len
           ; p := !p + len
           ; len in
         let flush buf len =
-          let str = Bigstringaf.substring buf ~off:0 ~len in
+          let str = Bstr.sub_string buf ~off:0 ~len in
           Buffer.add_string r buf in
         match De.Higher.uncompress ~w ~refill ~flush i o with
         | Ok () -> Ok (Buffer.contents r)

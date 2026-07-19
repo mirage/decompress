@@ -319,11 +319,11 @@ module Higher : sig
         let cfg = Gz.Higher.configuration Gz.Unix time in
         let refill buf =
           let len = min (String.length str - !p) De.io_buffer_size in
-          Bigstringaf.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len
+          Bstr.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len
           ; p := !p + len
           ; len in
         let flush buf len =
-          let str = Bigstringaf.substring buf ~off:0 ~len in
+          let str = Bstr.sub_string buf ~off:0 ~len in
           Buffer.add_string r str in
         Gz.Higher.compress ~w ~q ~level ~refill ~flush () cfg i o
         ; Buffer.contents r
@@ -378,11 +378,11 @@ module Higher : sig
         let p = ref 0 in
         let refill buf =
           let len = min (String.length str - !p) De.io_buffer_size in
-          Bigstringaf.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len
+          Bstr.blit_from_string str ~src_off:!p buf ~dst_off:0 ~len
           ; p := !p + len
           ; len in
         let flush buf len =
-          let str = Bigstringaf.substring buf ~off:0 ~len in
+          let str = Bstr.sub_string buf ~off:0 ~len in
           Buffer.add_string r str in
         match Gz.Higher.uncompress ~refill ~flush i o with
         | Ok m -> Ok (m, Buffer.contents r)

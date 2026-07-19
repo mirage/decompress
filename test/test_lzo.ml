@@ -55,26 +55,24 @@ let test_lzo_0 () =
     ; "\x86\x11\x00\x00"
     ] in
   let input = String.concat "" input in
-  let input = Bigstringaf.of_string ~off:0 ~len:(String.length input) input in
-  let output = Bigstringaf.create (Bigstringaf.length input) in
+  let input = Bstr.string ~off:0 ~len:(String.length input) input in
+  let output = Bstr.create (Bstr.length input) in
   match Lzo.uncompress input output with
   | Ok output ->
     Alcotest.(check str)
-      "result"
-      (Bigstringaf.to_string output)
-      (String.concat "" expect)
+      "result" (Bstr.to_string output) (String.concat "" expect)
   | Error err -> Alcotest.failf "Invalid LZO input: %a" Lzo.pp_error err
 
 let test_lzo_1 () =
   Alcotest.test_case "simple test" `Quick @@ fun () ->
   let input = "Salut les copains!" in
-  let output = Bigstringaf.create 128 in
+  let output = Bstr.create 128 in
   let wrkmem = Lzo.make_wrkmem () in
   let len =
     Lzo.compress
-      (Bigstringaf.of_string ~off:0 ~len:(String.length input) input)
+      (Bstr.string ~off:0 ~len:(String.length input) input)
       output wrkmem in
-  let res = Bigstringaf.sub output ~off:0 ~len in
+  let res = Bstr.sub output ~off:0 ~len in
   match Lzo.uncompress_with_buffer res with
   | Ok res -> Alcotest.(check str) "result" res input
   | Error err -> Alcotest.failf "Invalid LZO input: %a" Lzo.pp_error err
@@ -83,7 +81,7 @@ let test_lzo_2 () =
   Alcotest.test_case "ensure it fails without exception" `Quick @@ fun () ->
   match
     Lzo.uncompress_with_buffer
-      (Bigstringaf.of_string "\x00\x00\x11\x00\x00" ~off:0 ~len:5)
+      (Bstr.string "\x00\x00\x11\x00\x00" ~off:0 ~len:5)
   with
   | Ok _ -> Alcotest.failf "An error is expected"
   | Error err ->
@@ -219,7 +217,7 @@ let test_lzo_3 () =
     ; "\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc\xbd\xbe\xbf\x11\x00\x00"
     ] in
   let input = String.concat "" input in
-  let input = Bigstringaf.of_string input ~off:0 ~len:(String.length input) in
+  let input = Bstr.string input ~off:0 ~len:(String.length input) in
   match Lzo.uncompress_with_buffer input with
   | Ok str ->
     Alcotest.(check string) "output" str (String.concat "" output_lzo_3)
@@ -227,7 +225,7 @@ let test_lzo_3 () =
 
 let test_lzo_4 () =
   Alcotest.test_case "handle empty" `Quick @@ fun () ->
-  let input = Bigstringaf.of_string ~off:0 ~len:3 "\x11\x00\x00" in
+  let input = Bstr.string ~off:0 ~len:3 "\x11\x00\x00" in
   match Lzo.uncompress_with_buffer input with
   | Ok str -> Alcotest.(check string) "empty" str ""
   | Error _ -> Alcotest.failf "Invalid LZO input"
@@ -261,7 +259,7 @@ let test_lzo_5 () =
     ; "\x11\x00\x00"
     ] in
   let input = String.concat "" input in
-  let input = Bigstringaf.of_string input ~off:0 ~len:(String.length input) in
+  let input = Bstr.string input ~off:0 ~len:(String.length input) in
   match Lzo.uncompress_with_buffer input with
   | Ok str ->
     Alcotest.(check string) "output" str (String.concat "" output_lzo_5)
@@ -277,7 +275,7 @@ let test_lzo_6 () =
     ; "\x35\xad\x06\x13\xd8\x18\x57\xb6\xdb\xf5\x75\x91\x25\x4f\x1a\xc1"
     ] in
   let input = String.concat "" input in
-  let input = Bigstringaf.of_string ~off:0 ~len:(String.length input) input in
+  let input = Bstr.string ~off:0 ~len:(String.length input) input in
   match Lzo.uncompress_with_buffer input with
   | Ok _ -> Alcotest.failf "Unexpected valid LZO input"
   | Error _ -> Alcotest.(check pass) "input errored" () ()
@@ -295,7 +293,7 @@ let test_lzo_7 () =
     ; "\x19\xa5\x5f\x04\xcd\x21\x91\xf7\xd9\xb2\x6c\x66\x07\x7d\x02\x75"
     ] in
   let input = String.concat "" input in
-  let input = Bigstringaf.of_string ~off:0 ~len:(String.length input) input in
+  let input = Bstr.string ~off:0 ~len:(String.length input) input in
   match Lzo.uncompress_with_buffer input with
   | Ok _ -> Alcotest.failf "Unexpected valid LZO input"
   | Error _ -> Alcotest.(check pass) "input errored" () ()
@@ -310,7 +308,7 @@ let test_lzo_8 () =
     ; "\x35\xad\x06\x13\xd8\x18\x57\xb6\xdb\xf5\x75\x91\x25\x4f\x1a\xc1"
     ] in
   let input = String.concat "" input in
-  let input = Bigstringaf.of_string ~off:0 ~len:(String.length input) input in
+  let input = Bstr.string ~off:0 ~len:(String.length input) input in
   match Lzo.uncompress_with_buffer input with
   | Ok _ -> Alcotest.failf "Unexpected valid LZO input"
   | Error _ -> Alcotest.(check pass) "input errored" () ()
@@ -324,7 +322,7 @@ let test_lzo_9 () =
       | `Invalid_dictionary -> Fmt.string ppf "invalid dictionary" in
     Alcotest.testable pp ( = ) in
   let uncompress str =
-    let input = Bigstringaf.of_string ~off:0 ~len:(String.length str) str in
+    let input = Bstr.string ~off:0 ~len:(String.length str) str in
     Lzo.uncompress_with_buffer input in
   let res = Alcotest.(result string error) in
   Alcotest.(check res) "is empty" (Ok "") (uncompress "\x11\x00\x00")
@@ -370,7 +368,7 @@ let test_lzo_10 () =
     ; "\x61\x67\x61\x69\x6e\x61\x6e\x64\x61\x67\x61\x69\x6e\x2e\x11\x00"; "\x00"
     ] in
   let input = String.concat "" input in
-  let input = Bigstringaf.of_string ~off:0 ~len:(String.length input) input in
+  let input = Bstr.string ~off:0 ~len:(String.length input) input in
   let output =
     "The quick brown fox jumped over the lazy dog. \
      againandagainandagainandagainandagainandagain." in
@@ -383,7 +381,7 @@ let test_lzo_11 () =
   let input =
     "\x20\x79\x6f\x6f\x79\x6f\x6f\x79\x6f\x6f\x79\x6f\x6f\x79\x6f\x6f\x11\x00\x00"
   in
-  let input = Bigstringaf.of_string ~off:0 ~len:(String.length input) input in
+  let input = Bstr.string ~off:0 ~len:(String.length input) input in
   match Lzo.uncompress_with_buffer input with
   | Ok str -> Alcotest.(check string) "yooyooyoo" str "yooyooyooyooyoo"
   | Error _ -> Alcotest.failf "Invalid LZO input"
@@ -397,7 +395,7 @@ let test_lzo_12 () =
       | `Invalid_dictionary -> Fmt.string ppf "invalid dictionary" in
     Alcotest.testable pp ( = ) in
   let uncompress str =
-    let input = Bigstringaf.of_string ~off:0 ~len:(String.length str) str in
+    let input = Bstr.string ~off:0 ~len:(String.length str) str in
     Lzo.uncompress_with_buffer input in
   let res = Alcotest.(result string error) in
   Alcotest.(check res)
@@ -500,7 +498,7 @@ let test_lzo_13 () =
     ; "\x34\x11\x00\x00"
     ] in
   let input = String.concat "" input in
-  let input = Bigstringaf.of_string ~off:0 ~len:(String.length input) input in
+  let input = Bstr.string ~off:0 ~len:(String.length input) input in
   match Lzo.uncompress_with_buffer input with
   | Ok str ->
     Alcotest.(check string) "lieral after literal" str "abcddddABBB01234"
@@ -515,7 +513,7 @@ let test_lzo_14 () =
       | `Invalid_dictionary -> Fmt.string ppf "invalid dictionary" in
     Alcotest.testable pp ( = ) in
   let uncompress str =
-    let input = Bigstringaf.of_string ~off:0 ~len:(String.length str) str in
+    let input = Bstr.string ~off:0 ~len:(String.length str) str in
     Lzo.uncompress_with_buffer input in
   let res = Alcotest.(result string error) in
   let input =
@@ -557,7 +555,7 @@ let test_lzo_15 () =
       | `Invalid_dictionary -> Fmt.string ppf "invalid dictionary" in
     Alcotest.testable pp ( = ) in
   let uncompress str =
-    let input = Bigstringaf.of_string ~off:0 ~len:(String.length str) str in
+    let input = Bstr.string ~off:0 ~len:(String.length str) str in
     Lzo.uncompress_with_buffer input in
   let res = Alcotest.(result string error) in
   let many_As = String.make (3 + 15 + 176) 'A' in

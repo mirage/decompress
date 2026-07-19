@@ -51,16 +51,15 @@ let () =
   Crowbar.add_test ~name:"compress ns/uncompress ns" [non_empty_bytes 1024]
   @@ fun input ->
   let len = String.length input in
-  Bigstringaf.blit_from_string input ~src_off:0 i ~dst_off:0 ~len
-  ; let src_def = Bigstringaf.sub i ~off:0 ~len in
+  Bstr.blit_from_string input ~src_off:0 i ~dst_off:0 ~len
+  ; let src_def = Bstr.sub i ~off:0 ~len in
     let res = Def.Ns.deflate src_def o in
     let res = Rresult.R.get_ok res in
-    let src_inf = Bigstringaf.sub o ~off:0 ~len:res in
+    let src_inf = Bstr.sub o ~off:0 ~len:res in
     let res = Inf.Ns.inflate src_inf i in
     match res with
     | Ok (_, res) ->
-      let output = Bigstringaf.sub i ~off:0 ~len:res in
+      let output = Bstr.sub i ~off:0 ~len:res in
       Crowbar.check_eq ~eq:String.equal ~pp:pp_string ~cmp:String.compare
-        (Bigstringaf.to_string output)
-        input
+        (Bstr.to_string output) input
     | Error _err -> Crowbar.fail "iso fail"

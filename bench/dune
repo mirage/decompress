@@ -88,4 +88,4 @@
  (modules densld)
  (enabled_if
   (= %{profile} benchmark))
- (libraries cmdliner de_landmarks bigstringaf))
+ (libraries cmdliner bstr de_landmarks bigstringaf))
