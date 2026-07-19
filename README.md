@@ -160,41 +160,16 @@ val uncompress :
 
 ### Benchmark
 
-`decompress` has a benchmark about _inflation_ to see if any update has a
-performance implication. The process try to _inflate_ a stream and stop at N
-second(s) (default is 30), The benchmark requires `libzlib-dev`, `cmdliner` and
-`bos` to be able to compile `zpipe` and the executable to produce the CSV file.
-To build the benchmark:
-
-```sh
-$ dune build --profile benchmark bench/output.csv
+You can run a simple benchmark which compares `decompress` with `camlzip` and
+`bytesrw.zlib` (both use `zlib`). These libraries must be installed and you
+can launch the benchmark with:
+```shell
+$ git clone https://github.com/mirage/decompress
+$ cd decompress
+$ opam pin add -yn .
+$ opam install --deps-only -t decompress
+$ dune build @runbench
 ```
-
-On linux machines, `/dev/urandom` will generate the random input for piping to
-zpipe. To run the benchmark:
-```sh
-$ cat /dev/urandom | ./_build/default/bench/zpipe \
-  | ./_build/default/bench/bench.exe 2> /dev/null
-```
-
-The output file is a CSV file which can be processed by a _plot_ software. It
-records input bytes, output bytes and memory usage at each second. You can
-show results with `gnuplot`:
-```sh
-$ gnuplot -p -e \
-  'set datafile separator ",";
-   set key autotitle columnhead;
-   plot "_build/default/bench/output.csv" using 1:2 with lines,
-        "" using 1:3 with lines'
-$ gnuplot -p -e \
-  'set datafile separator ",";
-   set key autotitle columnhead;
-   plot "_build/default/bench/output.csv" using 1:4 with lines'
-```
-
-The second graph ensure that the inflation does not allocate while it
-processes. It ensure that, at another layer, `decompress` does not leak
-memory.
 
 ## Build Requirements
 

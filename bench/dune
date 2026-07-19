@@ -1,91 +1,12 @@
 (executable
- (name bench)
- (modules bench)
- (foreign_stubs
-  (language c)
-  (names mclock bs))
- (enabled_if
-  (= %{profile} benchmark))
- (preprocess
-  (pps ppx_deriving_yojson))
- (libraries
-  unix
-  fmt
-  decompress.de
-  decompress.zl
-  cmdliner
-  ppx_deriving_yojson.runtime
-  yojson))
-
-(executable
- (name run)
- (modules run)
- (enabled_if
-  (= %{profile} benchmark))
- (libraries cmdliner fpath rresult bos))
+ (name b)
+ (modules b)
+ (libraries cmdliner bstr decompress.zl camlzip bytesrw.zlib))
 
 (rule
- (targets zpipe)
+ (alias runbench)
  (deps
-  (:zpipe zpipe.c))
+  (source_tree ../test/corpus)
+  (:bench b.exe))
  (action
-  (run %{cc} %{zpipe} -lz -o %{targets})))
-
-(rule
- (targets output.csv)
- (enabled_if
-  (= %{profile} benchmark))
- (deps
-  (:run run.exe)
-  (:zpipe zpipe)
-  (:bench bench.exe))
- (action
-  (chdir
-   %{workspace_root}
-   (run %{run} -o %{targets}))))
-
-(library
- (name lz_landmarks)
- (modules lz_landmarks)
- (enabled_if
-  (= %{profile} benchmark))
- (libraries checkseum optint landmarks de)
- (preprocess
-  (pps landmarks-ppx --auto)))
-
-(rule
- (copy ../lib/lz.ml lz_landmarks.ml))
-
-(rule
- (copy ../lib/lz.mli lz_landmarks.mli))
-
-(executable
- (name lzld)
- (modules lzld)
- (enabled_if
-  (= %{profile} benchmark))
- (libraries decompress.de lz_landmarks))
-
-(library
- (name de_landmarks)
- (modules de_landmarks)
- (enabled_if
-  (= %{profile} benchmark))
- (libraries checkseum optint landmarks de)
- (flags
-  (:standard -w -55))
- (preprocess
-  (pps landmarks-ppx --auto)))
-
-(rule
- (copy ../lib/de.ml de_landmarks.ml))
-
-(rule
- (copy ../lib/de.mli de_landmarks.mli))
-
-(executable
- (name densld)
- (modules densld)
- (enabled_if
-  (= %{profile} benchmark))
- (libraries cmdliner bstr de_landmarks bigstringaf))
+  (run %{bench} ../test/corpus)))
