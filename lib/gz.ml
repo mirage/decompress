@@ -653,6 +653,7 @@ module Def = struct
     ; e: De.Def.encoder
     ; w: De.Lz77.window
     ; state: state
+    ; first: bool
     ; flg: int
     ; xfl: int
     ; os: int
@@ -722,12 +723,10 @@ module Def = struct
 
   let make_block ?(last = false) e =
     if De.Lz77.no_compression e.s then {De.Def.kind= Flat; last}
-    else if last = false then
+    else
       let literals = De.Lz77.literals e.s in
       let distances = De.Lz77.distances e.s in
-      let dynamic = De.Def.dynamic_of_frequencies ~literals ~distances in
-      {De.Def.kind= De.Def.Dynamic dynamic; last}
-    else {De.Def.kind= De.Def.Fixed; last}
+      De.Def.block_of_frequencies ~last ~literals ~distances
 
   let zero_terminated str kfinal e =
     let pos = ref 0 in
@@ -819,6 +818,9 @@ module Def = struct
         | `Await ->
           refill compress
             {e with i_pos= e.i_pos + (i_rem e - De.Lz77.src_rem e.s)}
+        | `Flush when e.first ->
+          encode_deflate {e with first= false}
+            (De.Def.encode e.e (`Block (make_block e)))
         | `Flush -> encode_deflate e (De.Def.encode e.e `Flush)
         | `End ->
           let block = make_block ~last:true e in
@@ -903,6 +905,7 @@ module Def = struct
     ; q
     ; w
     ; state= Hd
+    ; first= true
     ; xfl
     ; flg
     ; mtime

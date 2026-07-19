@@ -345,6 +345,17 @@ module Def : sig
       If all frequencies are upper than 0, resulted [dynamic] Huffman tree is
       able to encode any symbols. *)
 
+  val block_of_frequencies :
+    last:bool -> literals:literals -> distances:distances -> block
+  (** [block_of_frequencies ~last ~literals ~distances] is a {!block} whose
+      {!kind} is whichever a {!Fixed} (static Huffman trees) or a {!Dynamic}
+      (Huffman trees computed from the frequencies) block. It choose the block
+      header in the most compact way.
+
+      A dynamic block always pays for the description of its trees, so
+      [block_of_frequencies] falls back to a static block on small or very
+      uniform inputs where that overhead is not amortised. *)
+
   type encoder
   (** The type for DEFLATE encoders. *)
 
