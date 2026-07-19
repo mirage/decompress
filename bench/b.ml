@@ -156,11 +156,13 @@ let pp ppf t =
   Format.fprintf ppf "%-14s %4d %-11s %10d %10d %7.3f %9.1f %9.1f@." t.filepath
     t.level t.lib t.in_bytes t.out_bytes t.ratio t.compress t.decompress
 
+let is_regular_file filepath = not (Sys.is_directory filepath)
+
 let files_of_dirpath dirpath =
   Sys.readdir dirpath
   |> Array.to_list
   |> List.map (fun filename -> Filename.concat dirpath filename)
-  |> List.filter Sys.is_regular_file
+  |> List.filter is_regular_file
   |> List.sort compare
 
 let run corpus levels repeat =
