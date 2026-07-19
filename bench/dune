@@ -89,3 +89,8 @@
  (enabled_if
   (= %{profile} benchmark))
  (libraries cmdliner bstr de_landmarks bigstringaf))
+
+(executable
+ (name b)
+ (modules b)
+ (libraries cmdliner bstr decompress.zl camlzip bytesrw.zlib))
