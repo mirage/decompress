@@ -1226,7 +1226,12 @@ module Inf = struct
 
   let inflate_table d =
     let[@warning "-partial-match"] (Inflate_table
-                          {t; l= max_bits; r= res; h= hlit, hdist, _}) =
+                                      {
+                                        t
+                                      ; l= max_bits
+                                      ; r= res
+                                      ; h= hlit, hdist, _
+                                      }) =
       d.s in
     let max_res = hlit + hdist in
     let mask = (1 lsl max_bits) - 1 in
