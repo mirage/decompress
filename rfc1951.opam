@@ -22,6 +22,5 @@ depends: [
   "decompress" {= version}
   "checkseum"
   "optint"
-  "ctypes"     {with-test & >= "0.18.0"}
 ]
 x-maintenance-intent: [ "(latest)" ]
