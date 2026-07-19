@@ -24,8 +24,7 @@ let unsafe_get_uint32_be b i = Bigstringaf.get_int32_be b i
 let pp_chr =
   Fmt.using (function '\032' .. '\126' as x -> x | _ -> '.') Fmt.char
 
-let pp_scalar :
-    type buffer.
+let pp_scalar : type buffer.
     get:(buffer -> int -> char) -> length:(buffer -> int) -> buffer Fmt.t =
  fun ~get ~length ppf b ->
   let l = length b in
@@ -147,7 +146,7 @@ let invalid_lengths () =
   let decoder =
     Inf.decoder
       (`String
-        "\x04\x80\x49\x92\x24\x49\x92\x24\x49\x92\x24\x71\xff\xff\x93\x11\x00")
+         "\x04\x80\x49\x92\x24\x49\x92\x24\x49\x92\x24\x71\xff\xff\x93\x11\x00")
       ~o ~w in
   Alcotest.(check decode)
     "invalid literals/lengths" (Inf.decode decoder)
@@ -269,7 +268,7 @@ let long_distance_and_extra () =
   let decoder =
     Inf.decoder
       (`String
-        "\xed\xcf\xc1\xb1\x2c\x47\x10\xc4\x30\xfa\x6f\x35\x1d\x01\x82\x59\x3d\xfb\xbe\x2e\x2a\xfc\x0f\x0c")
+         "\xed\xcf\xc1\xb1\x2c\x47\x10\xc4\x30\xfa\x6f\x35\x1d\x01\x82\x59\x3d\xfb\xbe\x2e\x2a\xfc\x0f\x0c")
       ~o ~w in
   let res = unroll_inflate o decoder in
   Alcotest.(check string) "0x00 * 518" (String.make 518 '\x00') res
@@ -281,7 +280,7 @@ let window_end () =
   let decoder =
     Inf.decoder
       (`String
-        "\xed\xc0\x81\x00\x00\x00\x00\x80\xa0\xfd\xa9\x17\xa9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06")
+         "\xed\xc0\x81\x00\x00\x00\x00\x80\xa0\xfd\xa9\x17\xa9\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x06")
       ~o ~w in
   let res = unroll_inflate o decoder in
   Alcotest.(check string) "0x00 * 33025" (String.make 33025 '\x00') res
@@ -310,9 +309,9 @@ let fuzz0 () =
   let decoder =
     Inf.decoder
       (`String
-        "{\220\n\
-        \ \
-         s\017\027\211\\\006\211w\176`\142\2007\156oZBo\163\136\017\247\158\247\012e\241\234sn_$\210\223\017\213\138\147]\129M\137<\242\1867\021c\194\156\135\194\167-wo\006\200\198")
+         "{\220\n\
+         \ \
+          s\017\027\211\\\006\211w\176`\142\2007\156oZBo\163\136\017\247\158\247\012e\241\234sn_$\210\223\017\213\138\147]\129M\137<\242\1867\021c\194\156\135\194\167-wo\006\200\198")
       ~o ~w in
   Alcotest.(check decode)
     "fuzz0"
@@ -824,9 +823,7 @@ let reconstruct lst =
   let len =
     List.fold_left
       (fun a -> function
-        | `Literal _ -> 1 + a
-        | `Copy (_, len) -> len + a
-        | `End -> a)
+        | `Literal _ -> 1 + a | `Copy (_, len) -> len + a | `End -> a)
       0 lst in
   let res = Bytes.create len in
   let pos = ref 0 in
@@ -1126,9 +1123,7 @@ let partial_reconstruct tmp lst =
   let len =
     List.fold_left
       (fun a -> function
-        | `Literal _ -> 1 + a
-        | `Copy (_, len) -> len + a
-        | `End -> a)
+        | `Literal _ -> 1 + a | `Copy (_, len) -> len + a | `End -> a)
       0 lst in
   let res = Bytes.create (String.length tmp + len) in
   Bytes.blit_string tmp 0 res 0 (String.length tmp)
@@ -1268,11 +1263,11 @@ let compress_and_uncompress ic =
       encode
       @@ Def.encode encoder
            (`Block
-             {
-               Def.kind=
-                 Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
-             ; last= false
-             })
+              {
+                Def.kind=
+                  Dynamic (Def.dynamic_of_frequencies ~literals ~distances)
+              ; last= false
+              })
     | `End ->
       Queue.push_exn q Queue.eob
       ; encode_rest @@ Def.encode encoder (`Block {Def.kind= Fixed; last= true})
@@ -2033,7 +2028,7 @@ let invalid_access () =
   let decoder =
     De.Inf.decoder
       (`String
-        "\xc3\xab\xfd\xa4\xfc\xff\x72\xbf\xf2\x6f\xf9\xff\x9f\xf1\xf9\xaa\x39\x6a\xdd\x19\x80\x15\x29\x91\x89\x9b\x79\x9c\x10\x96\x2a\x0f\x03\x28\x71\xba\xc2\x7d\x9c\x02")
+         "\xc3\xab\xfd\xa4\xfc\xff\x72\xbf\xf2\x6f\xf9\xff\x9f\xf1\xf9\xaa\x39\x6a\xdd\x19\x80\x15\x29\x91\x89\x9b\x79\x9c\x10\x96\x2a\x0f\x03\x28\x71\xba\xc2\x7d\x9c\x02")
       ~o ~w in
   De.unsafe_set_cursor decoder (1 lsl 15)
   ; (* XXX(dinosaure): imagine we already inflated a large contents. LOL! but imagine!. *)

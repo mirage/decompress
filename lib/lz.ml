@@ -124,7 +124,7 @@ let _distance =
 
 let _distance code =
   if code < 256 then _distance.(code) else _distance.(256 + (code lsr 7))
-  [@@inline]
+[@@inline]
 
 let _max_match = 258
 let _min_match = 3
@@ -207,7 +207,7 @@ let longest_match cfg s cur_match =
   let chain_length =
     ref
       (if s.prev_length >= cfg.good_length then cfg.max_chain asr 2
-      else cfg.max_chain) in
+       else cfg.max_chain) in
   (* max hash chain length *)
   let scan = ref s.strstart in
   (* current string *)
@@ -436,17 +436,17 @@ and deflate_slow cfg s =
   ; s.prev_match <- s.match_start
   ; s.match_length <- _min_match - 1
   ; (if
-     !hash_head != 0
-     && s.prev_length < cfg.max_lazy
-     && s.strstart - !hash_head <= max_dist s
-    then
-     let match_length = longest_match cfg s !hash_head in
-     if
-       match_length <= 5
-       && match_length == _min_match
-       && s.strstart - s.match_start > _too_far
-     then s.match_length <- _min_match - 1
-     else s.match_length <- match_length)
+       !hash_head != 0
+       && s.prev_length < cfg.max_lazy
+       && s.strstart - !hash_head <= max_dist s
+     then
+       let match_length = longest_match cfg s !hash_head in
+       if
+         match_length <= 5
+         && match_length == _min_match
+         && s.strstart - s.match_start > _too_far
+       then s.match_length <- _min_match - 1
+       else s.match_length <- match_length)
   ; if s.prev_length >= _min_match && s.match_length <= s.prev_length then begin
       let max_insert = s.strstart + s.lookahead - _min_match in
       let flush =
@@ -471,8 +471,8 @@ and deflate_slow cfg s =
           ; `Flush)
         else enough cfg s
     end
-    else if s.match_available then begin
-      match emit_literal s (unsafe_get_char s.w (s.strstart - 1)) with
+    else if s.match_available then
+      begin match emit_literal s (unsafe_get_char s.w (s.strstart - 1)) with
       | true ->
         s.strstart <- s.strstart + 1
         ; s.lookahead <- s.lookahead - 1
@@ -482,7 +482,7 @@ and deflate_slow cfg s =
         s.strstart <- s.strstart + 1
         ; s.lookahead <- s.lookahead - 1
         ; enough cfg s
-    end
+      end
     else begin
       s.match_available <- true
       ; s.strstart <- s.strstart + 1

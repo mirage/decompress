@@ -250,9 +250,8 @@ let run :
     -> v
     -> ('a, 'error) result =
  fun ~transmit ~copy fiber t ->
-  let rec go :
-      type a. v -> (a, ([> `Malformed of string ] as 'error)) t -> (a, 'error) k
-      =
+  let rec go : type a.
+      v -> (a, ([> `Malformed of string ] as 'error)) t -> (a, 'error) k =
    fun t instr ->
     match instr with
     | Fail err -> Error err
@@ -446,51 +445,52 @@ let record_match ~off ~len out_data _anchor out_pos =
   let out_pos = ref out_pos in
 
   (if len <= _m2_max_len && off <= _m2_max_offset then (
-   let off = off - 1 in
-   out_data.%[!out_pos] <- ((len - 1) lsl 5) lor ((off land 7) lsl 2)
-   ; incr out_pos
-   ; out_data.%[!out_pos] <- off asr 3
-   ; incr out_pos)
-  else if off <= _m3_max_offset then (
-    let off = off - 1 in
-    (if len <= _m3_max_len then (
-     out_data.%[!out_pos] <- _m3_marker lor (len - 2)
+     let off = off - 1 in
+     out_data.%[!out_pos] <- ((len - 1) lsl 5) lor ((off land 7) lsl 2)
+     ; incr out_pos
+     ; out_data.%[!out_pos] <- off asr 3
      ; incr out_pos)
-    else
-      let len = ref (len - _m3_max_len) in
-      out_data.%[!out_pos] <- _m3_marker lor 0
-      ; incr out_pos
-      ; while !len > 255 do
-          len := !len - 255
-          ; out_data.%[!out_pos] <- 0
-          ; incr out_pos
-        done
-      ; out_data.%[!out_pos] <- !len
-      ; incr out_pos)
-    ; out_data.%[!out_pos] <- off lsl 2
-      ; incr out_pos
-      ; out_data.%[!out_pos] <- off asr 6
-      ; incr out_pos)
-  else
-    let off = off - 0x4000 in
-    (if len <= _m4_max_len then (
-     out_data.%[!out_pos] <- _m4_marker lor ((off asr 11) land 8) lor (len - 2)
-     ; incr out_pos)
-    else
-      let len = ref (len - _m4_max_len) in
-      out_data.%[!out_pos] <- _m4_marker lor ((off asr 11) land 8)
-      ; incr out_pos
-      ; while !len > 255 do
-          len := !len - 255
-          ; out_data.%[!out_pos] <- 0
-          ; incr out_pos
-        done
-      ; out_data.%[!out_pos] <- !len
-      ; incr out_pos)
-    ; out_data.%[!out_pos] <- off lsl 2
-      ; incr out_pos
-      ; out_data.%[!out_pos] <- off asr 6
-      ; incr out_pos)
+   else if off <= _m3_max_offset then (
+     let off = off - 1 in
+     (if len <= _m3_max_len then (
+        out_data.%[!out_pos] <- _m3_marker lor (len - 2)
+        ; incr out_pos)
+      else
+        let len = ref (len - _m3_max_len) in
+        out_data.%[!out_pos] <- _m3_marker lor 0
+        ; incr out_pos
+        ; while !len > 255 do
+            len := !len - 255
+            ; out_data.%[!out_pos] <- 0
+            ; incr out_pos
+          done
+        ; out_data.%[!out_pos] <- !len
+        ; incr out_pos)
+     ; out_data.%[!out_pos] <- off lsl 2
+       ; incr out_pos
+       ; out_data.%[!out_pos] <- off asr 6
+       ; incr out_pos)
+   else
+     let off = off - 0x4000 in
+     (if len <= _m4_max_len then (
+        out_data.%[!out_pos] <-
+          _m4_marker lor ((off asr 11) land 8) lor (len - 2)
+        ; incr out_pos)
+      else
+        let len = ref (len - _m4_max_len) in
+        out_data.%[!out_pos] <- _m4_marker lor ((off asr 11) land 8)
+        ; incr out_pos
+        ; while !len > 255 do
+            len := !len - 255
+            ; out_data.%[!out_pos] <- 0
+            ; incr out_pos
+          done
+        ; out_data.%[!out_pos] <- !len
+        ; incr out_pos)
+     ; out_data.%[!out_pos] <- off lsl 2
+       ; incr out_pos
+       ; out_data.%[!out_pos] <- off asr 6
+       ; incr out_pos)
   ; !out_pos
 
 let record_literals ~off ~len in_data out_data _anchor out_pos =
@@ -510,19 +510,19 @@ let record_literals ~off ~len in_data out_data _anchor out_pos =
       ; out_pos := !out_pos + len)
     else (
       (if len <= 18 then (
-       out_data.%[!out_pos] <- len - 3
-       ; incr out_pos)
-      else
-        let len' = ref (len - 18) in
-        out_data.%[!out_pos] <- 0
-        ; incr out_pos
-        ; while !len' > 255 do
-            len' := !len' - 255
-            ; out_data.%[!out_pos] <- 0
-            ; incr out_pos
-          done
-        ; out_data.%[!out_pos] <- !len'
-        ; incr out_pos)
+         out_data.%[!out_pos] <- len - 3
+         ; incr out_pos)
+       else
+         let len' = ref (len - 18) in
+         out_data.%[!out_pos] <- 0
+         ; incr out_pos
+         ; while !len' > 255 do
+             len' := !len' - 255
+             ; out_data.%[!out_pos] <- 0
+             ; incr out_pos
+           done
+         ; out_data.%[!out_pos] <- !len'
+         ; incr out_pos)
       ; blit in_data off out_data !out_pos len
         ; out_pos := !out_pos + len
         ; in_pos := !in_pos + len)
@@ -533,24 +533,24 @@ let record_trailer ~off ~len in_data out_data out_pos =
 
   if len > 0 then (
     (if !out_pos = 0 && len < 238 then (
-     out_data.%[!out_pos] <- 17 + len
-     ; incr out_pos)
-    else if len <= 3 then
-      out_data.%[!out_pos - 2] <- out_data.%[!out_pos - 2] lor len
-    else if len <= 18 then (
-      out_data.%[!out_pos] <- len - 3
-      ; incr out_pos)
-    else
-      let len' = ref (len - 18) in
-      out_data.%[!out_pos] <- 0
-      ; incr out_pos
-      ; while !len' > 255 do
-          len' := !len' - 255
-          ; out_data.%[!out_pos] <- 0
-          ; incr out_pos
-        done
-      ; out_data.%[!out_pos] <- !len'
-      ; incr out_pos)
+       out_data.%[!out_pos] <- 17 + len
+       ; incr out_pos)
+     else if len <= 3 then
+       out_data.%[!out_pos - 2] <- out_data.%[!out_pos - 2] lor len
+     else if len <= 18 then (
+       out_data.%[!out_pos] <- len - 3
+       ; incr out_pos)
+     else
+       let len' = ref (len - 18) in
+       out_data.%[!out_pos] <- 0
+       ; incr out_pos
+       ; while !len' > 255 do
+           len' := !len' - 255
+           ; out_data.%[!out_pos] <- 0
+           ; incr out_pos
+         done
+       ; out_data.%[!out_pos] <- !len'
+       ; incr out_pos)
     ; blit in_data off out_data !out_pos len)
   ; out_pos := !out_pos + len
   ; out_data.%[!out_pos] <- _m4_marker lor 1

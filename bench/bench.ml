@@ -1,13 +1,13 @@
 external now : unit -> (int64[@unboxed])
   = "clock_linux_get_time_bytecode" "clock_linux_get_time_native"
-  [@@noalloc]
+[@@noalloc]
 
 external read : Unix.file_descr -> De.bigstring -> int -> int -> int = "bs_read"
-  [@@noalloc]
+[@@noalloc]
 
 external write : Unix.file_descr -> De.bigstring -> int -> int -> int
   = "bs_write"
-  [@@noalloc]
+[@@noalloc]
 
 let w = De.make_window ~bits:15
 let o = De.bigstring_create De.io_buffer_size
@@ -65,7 +65,9 @@ let plot_json metrics max =
 let inflate max flag =
   let open Zl in
   let decoder = Inf.decoder `Manual ~o ~allocate in
-  let metrics = Array.make (max * 3) 0 (* in bytes, out bytes, live words *) in
+  let metrics =
+    Array.make (max * 3) 0
+    (* in bytes, out bytes, live words *) in
   let rec go idx ts decoder =
     let idx, ts =
       if Int64.sub (now ()) ts >= 1_000_000_000L then (
