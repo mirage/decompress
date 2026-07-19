@@ -246,7 +246,7 @@ module Inf = struct
 
   let rec header d =
     let k d =
-      let[@warning "-8"] (Hd {o}) = d.dd in
+      let[@warning "-partial-match"] (Hd {o}) = d.dd in
       let cmf = unsafe_get_uint16_le d.t 0 in
       let cm = cmf land 0b1111 in
       let cinfo = (cmf lsr 4) land 0b1111 in

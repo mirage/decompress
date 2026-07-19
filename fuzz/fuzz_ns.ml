@@ -54,7 +54,7 @@ let () =
   Bstr.blit_from_string input ~src_off:0 i ~dst_off:0 ~len
   ; let src_def = Bstr.sub i ~off:0 ~len in
     let res = Def.Ns.deflate src_def o in
-    let[@warning "-8"] (Ok res) = res in
+    let[@warning "-partial-match"] (Ok res) = res in
     let src_inf = Bstr.sub o ~off:0 ~len:res in
     let res = Inf.Ns.inflate src_inf i in
     match res with
