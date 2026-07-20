@@ -26,3 +26,7 @@ Simple tests
   $ decompress -fgzip -d --level 0 ../corpus/news news.gz
   $ decompress -fgzip news.gz news
   $ diff news ../corpus/news
+  $ decompress -flzw -d ../corpus/news news.lzw
+  $ decompress -flzw news.lzw news.lzw.decompressed
+  $ diff news.lzw.decompressed ../corpus/news
+
