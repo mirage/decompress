@@ -3989,6 +3989,15 @@ module Lz77 = struct
   let _hash_magic = 0x9e3779b1 (* xxHash *)
   let _hash_shift = 32 - _hash_bits
 
+  (* NOTE(dinosaure): On a 32-bit architecture, we lose 1 bit, but that’s not a
+     major issue. This limitation also accounts for the difference between zlib
+     and zlib-ng, where the latter takes advantage of the new capabilities of a
+     modern CPU.
+
+     As for OCaml, this remains a hash function (xxHash) which does not
+     necessarily have to correspond exactly to the string we wish to hash, but
+     rather to an identifier that allows us to 'quickly' retrieve possible
+     matches. *)
   let hash4 buf off =
     let lo = unsafe_get_uint16 buf off in
     let hi = unsafe_get_uint16 buf (off + 2) in
