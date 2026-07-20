@@ -3985,10 +3985,15 @@ module Lz77 = struct
   let _mem_level = 8 (* default *)
   let _hash_bits = _mem_level + 7
   let _hash_size = 1 lsl _hash_bits
-  let _hash_mask = _hash_size - 1
-  let _hash_shift = (_hash_bits + _min_match - 1) / _min_match
   let _too_far = 4096
-  let update_hash hash chr = (hash lsl _hash_shift) lxor chr land _hash_mask
+  let _hash_magic = 0x9e3779b1 (* xxHash *)
+  let _hash_shift = 32 - _hash_bits
+
+  let hash4 buf off =
+    let lo = unsafe_get_uint16 buf off in
+    let hi = unsafe_get_uint16 buf (off + 2) in
+    let v = lo lor (hi lsl 16) in
+    (v * _hash_magic land 0xffffffff) lsr _hash_shift
 
   type src = [ `Channel of in_channel | `String of string | `Manual ]
   type decode = [ `Await | `Flush | `End ]
@@ -4008,7 +4013,6 @@ module Lz77 = struct
     ; mutable strstart: int
     ; prev: int array
     ; head: int array
-    ; mutable hash: int
     ; mutable match_start: int
     ; mutable match_length: int
     ; mutable match_available: bool
@@ -4140,11 +4144,11 @@ module Lz77 = struct
 
   let insert_string s str =
     let wmask = (1 lsl s.wbits) - 1 in
-    s.hash <- update_hash s.hash s.w.!{str + (_min_match - 1)}
-    ; let res = s.head.(s.hash) in
-      s.prev.(str land wmask) <- res
-      ; s.head.(s.hash) <- str
-      ; res
+    let hash = hash4 s.w str in
+    let res = s.head.(hash) in
+    s.prev.(str land wmask) <- res
+    ; s.head.(hash) <- str
+    ; res
 
   let succ_length literals length =
     literals.(256 + 1 + _length.(length)) <-
@@ -4219,7 +4223,6 @@ module Lz77 = struct
     let deflate cfg s =
       match cfg, s.level with
       | Copy, _ -> copy s
-      | Deflate deflate_cfg, (1 | 2 | 3) -> deflate_fast deflate_cfg s
       | Deflate deflate_cfg, _ -> deflate_slow deflate_cfg s in
     (* max *)
     let more =
@@ -4245,18 +4248,17 @@ module Lz77 = struct
         ; if s.lookahead + s.insert >= _min_match then begin
             let str = ref (s.strstart - s.insert) in
             let insert = ref s.insert in
-            s.hash <- s.w.!{!str}
-            ; s.hash <- update_hash s.hash s.w.!{!str + 1}
-            ; while s.lookahead + !insert >= _min_match && !insert != 0 do
-                s.hash <- update_hash s.hash s.w.!{!str + _min_match - 1}
-                ; s.prev.(!str land wmask) <- s.head.(s.hash)
-                ; s.head.(s.hash) <- !str
-                ; incr str
-                ; decr insert
-                ; if s.lookahead + !insert < _min_match then (
-                    s.insert <- !insert
-                    ; raise Break)
-              done
+            while s.lookahead + !insert >= _min_match && !insert != 0 do
+              let hash = hash4 s.w !str in
+              s.prev.(!str land wmask) <- s.head.(hash)
+              ; s.head.(hash) <- !str
+              ; incr str
+              ; decr insert
+              ; if s.lookahead + !insert < _min_match then begin
+                  s.insert <- !insert
+                  ; raise Break
+                end
+            done
             ; s.insert <- !insert
           end
         ; if s.lookahead < _min_lookahead && i_rem s >= 0 then
@@ -4269,9 +4271,9 @@ module Lz77 = struct
     else
       match cfg, s.level with
       | Copy, _ -> copy s
-      | Deflate deflate_cfg, (1 | 2 | 3) -> deflate_fast deflate_cfg s
       | Deflate deflate_cfg, _ -> deflate_slow deflate_cfg s
 
+  (*
   and deflate_fast (cfg : deflate_configuration) s =
     let hash_head = ref 0 in
     let flush = ref false in
@@ -4311,6 +4313,7 @@ module Lz77 = struct
         s.k <- enough
         ; `Flush
       | false -> enough (Deflate cfg) s
+  *)
 
   and deflate_slow (cfg : deflate_configuration) s =
     let hash_head = ref 0 in
@@ -4459,7 +4462,6 @@ module Lz77 = struct
     ; strstart= 0
     ; prev= Array.make wsize 0
     ; head= Array.make _hash_size 0
-    ; hash= 0
     ; match_start= 0
     ; match_length= 0
     ; match_available= false

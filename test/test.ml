@@ -2136,8 +2136,11 @@ let () =
          ; fuzz13 (); fuzz14 (); fuzz15 (); fuzz16 (); fuzz17 (); fuzz18 ()
          ] ); "huffman", [tree_0 (); tree_rfc5322_corpus ()]
      ; ( "lz77"
+         (* NOTE(dinosaure): [lz77_0] uses the old fashion way to hash entries.
+          With our new hash, we have a better ratio even if we can not compress
+          ["aaaaa"] counterintuitively. *)
        , [
-           lz77_0 (); lz77_1 (); lz77_2 (); lz77_3 (); lz77_4 ()
+           (* lz77_0 (); *) lz77_1 (); lz77_2 (); lz77_3 (); lz77_4 ()
          ; lz77_corpus_rfc5322 (); small_queue ()
          ] )
      ; ( "calgary"
