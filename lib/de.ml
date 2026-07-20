@@ -4223,7 +4223,7 @@ module Lz77 = struct
     let deflate cfg s =
       match cfg, s.level with
       | Copy, _ -> copy s
-      | Deflate deflate_cfg, _ -> deflate_slow deflate_cfg s in
+      | Deflate deflate_cfg, _ -> deflate deflate_cfg s in
     (* max *)
     let more =
       if s.strstart >= wsize + max_dist s then begin
@@ -4271,51 +4271,9 @@ module Lz77 = struct
     else
       match cfg, s.level with
       | Copy, _ -> copy s
-      | Deflate deflate_cfg, _ -> deflate_slow deflate_cfg s
+      | Deflate deflate_cfg, _ -> deflate deflate_cfg s
 
-  (*
-  and deflate_fast (cfg : deflate_configuration) s =
-    let hash_head = ref 0 in
-    let flush = ref false in
-    if s.lookahead >= _min_match then hash_head := insert_string s s.strstart
-    ; if !hash_head != 0 && s.strstart - !hash_head <= max_dist s then
-        s.match_length <- longest_match cfg s !hash_head
-    ; if s.match_length >= _min_match then begin
-        flush :=
-          emit_match s ~off:(s.strstart - s.match_start) ~len:s.match_length
-        ; s.lookahead <- s.lookahead - s.match_length
-        ; if s.match_length <= cfg.max_lazy && s.lookahead >= _min_match then begin
-            s.match_length <- s.match_length - 1
-            ; while
-                s.strstart <- s.strstart + 1
-                ; hash_head := insert_string s s.strstart
-                ; s.match_length <- s.match_length - 1
-                ; s.match_length != 0
-              do
-                ()
-              done
-            ; s.strstart <- s.strstart + 1
-          end
-          else begin
-            s.strstart <- s.strstart + s.match_length
-            ; s.match_length <- 0
-            ; s.hash <- s.w.!{s.strstart}
-            ; s.hash <- update_hash s.hash s.w.!{s.strstart + 1}
-          end
-      end
-      else begin
-        flush := emit_literal s (unsafe_get_char s.w s.strstart)
-        ; s.lookahead <- s.lookahead - 1
-        ; s.strstart <- s.strstart + 1
-      end
-    ; match !flush with
-      | true ->
-        s.k <- enough
-        ; `Flush
-      | false -> enough (Deflate cfg) s
-  *)
-
-  and deflate_slow (cfg : deflate_configuration) s =
+  and deflate (cfg : deflate_configuration) s =
     let hash_head = ref 0 in
     if s.lookahead >= _min_match then hash_head := insert_string s s.strstart
     ; s.prev_length <- s.match_length
