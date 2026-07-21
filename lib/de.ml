@@ -348,11 +348,20 @@ let window_bits w = ffs (bigstring_length w)
 
 module Lookup = struct
   (* Used as inflate to store lookup.[bit-sequence] = [len << 15 | byte].
-     Used as deflate to store lookup.[byte] = [len << 15 | bit-sequence]. *)
-  type t = {t: int array; m: int; l: int}
+     Used as deflate to store lookup.[byte] = [len << 15 | bit-sequence].
+
+     For inflate, the table can be two-level (see zlib's inftrees.c):
+     [m] is the mask of the [root] index bits
+     [l] is the longest code length used to know how many bits to buffer
+
+     A one-level table simply has [root = l] *)
+  type t = {t: int array; m: int; l: int; root: int}
 
   let mask = (1 lsl _max_bits) - 1
-  let make t m = {t; m= (1 lsl m) - 1; l= m}
+
+  let make t ?root max =
+    let root = Option.value ~default:max root in
+    {t; m= (1 lsl root) - 1; l= max; root}
 
   let get t i =
     let v = t.t.(i) in
@@ -423,35 +432,6 @@ let _static_dtree =
    have a [Write] operation. *)
 
 type optint = Optint.t
-
-(* XXX(dinosaure): optimize [Heap]. TODO! *)
-
-module Heap = struct
-  type priority = int
-  type 'a queue = None | Node of priority * 'a * 'a queue * 'a queue
-
-  let rec push queue priority elt =
-    match queue with
-    | None -> Node (priority, elt, None, None)
-    | Node (p, e, left, right) ->
-      if priority <= p then Node (priority, elt, push right p e, left)
-      else Node (p, e, push right priority elt, left)
-
-  exception Empty
-
-  let rec remove = function
-    | None -> raise_notrace Empty
-    | Node (_, _, left, None) -> left
-    | Node (_, _, None, right) -> right
-    | Node (_, _, (Node (lp, le, _, _) as left), (Node (rp, re, _, _) as right))
-      ->
-      if lp <= rp then Node (lp, le, remove left, right)
-      else Node (rp, re, left, remove right)
-
-  let take = function
-    | None -> raise_notrace Empty
-    | Node (p, e, _, _) as queue -> p, e, remove queue
-end
 
 module WInf = struct
   type t = {raw: bigstring; mutable w: int; mutable c: optint}
@@ -535,28 +515,10 @@ module Inf = struct
 
   exception Invalid_huffman
 
-  let prefix heap max =
-    assert (max < 16)
-    ; (* allocation *)
-      let tbl = Array.make (1 lsl max) 0 in
-      let rec backward huff incr =
-        if huff land incr <> 0 then backward huff (incr lsr 1) else incr in
-      let rec aux huff heap =
-        match Heap.take heap with
-        | _, (len, value), heap ->
-          let rec loop decr fill =
-            tbl.(huff + fill) <- (len lsl 15) lor value
-            ; if fill <> 0 then loop decr (fill - decr) in
-          let decr = 1 lsl len in
-          loop decr ((1 lsl max) - decr)
-          ; let incr = backward huff (1 lsl (len - 1)) in
-            aux (if incr != 0 then (huff land (incr - 1)) + incr else 0) heap
-        | exception Heap.Empty -> () in
-      aux 0 heap ; tbl
-
   type kind = CODES | LENS | DISTS
 
-  let empty_table = [|1 lsl _max_bits (* len: 1, val: 0 *)|], 1
+  let _link_flag = 1 lsl 20
+  let empty_table = [|1 lsl _max_bits (* len: 1, val: 0 *)|], 1, 1
 
   let huffman kind table off codes =
     let bl_count = Array.make 16 0 in
@@ -578,31 +540,111 @@ module Inf = struct
        with Break -> ())
 
       ; if !max == 0 then empty_table
-        else
-          let code = ref 0 in
+        else begin
           let left = ref 1 in
-          let next_code = Array.make 16 0 in
           for i = 1 to 15 do
-            left := !left lsl 1
-            ; left := !left - bl_count.(i)
+            left := (!left lsl 1) - bl_count.(i)
             ; if !left < 0 then raise Invalid_huffman
-            ; code := (!code + bl_count.(i)) lsl 1
-            ; next_code.(i) <- !code
           done
           ; if !left > 0 && (kind = CODES || !max != 1) then
               raise Invalid_huffman
-          ; let ordered = ref Heap.None in
-            let max = ref 0 in
-            for i = 0 to codes - 1 do
-              let l = table.(off + i) in
-              if l <> 0 then (
-                let n = next_code.(l - 1) in
-                next_code.(l - 1) <- n + 1
-                ; ordered := Heap.push !ordered n (l, i)
-                ; (* allocation *)
-                  max := if l > !max then l else !max)
-            done
-            ; prefix !ordered !max, !max
+          ; let min = ref 1 in
+            (try
+               while !min <= 15 do
+                 if bl_count.(!min) != 0 then raise_notrace Break
+                 ; incr min
+               done
+             with Break -> ())
+            ; let offs = Array.make 16 0 in
+              for idx = 1 to 14 do
+                offs.(idx + 1) <- offs.(idx) + bl_count.(idx)
+              done
+              ; let count = offs.(!max) + bl_count.(!max) in
+                let work = Array.make count 0 in
+                for sym = 0 to codes - 1 do
+                  let l = table.(off + sym) in
+                  if l <> 0 then (
+                    work.(offs.(l)) <- sym
+                    ; offs.(l) <- offs.(l) + 1)
+                done
+                ; let root =
+                    ref (match kind with LENS -> 9 | DISTS -> 6 | CODES -> 7)
+                  in
+                  if !root > !max then root := !max
+                  ; if !root < !min then root := !min
+                  ; let size =
+                      if !max <= !root then 1 lsl !max
+                      else
+                        match kind with
+                        | LENS -> 852
+                        | DISTS -> 592
+                        | CODES -> 1 lsl !max in
+                    let tbl = Array.make size 0 in
+                    let rec backward huff incr =
+                      if huff land incr <> 0 then backward huff (incr lsr 1)
+                      else incr in
+                    let huff = ref 0
+                    and sym = ref 0
+                    and len = ref !min
+                    and next = ref 0
+                    and curr = ref !root
+                    and drop = ref 0
+                    and low = ref (-1)
+                    and mask = (1 lsl !root) - 1
+                    and fill_size = ref 0
+                    and finished = ref false in
+                    while not !finished do
+                      let value = work.(!sym) in
+                      let entry = (!len lsl 15) lor value in
+                      let step = 1 lsl (!len - !drop) in
+                      fill_size := 1 lsl !curr
+                      ; let rec go fill =
+                          let fill = fill - step in
+                          tbl.(!next + (!huff lsr !drop) + fill) <- entry
+                          ; if fill <> 0 then go fill in
+                        go !fill_size
+                        ; let inc = backward !huff (1 lsl (!len - 1)) in
+                          huff :=
+                            if inc <> 0 then (!huff land (inc - 1)) + inc else 0
+                          ; incr sym
+                          ; bl_count.(!len) <- bl_count.(!len) - 1
+                          ; if bl_count.(!len) = 0 then
+                              if !len = !max then finished := true
+                              else len := table.(off + work.(!sym))
+                          ; if
+                              (not !finished)
+                              && !len > !root
+                              && !huff land mask <> !low
+                            then begin
+                              if !drop = 0 then drop := !root
+                              ; next := !next + !fill_size
+                              ; curr := !len - !drop
+                              ; let left = ref (1 lsl !curr) in
+                                begin try
+                                  while !curr + !drop < !max do
+                                    left := !left - bl_count.(!curr + !drop)
+                                    ; if !left <= 0 then raise_notrace Break
+                                    ; incr curr
+                                    ; left := !left lsl 1
+                                  done
+                                with Break -> ()
+                                end
+                                ; low := !huff land mask
+                                ; tbl.(!low) <-
+                                    _link_flag lor (!curr lsl 15) lor !next
+                            end
+                    done
+                    ; tbl, !root, !max
+        end
+
+  let resolve lookup hold =
+    let value = lookup.Lookup.t.(hold land lookup.Lookup.m) in
+    if value land _link_flag == 0 then value
+    else
+      let sub = (value lsr 15) land 0x1f in
+      lookup.Lookup.t.((value land 0x7fff)
+                       + ((hold lsr lookup.Lookup.root) land ((1 lsl sub) - 1)))
+  [@@inline]
 
   (* allocation *)
 
@@ -787,8 +829,8 @@ module Inf = struct
         (fun i _ -> res.(i) <- (5 lsl 15) lor reverse_bits (i lsl 3))
         res
       ; res in
-    let tbl_lit, max_lit = huffman LENS tbl_lit 0 288 in
-    Lookup.make tbl_lit max_lit, Lookup.make tbl_dist 5
+    let tbl_lit, root_lit, max_lit = huffman LENS tbl_lit 0 288 in
+    Lookup.make tbl_lit ~root:root_lit max_lit, Lookup.make tbl_dist 5
 
   let checksum d = WInf.checksum d.w
 
@@ -896,10 +938,9 @@ module Inf = struct
 
         if rem <= 0 then
           if rem < 0 (* end of input *) then
+            let v = resolve lit d.hold in
             let is_end_of_block =
-              lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask == 256
-              && lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 <= d.bits
-              && d.last in
+              v land Lookup.mask == 256 && v lsr 15 <= d.bits && d.last in
             if is_end_of_block then k d else err_unexpected_end_of_input d
           else refill (c_peek_bits n k) d (* allocation *)
         else
@@ -912,8 +953,9 @@ module Inf = struct
     match jump with
     | Length ->
       let k d =
-        let value = lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask in
-        let len = lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 in
+        let v = resolve lit d.hold in
+        let value = v land Lookup.mask in
+        let len = v lsr 15 in
         d.hold <- d.hold lsr len
         ; d.bits <- d.bits - len
 
@@ -963,8 +1005,9 @@ module Inf = struct
       c_peek_bits len k d
     | Distance ->
       let k d =
-        let value = dist.Lookup.t.(d.hold land dist.Lookup.m) land Lookup.mask in
-        let len = dist.Lookup.t.(d.hold land dist.Lookup.m) lsr 15 in
+        let v = resolve dist d.hold in
+        let value = v land Lookup.mask in
+        let len = v lsr 15 in
 
         d.hold <- d.hold lsr len
         ; d.bits <- d.bits - len
@@ -1020,6 +1063,8 @@ module Inf = struct
 
     let lit_mask = Nativeint.of_int lit.Lookup.m in
     let dist_mask = Nativeint.of_int dist.Lookup.m in
+    let lit_root = lit.Lookup.root in
+    let dist_root = dist.Lookup.root in
 
     (* XXX(dinosaure): 2 jumps were done in this hot-loop:
        1- [while],
@@ -1044,12 +1089,22 @@ module Inf = struct
                     shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
             ; bits := !bits + 8
             ; incr i_pos)
-          ; let value =
-              lit.Lookup.t.(Nativeint.(to_int (logand !hold lit_mask)))
-              land Lookup.mask in
-            let len =
-              lit.Lookup.t.(Nativeint.(to_int (logand !hold lit_mask))) lsr 15
-            in
+          ; let code =
+              let h = Nativeint.(to_int (logand !hold lit_mask)) in
+              let v = lit.Lookup.t.(h) in
+              if v land _link_flag == 0 then v
+              else
+                let i = v land 0x7fff in
+                let m =
+                  let open Nativeint in
+                  sub (shift_left 1n ((v lsr 15) land 0x1f)) 1n in
+                let i =
+                  let open Nativeint in
+                  i + to_int (logand (shift_right_logical !hold lit_root) m)
+                in
+                lit.Lookup.t.(i) in
+            let value = code land Lookup.mask in
+            let len = code lsr 15 in
             hold := Nativeint.shift_right_logical !hold len
             ; bits := !bits - len
 
@@ -1092,12 +1147,23 @@ module Inf = struct
                     shift_left (of_int (unsafe_get_uint8 d.i !i_pos)) !bits)
             ; bits := !bits + 8
             ; incr i_pos)
-          ; let value =
-              dist.Lookup.t.(Nativeint.(to_int (logand !hold dist_mask)))
-              land Lookup.mask in
-            let len =
-              dist.Lookup.t.(Nativeint.(to_int (logand !hold dist_mask))) lsr 15
-            in
+          ; let code =
+              let v =
+                dist.Lookup.t.(Nativeint.(to_int (logand !hold dist_mask)))
+              in
+              if v land _link_flag == 0 then v
+              else
+                let i = v land 0x7fff in
+                let m =
+                  let open Nativeint in
+                  sub (shift_left 1n ((v lsr 15) land 0x1f)) 1n in
+                let i =
+                  let open Nativeint in
+                  i + to_int (logand (shift_right_logical !hold dist_root) m)
+                in
+                dist.Lookup.t.(i) in
+            let value = code land Lookup.mask in
+            let len = code lsr 15 in
 
             hold := Nativeint.shift_right_logical !hold len
             ; bits := !bits - len
@@ -1210,11 +1276,11 @@ module Inf = struct
 
       ; (* XXX(dinosaure): an huffman tree MUST have at least an End-Of-Block
            symbol. *)
-        let t_lit, l_lit = huffman LENS t 0 hlit in
-        let t_dist, l_dist = huffman DISTS t hlit hdist in
+        let t_lit, root_lit, l_lit = huffman LENS t 0 hlit in
+        let t_dist, root_dist, l_dist = huffman DISTS t hlit hdist in
 
-        let lit = Lookup.make t_lit l_lit in
-        let dist = Lookup.make t_dist l_dist in
+        let lit = Lookup.make t_lit ~root:root_lit l_lit in
+        let dist = Lookup.make t_dist ~root:root_dist l_dist in
 
         d.literal <- lit
         ; d.distance <- dist
@@ -1305,7 +1371,7 @@ module Inf = struct
     done
 
     ; try
-        let t, l = huffman CODES res 0 19 in
+        let t, _, l = huffman CODES res 0 19 in
 
         d.hold <- !hold
         ; d.bits <- !bits
@@ -1602,9 +1668,9 @@ module Inf = struct
       try
         let rec inflate_loop () =
           __fill_bits d lit.Lookup.l
-          ; let value =
-              lit.Lookup.t.(d.hold land lit.Lookup.m) land Lookup.mask in
-            let len = lit.Lookup.t.(d.hold land lit.Lookup.m) lsr 15 in
+          ; let code = resolve lit d.hold in
+            let value = code land Lookup.mask in
+            let len = code lsr 15 in
             d.hold <- d.hold lsr len
             ; d.bits <- d.bits - len
             ; if value < 256 then (
@@ -1620,10 +1686,9 @@ module Inf = struct
                 ; let extra = pop_bits d len in
                   let l = _base_length.(l land 0x1f) + 3 + extra in
                   __fill_bits d dist.Lookup.l
-                  ; let value =
-                      dist.Lookup.t.(d.hold land dist.Lookup.m) land Lookup.mask
-                    in
-                    let len = dist.Lookup.t.(d.hold land dist.Lookup.m) lsr 15 in
+                  ; let code = resolve dist d.hold in
+                    let value = code land Lookup.mask in
+                    let len = code lsr 15 in
                     d.hold <- d.hold lsr len
                     ; d.bits <- d.bits - len
                     ; let d_ = value in
@@ -1656,11 +1721,11 @@ module Inf = struct
 
         ; (* XXX(dinosaure): an huffman tree MUST have at least an End-Of-Block
              symbol. *)
-          let t_lit, l_lit = huffman LENS t 0 hlit in
-          let t_dist, l_dist = huffman DISTS t hlit hdist in
+          let t_lit, root_lit, l_lit = huffman LENS t 0 hlit in
+          let t_dist, root_dist, l_dist = huffman DISTS t hlit hdist in
 
-          let lit = Lookup.make t_lit l_lit in
-          let dist = Lookup.make t_dist l_dist in
+          let lit = Lookup.make t_lit ~root:root_lit l_lit in
+          let dist = Lookup.make t_dist ~root:root_dist l_dist in
 
           inflate lit dist d
       with Invalid_huffman -> err_invalid_dictionary ()
@@ -1714,7 +1779,7 @@ module Inf = struct
           ; incr i
       done
       ; try
-          let t, l = huffman CODES res 0 19 in
+          let t, _, l = huffman CODES res 0 19 in
           let r = Array.make (hlit + hdist) 0 in
           let h = hlit, hdist, hclen in
           inflate_table d t l r h
@@ -1998,7 +2063,8 @@ module T = struct
         {
           lengths= tree_lengths
         ; max_code
-        ; tree= {Lookup.t= tree; m= (1 lsl !length) - 1; l= !length}
+        ; tree=
+            {Lookup.t= tree; m= (1 lsl !length) - 1; l= !length; root= !length}
         }
 
   let scan tree_lengths max_code ~bl_freqs =
