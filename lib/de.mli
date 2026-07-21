@@ -669,7 +669,7 @@ end
 val unsafe_set_cursor : Inf.decoder -> int -> unit
 
 module Lookup : sig
-  type t = {t: int array; m: int; l: int}
+  type t = {t: int array; m: int; l: int; root: int}
 
   val get : t -> int -> int * int
 end
