@@ -1,3 +1,21 @@
+### v1.6.0 2026-07-21 Paris (France)
+
+- Add x-maintenance-intent (@hannesm, #163)
+- Fix documentation (@reynir, #161)
+- Apply ocamlformat.0.29.0 (@dinosaure, #165)
+- Improve our benchmark tool and compare decompress with camlzip and
+  bytesrw.zlib (@dinosaure, #167)
+- Use warning names instead of numbers (@hannesm, #170)
+- Choose a better kind of block when we compress and approximate the cost
+  between a Fixed and a Dynamic block (@dinosaure, #166)
+- Use a xxHash implementation for our hashtable when we deflate
+  (@dinosaure, #171)
+- Use a two-level lookup table (as it's done by zlib, see inftrees.c) to
+  speed-up the inflation (@dinosaure, #173)
+
+  **breaking change**: De.Lookup.t is updated with a new root field.
+  Nobody should use this module.
+
 ### v1.5.3 2023-09-19 Paris (France)
 
 - Delete `libdecompress.a` (@dinosaure, #152)
