@@ -41,6 +41,11 @@
  (public_name decompress.lzo)
  (modules lzo))
 
+(library
+ (name lzw)
+ (public_name decompress.lzw)
+ (modules lzw))
+
 (alias
  (name default)
  (package decompress))
