@@ -1177,12 +1177,12 @@ let zlib_compress_and_uncompress ic =
 
 let test_corpus filename =
   Alcotest.test_case filename `Slow @@ fun () ->
-  let ic = open_in Filename.(concat "corpus" filename) in
+  let ic = open_in_bin Filename.(concat "corpus" filename) in
   compress_and_uncompress ic ; close_in ic
 
 let test_corpus_with_zlib filename =
   Alcotest.test_case filename `Slow @@ fun () ->
-  let ic = open_in Filename.(concat "corpus" filename) in
+  let ic = open_in_bin Filename.(concat "corpus" filename) in
   zlib_compress_and_uncompress ic
   ; close_in ic
 

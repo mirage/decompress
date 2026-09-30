@@ -7,7 +7,7 @@ let w0 = Lz77.make_window ~bits:15
 let w1 = make_window ~bits:15
 
 let load_file filename =
-  let ic = open_in filename in
+  let ic = open_in_bin filename in
   let ln = in_channel_length ic in
   let rs = really_input_string ic ln in
   close_in ic ; rs
@@ -19,8 +19,8 @@ let compare_files a b =
 let deflate_with_level ~level filename =
   Alcotest.test_case (Fmt.str "%s (level: %d)" filename level) `Quick
   @@ fun () ->
-  let ic = open_in filename in
-  let oc = open_out (filename ^ ".o") in
+  let ic = open_in_bin filename in
+  let oc = open_out_bin (filename ^ ".o") in
   let state = Lz77.state ~level ~q ~w:w0 (`Channel ic) in
   let encoder = Def.encoder `Manual ~q in
   let decoder = Inf.decoder `Manual ~o ~w:w1 in

@@ -1108,7 +1108,7 @@ let flat_and_fixed () =
   Alcotest.(check string) "deadbeefaaaa" "\xde\xad\xbe\xefaaaa" res1
 
 let load_file ln path =
-  let ic = open_in path in
+  let ic = open_in_bin path in
   let rs = Bytes.create ln in
   really_input ic rs 0 ln ; close_in ic ; Bytes.unsafe_to_string rs
 
@@ -1135,7 +1135,7 @@ let partial_reconstruct tmp lst =
 
 let lz77_corpus_rfc5322 () =
   Alcotest.test_case "rfc5322" `Quick @@ fun () ->
-  let ic = open_in "corpus/rfc5322.txt" in
+  let ic = open_in_bin "corpus/rfc5322.txt" in
   let q = Queue.create 4096 in
   let l = Lz77.make_window ~bits:15 in
   let state = Lz77.state (`Channel ic) ~w:l ~q in
@@ -1319,7 +1319,7 @@ let compress_and_uncompress ic =
 
 let test_corpus filename =
   Alcotest.test_case filename `Slow @@ fun () ->
-  let ic = open_in Filename.(concat "corpus" filename) in
+  let ic = open_in_bin Filename.(concat "corpus" filename) in
   compress_and_uncompress ic ; close_in ic
 
 let gzip_compress_and_uncompress ~filename ic =
@@ -1437,13 +1437,13 @@ let zlib_compress_and_uncompress ic =
 
 let test_corpus_with_zlib filename =
   Alcotest.test_case filename `Slow @@ fun () ->
-  let ic = open_in Filename.(concat "corpus" filename) in
+  let ic = open_in_bin Filename.(concat "corpus" filename) in
   zlib_compress_and_uncompress ic
   ; close_in ic
 
 let test_corpus_with_gzip filename =
   Alcotest.test_case filename `Slow @@ fun () ->
-  let ic = open_in Filename.(concat "corpus" filename) in
+  let ic = open_in_bin Filename.(concat "corpus" filename) in
   gzip_compress_and_uncompress ~filename ic
   ; close_in ic
 
@@ -1846,7 +1846,7 @@ let test_with_camlzip () =
   Alcotest.test_case "compare with camlzip" `Quick @@ fun () ->
   let q = Queue.create 4096 in
   let l = Lz77.make_window ~bits:15 in
-  let oc = open_out "foo.gz" in
+  let oc = open_out_bin "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo") (`Channel oc) ~filename:"foo.gz" ~mtime:0l
       Gz.Unix ~q ~w:l ~level:4 in
@@ -1867,7 +1867,7 @@ let test_gzip_hcrc () =
   let q = Queue.create 4096 in
   let l = Lz77.make_window ~bits:15 in
   let o = bigstring_create io_buffer_size in
-  let oc = open_out "foo.gz" in
+  let oc = open_out_bin "foo.gz" in
   let encoder =
     Gz.Def.encoder (`String "foo & bar") (`Channel oc) ~filename:"foo.gz"
       ~mtime:0l Gz.Unix ~hcrc:true ~q ~w:l ~level:4 in
@@ -1877,7 +1877,7 @@ let test_gzip_hcrc () =
     | `Flush _ -> Alcotest.failf "Unexpected `Flush signal"
     | `End _ -> close_out oc in
   go encoder
-  ; let ic = open_in "foo.gz" in
+  ; let ic = open_in_bin "foo.gz" in
     let decoder = Gz.Inf.decoder (`Channel ic) ~o in
     let decoder =
       match Gz.Inf.decode decoder with
@@ -2081,7 +2081,7 @@ let test_lzo_1 () =
 let test_corpus_with_lzo filename =
   Alcotest.test_case (Fmt.str "lzo and %s" filename) `Quick @@ fun () ->
   let filename = Filename.concat "corpus" filename in
-  let ic = open_in filename in
+  let ic = open_in_bin filename in
   let len = in_channel_length ic in
   let res = Bytes.create len in
   really_input ic res 0 len
