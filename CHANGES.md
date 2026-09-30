@@ -1,3 +1,8 @@
+### v1.6.1 2026-09-30 Paris (France)
+
+- Re-introduce the support of 32 bit architecture (spotted by @kit-ty-kate,
+  fixed by @dinosaure, #175, #178)
+
 ### v1.6.0 2026-07-21 Paris (France)
 
 - Add x-maintenance-intent (@hannesm, #163)
